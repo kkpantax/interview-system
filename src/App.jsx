@@ -5,7 +5,6 @@ import { getScriptUrl } from './api'
 import { sumScore, avg2, decInfo, finInfo } from './utils'
 import { Toast, Modal, Btn } from './components/UI'
 import ImportModal  from './components/ImportModal'
-import SetupModal   from './components/SetupModal'
 import ListPage     from './components/ListPage'
 import ScorePage    from './components/ScorePage'
 import ComparePage  from './components/ComparePage'
@@ -15,7 +14,6 @@ export default function App() {
   const [view, setView]               = useState('list')   // list | score | compare
   const [activeStudent, setActive]    = useState(null)
   const [showImport, setShowImport]   = useState(false)
-  const [showSetup, setShowSetup]     = useState(false)
   const [toast, setToast]             = useState(null)
 
   const store = useStore()
@@ -146,20 +144,8 @@ export default function App() {
             </>
           )}
 
-          <button
-            onClick={() => setShowSetup(true)}
-            style={{ width: '100%', marginTop: 20, padding: '10px', borderRadius: 8, border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#555' }}
-          >
-            ⚙ 設定 Google Sheets
-          </button>
         </div>
 
-        {showSetup && (
-          <SetupModal
-            onClose={() => setShowSetup(false)}
-            onSaved={() => { showToast('設定已儲存'); store.loadData() }}
-          />
-        )}
         <Toast msg={toast?.msg} type={toast?.type} />
       </div>
     )
@@ -186,7 +172,6 @@ export default function App() {
           </span>
           <button onClick={() => { setRole(''); localStorage.removeItem('role') }} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid #444', background: 'none', color: '#ccc', fontFamily: 'inherit' }}>切換角色</button>
           <button onClick={() => store.loadData()} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid #444', background: 'none', color: '#ccc', fontFamily: 'inherit' }}>↻</button>
-          <button onClick={() => setShowSetup(true)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid #444', background: 'none', color: '#ccc', fontFamily: 'inherit' }}>⚙</button>
         </div>
       </div>
 
@@ -237,12 +222,6 @@ export default function App() {
         <ImportModal
           onImport={handleImport}
           onClose={() => setShowImport(false)}
-        />
-      )}
-      {showSetup && (
-        <SetupModal
-          onClose={() => setShowSetup(false)}
-          onSaved={() => { showToast('設定已儲存'); store.loadData() }}
         />
       )}
       <Toast msg={toast?.msg} type={toast?.type} />

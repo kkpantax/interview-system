@@ -1,10 +1,6 @@
-let SCRIPT_URL = localStorage.getItem('scriptUrl') || ''
+const SCRIPT_URL = import.meta.env.VITE_SCRIPT_URL || ''
 
 export const getScriptUrl = () => SCRIPT_URL
-export const setScriptUrl = (url) => {
-  SCRIPT_URL = url
-  localStorage.setItem('scriptUrl', url)
-}
 
 async function apiFetch(url, opts) {
   const res = await fetch(url, opts)
@@ -19,7 +15,7 @@ export async function apiGet(action, params = {}) {
 }
 
 export async function apiPost(body) {
-  if (!SCRIPT_URL) throw new Error('未設定 Google Sheets URL')
+  if (!SCRIPT_URL) throw new Error('未設定 VITE_SCRIPT_URL 環境變數')
   return apiFetch(SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
