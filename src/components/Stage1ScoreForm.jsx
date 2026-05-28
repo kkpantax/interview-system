@@ -6,6 +6,26 @@ const MAX = SCORE_ITEMS_STAGE1.length * 5
 const emptyScores = () => Object.fromEntries(SCORE_ITEMS_STAGE1.map((i) => [i.key, 0]))
 const sumScores = (sc) => SCORE_ITEMS_STAGE1.reduce((a, i) => a + Number(sc[i.key] || 0), 0)
 
+// 由生日（西元）計算年齡。支援 M/D/Y（匯入格式）與 Y-M-D（date 欄位）兩種字串。
+const calcAge = (birth) => {
+  if (!birth) return null
+  const str = String(birth).trim()
+  let y, m, d
+  if (str.includes('/')) {
+    const [mm, dd, yy] = str.split('/').map((x) => parseInt(x, 10))
+    m = mm; d = dd; y = yy
+  } else if (str.includes('-')) {
+    const [yy, mm, dd] = str.split('-').map((x) => parseInt(x, 10))
+    y = yy; m = mm; d = dd
+  }
+  if (!y || !m || !d) return null
+  const now = new Date()
+  let age = now.getFullYear() - y
+  const curM = now.getMonth() + 1
+  if (curM < m || (curM === m && now.getDate() < d)) age--
+  return age >= 0 && age < 130 ? age : null
+}
+
 // 第一階段評分表（寫入 stage1_records）。initial 帶入既有紀錄即為「重新評分」。
 export default function Stage1ScoreForm({ student, onSave, onBack, saving, initial }) {
   const [scores, setScores] = useState(() => ({ ...emptyScores(), ...(initial?.scores || {}) }))
@@ -16,6 +36,7 @@ export default function Stage1ScoreForm({ student, onSave, onBack, saving, initi
   const [newQ, setNewQ]         = useState('')
 
   const total = sumScores(scores)
+  const age = calcAge(student.birth_date)
   const setStar = (k, v) => setScores((p) => ({ ...p, [k]: p[k] === v ? 0 : v }))
 
   const addCustom = () => {
@@ -49,6 +70,8 @@ export default function Stage1ScoreForm({ student, onSave, onBack, saving, initi
         <span>{student.name_english}</span>
         <span>{student.department}</span>
         <span>{student.nationality} · {student.gender}</span>
+        {age != null && <span>年齡：{age}</span>}
+        {student.high_school && <span>畢業學校：{student.high_school}</span>}
         {student.center && <span style={{ color: '#1e40af' }}>中心：{student.center}</span>}
       </div>
 
