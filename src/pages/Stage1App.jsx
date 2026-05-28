@@ -3,13 +3,17 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, s } from '../components/UI'
 import ExportBtn from '../components/ExportBtn'
 import Stage1List from '../components/Stage1List'
-import { getStage1List, getStage1Pending, saveStage1Record, markStage1Passed } from '../api'
+import Stage1ScoreForm from '../components/Stage1ScoreForm'
+import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score, markStage1Passed } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
+import { DECISIONS_STAGE1 } from '../constants'
 
 const localToday = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+const recLabel = (v) => DECISIONS_STAGE1.find((d) => d.v === v)?.label || ''
 
 const EXPORT_COLS = [
   { key: 'account',          label: '帳號' },
@@ -18,8 +22,10 @@ const EXPORT_COLS = [
   { key: 'department',       label: '系所' },
   { key: 'preference_order', label: '志願序' },
   { key: 'nationality',      label: '國籍' },
-  { key: 'appeared',         label: '出席' },
   { key: 'center',           label: '中心' },
+  { key: 'appeared',         label: '出席' },
+  { key: 'total_score',      label: '評分總分' },
+  { key: 'recommendation',   label: '建議' },
   { key: 'note',             label: '備註' },
 ]
 
@@ -28,9 +34,12 @@ export default function Stage1App() {
   const [date, setDate]         = useState(localToday)
   const [showAll, setShowAll]   = useState(false)
   const [students, setStudents] = useState([])
+  const [records, setRecords]   = useState({})   // { [application_id]: stage1_record }
   const [draft, setDraft]       = useState({})
   const [loading, setLoading]   = useState(false)
   const [savingId, setSavingId] = useState(null)
+  const [scoringStu, setScoringStu] = useState(null)  // 評分中的學生
+  const [scoreSaving, setScoreSaving] = useState(false)
   const [producing, setProducing] = useState(false)
   const [toast, setToast]       = useState(null)
 
@@ -45,8 +54,15 @@ export default function Stage1App() {
     setLoading(true)
     try {
       const list = (showAll ? await getStage1Pending() : await getStage1List(date)) || []
+      const recList = (await getStage1Records(date)) || []
+      const recMap = Object.fromEntries(recList.map((r) => [r.application_id, r]))
       setStudents(list)
-      setDraft(Object.fromEntries(list.map((r) => [r.id, { appeared: false, center: '', note: '' }])))
+      setRecords(recMap)
+      // 既有簽到的 appeared / 備註帶回草稿
+      setDraft(Object.fromEntries(list.map((r) => {
+        const rec = recMap[r.id]
+        return [r.id, { appeared: !!rec?.appeared, note: rec?.teacher_note || '' }]
+      })))
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -62,14 +78,15 @@ export default function Stage1App() {
     setSavingId(stu.id)
     try {
       const d = draft[stu.id] || {}
-      await saveStage1Record({
+      const res = await saveStage1Checkin({
         application_id: stu.id,
         record_date: date,
         appeared: !!d.appeared,
-        center: d.center || null,
         confirmed_dept: stu.department || null,
         teacher_note: d.note || null,
       })
+      const saved = Array.isArray(res) ? res[0] : res
+      if (saved) setRecords((m) => ({ ...m, [stu.id]: { ...m[stu.id], ...saved } }))
       showToast(`已儲存 ${stu.name} 的簽到`)
     } catch (e) {
       showToast('儲存失敗：' + e.message, 'error')
@@ -78,9 +95,27 @@ export default function Stage1App() {
     }
   }
 
+  const handleSaveScore = async (payload) => {
+    const rec = records[scoringStu.id]
+    if (!rec?.id) { showToast('找不到簽到紀錄，請先儲存簽到', 'error'); return }
+    setScoreSaving(true)
+    try {
+      const res = await saveStage1Score(rec.id, payload)
+      const saved = Array.isArray(res) ? res[0] : res
+      if (saved) setRecords((m) => ({ ...m, [scoringStu.id]: { ...m[scoringStu.id], ...saved } }))
+      showToast(`已儲存 ${scoringStu.name} 的評分`)
+      setScoringStu(null)
+    } catch (e) {
+      showToast('儲存評分失敗：' + e.message, 'error')
+    } finally {
+      setScoreSaving(false)
+    }
+  }
+
   const produce = async () => {
-    const passed = students.filter((stu) => draft[stu.id]?.appeared)
-    if (!passed.length) { showToast('尚未有標記「已到」的學生', 'warn'); return }
+    // 只把「建議通過」的學生標記為通過一階
+    const passed = students.filter((stu) => records[stu.id]?.recommendation === 'pass')
+    if (!passed.length) { showToast('尚未有評分為「建議通過」的學生', 'warn'); return }
     setProducing(true)
     try {
       for (const stu of passed) await markStage1Passed(stu.id, date)
@@ -93,22 +128,28 @@ export default function Stage1App() {
     }
   }
 
-  const exportRows = students.map((stu) => ({
-    account: stu.account, name: stu.name, name_english: stu.name_english,
-    department: stu.department, preference_order: stu.preference_order ?? '',
-    nationality: stu.nationality,
-    appeared: draft[stu.id]?.appeared ? '已到' : '未到',
-    center: draft[stu.id]?.center || '',
-    note: draft[stu.id]?.note || '',
-  }))
+  const exportRows = students.map((stu) => {
+    const rec = records[stu.id]
+    return {
+      account: stu.account, name: stu.name, name_english: stu.name_english,
+      department: stu.department, preference_order: stu.preference_order ?? '',
+      nationality: stu.nationality,
+      center: stu.center || '',
+      appeared: rec?.appeared ? '已到' : (draft[stu.id]?.appeared ? '已到' : '未到'),
+      total_score: rec?.total_score ?? '',
+      recommendation: recLabel(rec?.recommendation),
+      note: draft[stu.id]?.note || '',
+    }
+  })
 
   const appearedCount = students.filter((stu) => draft[stu.id]?.appeared).length
+  const passCount = students.filter((stu) => records[stu.id]?.recommendation === 'pass').length
 
   if (!teacher) return null
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第一階段 · 簽到確認" accent="#1e3a8a" toast={toast}
+      title="實踐大學" subtitle="第一階段 · 簽到評分" accent="#1e3a8a" toast={toast}
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {loading && <span style={{ fontSize: 12, color: '#cbd5e1' }}>載入中…</span>}
@@ -120,6 +161,16 @@ export default function Stage1App() {
         </div>
       }
     >
+      {scoringStu ? (
+        <Stage1ScoreForm
+          student={scoringStu}
+          initial={records[scoringStu.id]}
+          onSave={handleSaveScore}
+          onBack={() => setScoringStu(null)}
+          saving={scoreSaving}
+        />
+      ) : (
+       <>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 13, color: '#555' }}>面試日期</label>
         <input type="date" style={{ ...s.input, marginBottom: 0, width: 'auto' }}
@@ -128,12 +179,12 @@ export default function Stage1App() {
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
           顯示全部未排期 / 未通過
         </label>
-        <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位</span>
+        <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位 · 建議通過 {passCount} 位</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <ExportBtn columns={EXPORT_COLS} rows={exportRows} filename={`第一階段簽到表_${date}.xlsx`}
-            label="⬇ 下載簽到表" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
-          <Btn variant="green" onClick={produce} disabled={producing || !appearedCount}>
-            {producing ? '產出中…' : `產出今日名單（${appearedCount}）`}
+          <ExportBtn columns={EXPORT_COLS} rows={exportRows} filename={`第一階段簽到評分表_${date}.xlsx`}
+            label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
+          <Btn variant="green" onClick={produce} disabled={producing || !passCount}>
+            {producing ? '產出中…' : `產出今日通過名單（${passCount}）`}
           </Btn>
         </div>
       </div>
@@ -143,13 +194,17 @@ export default function Stage1App() {
         <Stage1List
           students={students} draft={draft} onChange={patch}
           onSaveRow={saveRow} savingId={savingId} loading={loading}
+          records={records} onScore={setScoringStu}
         />
       </Card>
 
       <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
-        說明：逐列確認出席、選擇中心、填備註後按「儲存」寫入簽到紀錄；
-        最後按「產出今日名單」把所有「已到」的學生標記為通過第一階段（寫入通過日期）。
+        說明：學生的中心已由行政人員事先登記，此處唯讀顯示。逐列確認出席、填備註後按「儲存簽到」；
+        簽到後出席者可按「評分 →」開啟評分表，完成後狀態列顯示建議；
+        最後按「產出今日通過名單」把所有「建議通過」的學生標記為通過第一階段。
       </div>
+       </>
+      )}
     </PageShell>
   )
 }

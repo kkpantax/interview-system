@@ -152,6 +152,29 @@ export async function createApplication(row) {
   return callProxy('/rest/v1/applications', 'POST', row, 'return=representation')
 }
 
+// ── Centers（面試中心，由行政人員動態管理）─────────────────────────────────
+export async function getCenters() {
+  return callProxy('/rest/v1/centers?select=*&order=sort_order.asc,name.asc', 'GET')
+}
+export async function createCenter(name) {
+  return callProxy('/rest/v1/centers', 'POST', { name }, 'return=representation')
+}
+export async function deleteCenter(id) {
+  return callProxy(`/rest/v1/centers?id=eq.${id}`, 'DELETE', undefined, 'return=minimal')
+}
+
+// 設定 applications 的中心（批次：傳入多個 id 設成同一個中心；需要 UPDATE RLS 政策）
+// center 傳 '' / null 表示清除。
+export async function batchSetCenter(ids, center) {
+  if (!ids || !ids.length) return []
+  return callProxy(
+    `/rest/v1/applications?id=in.(${ids.join(',')})`,
+    'PATCH',
+    { center: center || null },
+    'return=representation',
+  )
+}
+
 // 指派/清除面試日期（批次，需要 applications 的 UPDATE RLS 政策）
 export async function setInterviewDate(ids, date) {
   if (!ids || !ids.length) return []
@@ -180,8 +203,32 @@ export async function getStage1Pending() {
   )
 }
 
-export async function saveStage1Record(rec) {
+// 當日所有簽到/評分紀錄（一次撈回，前端以 application_id 建 map，避免逐生打 API）
+export async function getStage1Records(date) {
+  return callProxy(`/rest/v1/stage1_records?record_date=eq.${date}&select=*`, 'GET')
+}
+
+// 簽到：同一 application_id + record_date 已存在則 PATCH，否則 POST。回傳該筆紀錄。
+export async function saveStage1Checkin(rec) {
+  const existing = await callProxy(
+    `/rest/v1/stage1_records?application_id=eq.${rec.application_id}&record_date=eq.${rec.record_date}&select=id`,
+    'GET',
+  )
+  if (existing && existing.length > 0) {
+    return callProxy(
+      `/rest/v1/stage1_records?id=eq.${existing[0].id}`,
+      'PATCH', rec, 'return=representation',
+    )
+  }
   return callProxy('/rest/v1/stage1_records', 'POST', rec, 'return=representation')
+}
+
+// 寫入第一階段評分（依 stage1_records.id 更新已建立的簽到紀錄）
+export async function saveStage1Score(recordId, payload) {
+  return callProxy(
+    `/rest/v1/stage1_records?id=eq.${recordId}`,
+    'PATCH', payload, 'return=representation',
+  )
 }
 
 // 標記通過一階（更新 applications，需要 UPDATE 的 RLS 政策）

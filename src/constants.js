@@ -9,8 +9,17 @@ export const SCORE_ITEMS = [
   { key: 'impression',    label: '整體印象' },
 ]
 
-// 共用基礎題（7 題）：第一、第二階段共用，顯示在評分表旁。
-// 第一階段只顯示前 5 題較基本的（用 QUESTIONS_STAGE1.slice(0, 5)），第二階段全顯示。
+// 第一階段評分項目（6 項，較精簡）
+export const SCORE_ITEMS_STAGE1 = [
+  { key: 'appearance',  label: '儀容服裝' },
+  { key: 'attitude',    label: '態度禮貌' },
+  { key: 'expression',  label: '語言表達' },
+  { key: 'motivation',  label: '來台動機' },
+  { key: 'stability',   label: '穩定度' },
+  { key: 'impression',  label: '整體印象' },
+]
+
+// 共用基礎題（7 題）：第一、第二階段評分表旁的題目參考清單共用。
 export const QUESTIONS_STAGE1 = [
   { q: '請簡單介紹一下自己。' },
   { q: '為什麼想來台灣念書？' },
@@ -44,6 +53,13 @@ export const DECISIONS = [
   { v: 'waitlist', label: '備取',       color: '#d97706', bg: '#fef3c7' },
   { v: 'reject',   label: '不建議錄取', color: '#dc2626', bg: '#fee2e2' },
   { v: 'pending',  label: '待定',       color: '#6b7280', bg: '#f3f4f6' },
+]
+
+// 第一階段建議（pass / fail / pending），對應 stage1_records.recommendation
+export const DECISIONS_STAGE1 = [
+  { v: 'pass',    label: '建議通過', color: '#16a34a', bg: '#dcfce7' },
+  { v: 'fail',    label: '不通過',   color: '#dc2626', bg: '#fee2e2' },
+  { v: 'pending', label: '待定',     color: '#6b7280', bg: '#f3f4f6' },
 ]
 
 export const FINAL_RESULTS = [
@@ -92,8 +108,7 @@ export const APP_XLS_MAP = {
   '最高學歷畢業學校':  'high_school',
 }
 
-// 第一階段面試中心選項
-export const CENTERS = ['台北中心', '台中中心', '高雄中心', '其他']
+// 面試中心改由行政人員在 centers 資料表動態管理（見 api.js getCenters），不再寫死常數。
 
 // 申請狀態流轉
 export const STATUS = {
