@@ -136,6 +136,29 @@ export default function Stage3App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [deptList, evals, finals])
 
+  // 各中心錄取統計（以帳號為單位：每個帳號取優先序最高的最終狀態，再依中心分組計數）
+  const centerSummary = useMemo(() => {
+    const PRIORITY = { admitted: 0, waitlisted: 1, rejected: 2, pending: 3 }
+    const acctCenter = new Map()      // account → center
+    const acctBestStatus = new Map()  // account → 優先序最高的 final_status
+    for (const e of evals) {
+      const a = acctOf(e); if (!a) continue
+      if (!acctCenter.has(a)) acctCenter.set(a, e.applications?.center || '（未設定中心）')
+      const st = statusOf(e)
+      const prev = acctBestStatus.get(a)
+      if (prev === undefined || PRIORITY[st] < PRIORITY[prev]) acctBestStatus.set(a, st)
+    }
+    const byCenter = new Map()
+    for (const [a, center] of acctCenter) {
+      if (!byCenter.has(center)) byCenter.set(center, { center, admitted: 0, waitlisted: 0, rejected: 0, pending: 0, total: 0 })
+      const g = byCenter.get(center)
+      g[acctBestStatus.get(a) || 'pending']++
+      g.total++
+    }
+    return [...byCenter.values()].sort((x, y) => x.center.localeCompare(y.center, 'zh-TW'))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals, finals])
+
   const rows = evals.filter((e) => deptOf(e) === dept)
 
   const setStatus = async (e, final_status) => {
@@ -295,6 +318,29 @@ export default function Stage3App() {
           <div style={{ fontSize: 13, color: '#aaa' }}>{loading ? '載入中…' : '尚無第二階段評分資料'}</div>
         )}
       </div>
+
+      {/* 各中心錄取統計 */}
+      {centerSummary.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <CardHead left="各中心錄取統計" right={`${centerSummary.length} 個中心`} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 14 }}>
+            {centerSummary.map((cs) => (
+              <div key={cs.center} style={{ ...s.card, padding: '10px 14px', minWidth: 170 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{cs.center}</div>
+                <div style={{ fontSize: 12, color: '#666' }}>
+                  <span style={{ color: '#16a34a' }}>正取 {cs.admitted}</span> ·{' '}
+                  <span style={{ color: '#d97706' }}>備取 {cs.waitlisted}</span> ·{' '}
+                  <span style={{ color: '#dc2626' }}>未錄取 {cs.rejected}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                  <span style={{ color: '#6b7280' }}>待定 {cs.pending}</span> ·{' '}
+                  <span style={{ color: '#aaa' }}>共 {cs.total}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardHead left={dept ? `${dept} · 通過兩階段名單` : '請選擇科系'} right={`${rows.length} 位`} />
