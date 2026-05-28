@@ -40,6 +40,7 @@ export default function Stage1App() {
   const [scoringStu, setScoringStu] = useState(null)  // 評分中的學生
   const [scoreSaving, setScoreSaving] = useState(false)
   const [producing, setProducing] = useState(false)
+  const [search, setSearch]     = useState('')
   const [toast, setToast]       = useState(null)
 
   // 守衛：未登入導回登入頁
@@ -143,6 +144,14 @@ export default function Stage1App() {
     }
   })
 
+  // 搜尋（帳號 / 姓名，不分大小寫）；只影響名單顯示，統計與產出仍以完整名單為準
+  const q = search.trim().toLowerCase()
+  const filtered = students.filter((stu) =>
+    !q ||
+    (stu.account || '').toLowerCase().includes(q) ||
+    (stu.name || '').toLowerCase().includes(q),
+  )
+
   const appearedCount = students.filter((stu) => draft[stu.account]?.appeared).length
   const passCount = students.filter((stu) => records[stu.account]?.recommendation === 'pass').length
 
@@ -180,6 +189,12 @@ export default function Stage1App() {
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
           顯示全部未排期 / 未通過
         </label>
+        <input
+          style={{ ...s.input, marginBottom: 0, width: 180 }}
+          placeholder="搜尋帳號 / 姓名"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位 · 建議通過 {passCount} 位</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <ExportBtn columns={EXPORT_COLS} rows={exportRows} filename={`第一階段簽到評分表_${date}.xlsx`}
@@ -191,9 +206,9 @@ export default function Stage1App() {
       </div>
 
       <Card>
-        <CardHead left={showAll ? '未通過名單' : `${date} 應試名單`} right={`${students.length} 位`} />
+        <CardHead left={showAll ? '未通過名單' : `${date} 應試名單`} right={`${filtered.length} / ${students.length} 位`} />
         <Stage1List
-          students={students} draft={draft} onChange={patch}
+          students={filtered} draft={draft} onChange={patch}
           onSaveRow={saveRow} savingId={savingId} loading={loading}
           records={records} onScore={setScoringStu}
         />
