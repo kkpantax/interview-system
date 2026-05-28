@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { apiGet, apiPost } from './api'
+import { apiGet, apiPost, apiPatch, toApplicationRow, fromApplicationRow } from './api'
 import { emptyEval, sumScore } from './utils'
 
 export function useStore() {
@@ -12,12 +12,9 @@ export function useStore() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [stuRes, evRes] = await Promise.all([
-        apiGet('getStudents'),
-        apiGet('getEvals'),
-      ])
-      if (stuRes && !stuRes.error) setStudents(stuRes)
-      if (evRes  && !evRes.error)  setEvals(evRes)
+      // applications 表存的是申請者資料；評分（evals）目前只在本地，待後端建表後再載入。
+      const stuRes = await apiGet('getStudents')
+      if (Array.isArray(stuRes)) setStudents(stuRes.map(fromApplicationRow))
     } catch (e) {
       console.error('loadData error', e)
     } finally {
@@ -59,12 +56,8 @@ export function useStore() {
         }
         return [...prev, ev]
       })
-      setSyncing(true)
-      try {
-        await apiPost({ action: 'saveEval', eval: ev })
-      } finally {
-        setSyncing(false)
-      }
+      // applications 表沒有評分欄位，評分目前只保存在本地 state。
+      // TODO: 後端建立 evals 表後，在這裡改成對 evals 表呼叫 apiPost / apiPatch 寫入。
     },
     []
   )
@@ -76,9 +69,13 @@ export function useStore() {
         String(s.id) === String(updated.id) ? { ...s, ...updated } : s
       )
     )
+    // 只同步 applications 表有的欄位（id 當條件用，不放進 body）。
+    const { id, ...rest } = updated
+    const row = toApplicationRow(rest)
+    if (id === undefined || Object.keys(row).length === 0) return
     setSyncing(true)
     try {
-      await apiPost({ action: 'updateStudent', student: updated })
+      await apiPatch(id, row)
     } finally {
       setSyncing(false)
     }
@@ -89,15 +86,28 @@ export function useStore() {
     const existingIds = new Set(students.map((s) => String(s.id)))
     const newOnes = parsed.filter((s) => !existingIds.has(String(s.id)))
     setStudents((prev) => [...prev, ...newOnes])
-    const res = await apiPost({ action: 'importStudents', students: parsed })
-    return { added: res?.added ?? newOnes.length }
+    if (!newOnes.length) return { added: 0 }
+    // 整批插入 applications 表（欄位重命名為 snake_case，丟掉非該表欄位）。
+    const res = await apiPost(newOnes.map(toApplicationRow))
+    return { added: Array.isArray(res) ? res.length : newOnes.length }
   }, [students])
 
   // ── 進二階 ───────────────────────────────────────────────────────────────
   const promoteToStage2 = useCallback(async (studentId) => {
-    await updateStudent({ id: studentId, stage2Status: 'pending', stage2Date: '' })
-    await apiPost({ action: 'promoteToStage2', studentIds: [studentId] })
-  }, [updateStudent])
+    setStudents((prev) =>
+      prev.map((s) =>
+        String(s.id) === String(studentId)
+          ? { ...s, stage2Status: 'pending', stage2Date: '' }
+          : s
+      )
+    )
+    setSyncing(true)
+    try {
+      await apiPatch(studentId, { status: 'stage2_pending' })
+    } finally {
+      setSyncing(false)
+    }
+  }, [])
 
   // ── 設定最終結果 ──────────────────────────────────────────────────────────
   const setFinalResult = useCallback(async (studentId, result) => {
