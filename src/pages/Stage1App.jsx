@@ -117,13 +117,33 @@ export default function Stage1App() {
   const produce = async () => {
     // 只把「建議通過」的學生標記為通過一階；同帳號所有志願一起標記
     const passed = students.filter((stu) => records[stu.account]?.recommendation === 'pass')
+    // debug：確認被視為通過的學生與其 recommendation 真的是 'pass'
+    console.log('[produce] passed array:', passed.map((stu) => ({
+      account: stu.account, name: stu.name,
+      recommendation: records[stu.account]?.recommendation,
+    })))
     if (!passed.length) { showToast('尚未有評分為「建議通過」的學生', 'warn'); return }
     setProducing(true)
     try {
-      for (const stu of passed) await markStage1PassedByAccount(stu.account, date)
+      for (const stu of passed) {
+        const res = await markStage1PassedByAccount(stu.account, date)
+        console.log('[produce] markStage1PassedByAccount 回傳：', stu.account, res)
+        // PATCH return=representation 會回傳被更新的列；空陣列代表「請求成功但 0 列被更新」，
+        // 幾乎都是 applications 缺少 UPDATE 的 RLS 政策所致。
+        if (Array.isArray(res) && res.length === 0) {
+          console.error(
+            `[produce] 帳號 ${stu.account} 沒有任何 application 被更新（0 rows）。\n` +
+            '若所有學生都是 0 rows，請在 Supabase SQL Editor 執行以下政策後再試：\n' +
+            'ALTER TABLE applications ENABLE ROW LEVEL SECURITY;\n' +
+            'CREATE POLICY "allow update applications" ON applications\n' +
+            '  FOR UPDATE USING (true) WITH CHECK (true);',
+          )
+        }
+      }
       showToast(`已產出今日通過名單：${passed.length} 位`)
       await load()
     } catch (e) {
+      console.error('[produce] 產出失敗：', e)
       showToast('產出失敗：' + e.message, 'error')
     } finally {
       setProducing(false)
