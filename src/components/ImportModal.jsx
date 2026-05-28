@@ -35,6 +35,7 @@ export default function ImportModal({ onImport, onClose }) {
   const [fileName, setFileName] = useState('')
   const [error, setError]       = useState('')
   const [busy, setBusy]         = useState(false)
+  const [progress, setProgress] = useState(null) // { done, total }
   const fileRef = useRef()
 
   const handleFile = (e) => {
@@ -77,9 +78,10 @@ export default function ImportModal({ onImport, onClose }) {
 
   const handleConfirm = async () => {
     if (!rows.length) return
-    setBusy(true)
+    setBusy(true); setError(''); setProgress({ done: 0, total: rows.length })
     try {
-      await onImport(rows, skipped)
+      // 分批送出（每批 50 筆），全部跑完才關閉並顯示結果
+      await onImport(rows, skipped, (done, total) => setProgress({ done, total }))
       onClose()
     } catch (err) {
       setError('匯入失敗：' + err.message)
@@ -142,7 +144,9 @@ export default function ImportModal({ onImport, onClose }) {
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Btn onClick={onClose}>取消</Btn>
         <Btn variant="primary" onClick={handleConfirm} disabled={!rows.length || busy}>
-          {busy ? '匯入中…' : `確認匯入${rows.length ? `（${rows.length} 筆）` : ''}`}
+          {busy
+            ? `匯入中…${progress ? ` (${progress.done}/${progress.total})` : ''}`
+            : `確認匯入${rows.length ? `（${rows.length} 筆）` : ''}`}
         </Btn>
       </div>
     </Modal>

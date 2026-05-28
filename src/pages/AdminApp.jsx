@@ -52,8 +52,8 @@ export default function AdminApp() {
 
   useEffect(() => { load() }, [load])
 
-  const handleImport = async (rows, skipped) => {
-    const { added, updated } = await upsertApplications(rows)
+  const handleImport = async (rows, skipped, onProgress) => {
+    const { added, updated } = await upsertApplications(rows, onProgress)
     showToast(`匯入完成：新增 ${added}、更新 ${updated}、略過 ${skipped}（無帳號）`)
     await load()
   }

@@ -8,17 +8,15 @@ async function callProxy(path, method, body, prefer) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, method, body, prefer }),
   })
+  const text = await res.text()
   if (!res.ok) {
     let msg = '請求失敗'
-    try {
-      const err = await res.json()
-      msg = err.message || msg
-    } catch {
-      /* 回應不是 JSON，沿用預設訊息 */
-    }
+    try { msg = JSON.parse(text).message || msg } catch { /* 非 JSON 回應 */ }
     throw new Error(msg)
   }
-  return res.json()
+  // return=minimal 等情況 body 為空，避免 res.json() 在空字串上拋
+  // "Unexpected end of JSON input"
+  return text ? JSON.parse(text) : null
 }
 
 // 新增一筆（或多筆）申請資料
@@ -101,7 +99,9 @@ export async function getDepartments() {
 
 // 以 (account, department) 為 key 手動 upsert（資料表無 unique 約束）。
 // 回傳 { added, updated }。注意：更新走 PATCH，需要 applications 有 UPDATE 的 RLS 政策。
-export async function upsertApplications(rows) {
+const IMPORT_BATCH = 50
+
+export async function upsertApplications(rows, onProgress) {
   const existing = await callProxy('/rest/v1/applications?select=id,account,department', 'GET')
   const keyOf = (r) => `${r.account ?? ''}__${r.department ?? ''}`
   const idByKey = new Map((existing || []).map((r) => [keyOf(r), r.id]))
@@ -114,11 +114,20 @@ export async function upsertApplications(rows) {
     else toInsert.push(row)
   }
 
-  if (toInsert.length) {
-    await callProxy('/rest/v1/applications', 'POST', toInsert, 'return=minimal')
+  const total = toInsert.length + toUpdate.length
+  let done = 0
+  const tick = (n) => { done += n; if (onProgress) onProgress(done, total) }
+
+  // 新增：每批最多 50 筆，避免單一請求過大
+  for (let i = 0; i < toInsert.length; i += IMPORT_BATCH) {
+    const chunk = toInsert.slice(i, i + IMPORT_BATCH)
+    await callProxy('/rest/v1/applications', 'POST', chunk, 'return=minimal')
+    tick(chunk.length)
   }
+  // 更新：依 id 逐筆 PATCH
   for (const { id, row } of toUpdate) {
     await callProxy(`/rest/v1/applications?id=eq.${id}`, 'PATCH', row, 'return=minimal')
+    tick(1)
   }
   return { added: toInsert.length, updated: toUpdate.length }
 }
