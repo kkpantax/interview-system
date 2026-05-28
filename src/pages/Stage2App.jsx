@@ -3,7 +3,7 @@ import { PageShell } from '../components/PageShell'
 import { Card, CardHead, s } from '../components/UI'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
-import { getStage2List, getStage2Stats, getDepartments, saveEvaluation } from '../api'
+import { getStage2List, getStage2Stats, saveEvaluation } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 
 const localToday = () => {
@@ -13,11 +13,10 @@ const localToday = () => {
 
 const EMPTY_STATS = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
 
-export default function Stage2App({ dept: initialDept }) {
+export default function Stage2App() {
   const teacher = getTeacher()
-  // 預設科系：網址帶的 > 老師帳號綁定的科系
-  const [dept, setDept]         = useState(initialDept || teacher?.department || '')
-  const [depts, setDepts]       = useState([])
+  // 科系綁定老師帳號，不再讓老師現場切換
+  const [dept]                  = useState(teacher?.department || '')
   const [students, setStudents] = useState([])
   const [stats, setStats]       = useState(EMPTY_STATS)
   const [search, setSearch]     = useState('')
@@ -32,9 +31,6 @@ export default function Stage2App({ dept: initialDept }) {
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
   }, [])
-
-  // 科系清單（供切換）
-  useEffect(() => { getDepartments().then(setDepts).catch(() => {}) }, [])
 
   const load = useCallback(async () => {
     if (!dept) { setStudents([]); setStats(EMPTY_STATS); return }
@@ -51,12 +47,6 @@ export default function Stage2App({ dept: initialDept }) {
   }, [dept, showToast])
 
   useEffect(() => { load() }, [load])
-
-  // 切換科系時同步 hash，並回到名單
-  const changeDept = (d) => {
-    setDept(d); setActive(null); setSearch('')
-    window.location.hash = `#/stage2?dept=${encodeURIComponent(d)}`
-  }
 
   // 搜尋（帳號 / 姓名，不分大小寫），再分待評 / 已評兩區
   const q = search.trim().toLowerCase()
@@ -110,14 +100,13 @@ export default function Stage2App({ dept: initialDept }) {
               onChange={(e) => setSearch(e.target.value)}
             />
           )}
-          <select
-            style={{ ...s.sel, background: '#ffffff', maxWidth: 220 }}
-            value={dept}
-            onChange={(e) => changeDept(e.target.value)}
-          >
-            <option value="">選擇科系…</option>
-            {depts.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
+          {dept ? (
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f4f0', padding: '4px 10px', background: '#ffffff1a', borderRadius: 6 }}>
+              {dept}
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, color: '#fca5a5' }}>此帳號尚未設定科系，請聯絡行政人員</span>
+          )}
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>{teacher.display_name || teacher.username}</span>
           <button onClick={logoutTeacher}
             style={{ background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -129,7 +118,7 @@ export default function Stage2App({ dept: initialDept }) {
       {!dept ? (
         <Card>
           <div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 14 }}>
-            請從右上角選擇您的科系
+            此帳號尚未設定科系，請聯絡行政人員
           </div>
         </Card>
       ) : active ? (
