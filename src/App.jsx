@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { FIXED_ROLES, SCORE_ITEMS, DECISIONS, FINAL_RESULTS } from './constants'
 import { useStore } from './useStore'
-import { getScriptUrl } from './api'
 import { sumScore, avg2, decInfo, finInfo } from './utils'
 import { Toast, Modal, Btn } from './components/UI'
 import ImportModal  from './components/ImportModal'
@@ -25,7 +24,7 @@ export default function App() {
 
   // 載入資料
   useEffect(() => {
-    if (role && getScriptUrl()) store.loadData()
+    if (role) store.loadData()
   }, [role])
 
   // ── 角色計算 ──────────────────────────────────────────────────────────────
