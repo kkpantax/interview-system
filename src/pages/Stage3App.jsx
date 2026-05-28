@@ -30,6 +30,16 @@ const EXPORT_COLS = [
   { key: 'status_label', label: '最終狀態' },
 ]
 
+// 依中心匯出用的欄位（中心放第一欄）
+const CENTER_EXPORT_COLS = [
+  { key: 'center',       label: '面試中心' },
+  { key: 'department',   label: '科系' },
+  { key: 'account',      label: '帳號' },
+  { key: 'name',         label: '中文姓名' },
+  { key: 'name_english', label: '英文姓名' },
+  { key: 'status_label', label: '最終狀態' },
+]
+
 export default function Stage3App() {
   const teacher = getTeacher()
   const [evals, setEvals]       = useState([])
@@ -163,6 +173,35 @@ export default function Stage3App() {
     showToast(`已匯出 ${out.length} 筆備取名單`)
   }
 
+  // 依中心匯出（正取 + 備取），同中心歸為一組、組間以空行隔開
+  const exportByCenter = () => {
+    const labelOf = { admitted: '正取', waitlisted: '備取' }
+    const groups = new Map()   // center → rows
+    for (const e of evals) {
+      const st = statusOf(e)
+      if (st !== 'admitted' && st !== 'waitlisted') continue
+      const center = e.applications?.center || '未指定'
+      if (!groups.has(center)) groups.set(center, [])
+      groups.get(center).push({
+        center,
+        department:   deptOf(e),
+        account:      acctOf(e) ?? '',
+        name:         e.applications?.name ?? '',
+        name_english: e.applications?.name_english ?? '',
+        status_label: labelOf[st],
+      })
+    }
+    if (!groups.size) { showToast('目前沒有正取或備取的學生', 'warn'); return }
+    const centers = [...groups.keys()].sort()
+    const out = []
+    centers.forEach((c, i) => {
+      if (i > 0) out.push({})   // 中心之間空一行
+      out.push(...groups.get(c))
+    })
+    writeXlsx(CENTER_EXPORT_COLS, out, '第三階段錄取名單_依中心.xlsx')
+    showToast(`已匯出依中心名單（${centers.length} 個中心）`)
+  }
+
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
 
@@ -177,6 +216,7 @@ export default function Stage3App() {
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={() => { window.location.hash = '#/admin' }}>← 行政後台</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportAdmitted}>⬇ 匯出正取名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportWaitlisted}>⬇ 匯出備取名單</Btn>
+          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportByCenter}>⬇ 匯出依中心名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#e9d5ff' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={logoutTeacher}>登出</Btn>
