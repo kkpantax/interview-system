@@ -392,12 +392,20 @@ export async function upsertFinalAdmission(row) {
 }
 
 // ── Stage 4（第四階段 · 繳費就讀確認 / 候補遞補）──────────────────────────────
-// 撈 stage4_confirmations 全部資料（依 中心 → 科系 → 類別(正取先) → 備取排名 排序）
+// 撈 stage4_confirmations 全部資料（依 中心 → 科系 → 類別(正取先) → 備取排名 排序），
+// 再以 account join applications 補上學生基本資料（appInfo）。
+// stage4_confirmations 未設 FK 到 applications，故分兩次撈、前端組合。
 export async function getStage4Data() {
-  return callProxy(
+  const s4 = await callProxy(
     '/rest/v1/stage4_confirmations?select=*&order=center.asc,department.asc,stage3_status.asc,standby_rank.asc',
     'GET',
   )
+  const apps = await callProxy(
+    '/rest/v1/applications?select=account,name,name_english,birth_date,passport_number',
+    'GET',
+  )
+  const appMap = new Map((apps || []).map((a) => [a.account, a]))
+  return (s4 || []).map((r) => ({ ...r, appInfo: appMap.get(r.account) || {} }))
 }
 
 // 從 Stage3（final_admissions 的 admitted + waitlisted）同步到 Stage4：

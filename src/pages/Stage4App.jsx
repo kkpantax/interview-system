@@ -109,7 +109,7 @@ export default function Stage4App() {
         ['pending', 'negotiating', 'standby'].includes(r.contact_status),
       )
       for (const o of others) await updateStage4Status(o.id, { contact_status: 'settled_elsewhere' })
-      showToast(`已確認 ${row.name || row.account} 就讀 ${row.department}`)
+      showToast(`已確認 ${row.appInfo?.name || row.account} 就讀 ${row.department}`)
       await load()
     } catch (e) {
       showToast('操作失敗：' + e.message, 'error')
@@ -146,8 +146,8 @@ export default function Stage4App() {
         }
       }
       showToast(promoted
-        ? `${row.name || row.account} 放棄，已遞補候補：${promoted.name || promoted.account}`
-        : `${row.name || row.account} 放棄（此科系已無可遞補候補）`, promoted ? 'ok' : 'warn')
+        ? `${row.appInfo?.name || row.account} 放棄，已遞補候補：${promoted.appInfo?.name || promoted.account}`
+        : `${row.appInfo?.name || row.account} 放棄（此科系已無可遞補候補）`, promoted ? 'ok' : 'warn')
       await load()
     } catch (e) {
       showToast('操作失敗：' + e.message, 'error')
@@ -172,8 +172,8 @@ export default function Stage4App() {
       .filter((r) => r.contact_status === 'enrolled')
       .map((r) => ({
         account:          r.account ?? '',
-        name:             r.name ?? '',
-        name_english:     r.name_english ?? '',
+        name:             r.appInfo?.name ?? '',
+        name_english:     r.appInfo?.name_english ?? '',
         department:       r.department ?? '',
         center:           r.center ?? '',
         preference_order: r.preference_order ?? '',
@@ -266,7 +266,13 @@ export default function Stage4App() {
                 const cd = contactDisplay(r)
                 return (
                   <tr key={r.id}>
-                    <td style={{ ...td, fontWeight: 500 }}>{r.name || '—'}</td>
+                    <td style={td}>
+                      <div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div>
+                      <div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div>
+                      <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>
+                        {r.appInfo?.birth_date || '—'} · {r.appInfo?.passport_number || '—'}
+                      </div>
+                    </td>
                     <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
                     <td style={td}>{r.department || '—'}</td>
                     <td style={td}>{r.preference_order ?? '—'}</td>
