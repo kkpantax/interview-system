@@ -3,6 +3,7 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import ImportModal from '../components/ImportModal'
 import TeacherManager from '../components/TeacherManager'
+import StudentEditModal from '../components/StudentEditModal'
 import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -72,6 +73,7 @@ export default function AdminApp() {
   const [assignDate, setAssignDate] = useState(localToday)
   const [assigning, setAssigning] = useState(false)
   const [tab, setTab]             = useState('students')  // students | teachers
+  const [editGroup, setEditGroup] = useState(null)        // 編輯中的考生群組
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -269,7 +271,7 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '中文姓名', '英文姓名', '護照號碼', '國籍', '第1志願系所', '志願', '面試日', '狀態', '通過一階日'].map((h) => (
+                {['帳號', '中文姓名', '英文姓名', '護照號碼', '國籍', '第1志願系所', '志願', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
@@ -304,11 +306,14 @@ export default function AdminApp() {
                       <td style={{ ...td, color: g.interview_date ? '#1e40af' : '#ccc' }}>{g.interview_date || '—'}</td>
                       <td style={td}><Pill color={si.color} bg={si.bg}>{si.label}</Pill></td>
                       <td style={{ ...td, color: '#888' }}>{g.stage1_passed_date || '—'}</td>
+                      <td style={td}>
+                        <button onClick={() => setEditGroup(g)} style={{ ...s.btn, ...s.btnSm }}>編輯</button>
+                      </td>
                     </tr>
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={9} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                        <td colSpan={11} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
                           <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願</div>
                           {g.apps.map((a) => (
                             <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
@@ -325,7 +330,7 @@ export default function AdminApp() {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={11} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={12} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '沒有資料，請先上傳報名名單'}
                 </td></tr>
               )}
@@ -337,6 +342,12 @@ export default function AdminApp() {
       )}
 
       {showImport && <ImportModal onImport={handleImport} onClose={() => setShowImport(false)} />}
+      {editGroup && (
+        <StudentEditModal
+          group={editGroup} depts={depts} showToast={showToast}
+          onClose={() => setEditGroup(null)} onReload={load}
+        />
+      )}
     </PageShell>
   )
 }

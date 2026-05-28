@@ -130,12 +130,26 @@ export async function upsertApplications(rows, onProgress) {
     await callProxy('/rest/v1/applications', 'POST', chunk, 'return=minimal')
     tick(chunk.length)
   }
-  // 更新：依 id 逐筆 PATCH
+  // 更新：依 id 逐筆 PATCH。重複上傳時只修正基本資料，不覆寫 status，
+  // 否則已「通過一階」的考生會被重設回 pending（interview_date / stage1_passed_date
+  // 等流程欄位本來就不在匯入內容裡，不受影響）。
   for (const { id, row } of toUpdate) {
-    await callProxy(`/rest/v1/applications?id=eq.${id}`, 'PATCH', row, 'return=minimal')
+    const { status, ...basicFields } = row
+    await callProxy(`/rest/v1/applications?id=eq.${id}`, 'PATCH', basicFields, 'return=minimal')
     tick(1)
   }
   return { added: toInsert.length, updated: toUpdate.length }
+}
+
+// 單筆編輯 / 刪除 / 新增（行政在學生總覽手動修正名單用）
+export async function updateApplication(id, fields) {
+  return callProxy(`/rest/v1/applications?id=eq.${id}`, 'PATCH', fields, 'return=representation')
+}
+export async function deleteApplication(id) {
+  return callProxy(`/rest/v1/applications?id=eq.${id}`, 'DELETE', undefined, 'return=minimal')
+}
+export async function createApplication(row) {
+  return callProxy('/rest/v1/applications', 'POST', row, 'return=representation')
 }
 
 // 指派/清除面試日期（批次，需要 applications 的 UPDATE RLS 政策）
