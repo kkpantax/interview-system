@@ -16,6 +16,9 @@ const FINAL_STATUSES = [
 const statusInfo = (v) => FINAL_STATUSES.find((x) => x.v === v) || FINAL_STATUSES[3]
 const recInfo    = (v) => DECISIONS.find((x) => x.v === v) || DECISIONS[3]
 
+// 中心檢視排序優先序：正取 → 備取 → 不錄取 → 待定
+const CENTER_SORT_PRIORITY = { admitted: 0, waitlisted: 1, rejected: 2, pending: 3 }
+
 // 從一筆 evaluation 取出帳號 / 系所（以評分自身的 department 為準，缺則用 application 的）
 const acctOf = (e) => e.applications?.account ?? null
 const deptOf = (e) => e.department || e.applications?.department || ''
@@ -45,6 +48,8 @@ export default function Stage3App() {
   const [evals, setEvals]       = useState([])
   const [finals, setFinals]     = useState(() => new Map())   // key(account__dept) → final row
   const [dept, setDept]         = useState('')
+  const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
+  const [selectedCenter, setSelectedCenter] = useState('')
   const [loading, setLoading]   = useState(false)
   const [savingKey, setSavingKey] = useState(null)
   const [toast, setToast]       = useState(null)
@@ -184,6 +189,46 @@ export default function Stage3App() {
     }
   }
 
+  // 中心檢視：該中心所有評分（不去重，同帳號多科系各列獨立顯示），
+  // 依最終狀態（正→備→不錄→待定）、志願序 asc、二階分數 desc 排序
+  const centerLabelOf = (e) => e.applications?.center || '（未設定中心）'
+  const centerRows = useMemo(() => {
+    return evals
+      .filter((e) => centerLabelOf(e) === selectedCenter)
+      .sort((a, b) => {
+        const sa = CENTER_SORT_PRIORITY[statusOf(a)] ?? 9
+        const sb = CENTER_SORT_PRIORITY[statusOf(b)] ?? 9
+        if (sa !== sb) return sa - sb
+        const pa = a.applications?.preference_order ?? 99
+        const pb = b.applications?.preference_order ?? 99
+        if (pa !== pb) return pa - pb
+        return (b.total_score || 0) - (a.total_score || 0)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals, selectedCenter, finals])
+
+  // 設定欄共用的最終狀態按鈕組（科系檢視與中心檢視共用）
+  const statusButtons = (e) => {
+    const cur = statusOf(e)
+    return (
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {FINAL_STATUSES.map((st) => (
+          <button key={st.v} onClick={() => setStatus(e, st.v)}
+            disabled={savingKey === keyOf(e)}
+            style={{
+              ...s.btn, ...s.btnSm,
+              background: cur === st.v ? st.bg : 'white',
+              borderColor: cur === st.v ? st.color : '#ddd',
+              color: cur === st.v ? st.color : '#777',
+              fontWeight: cur === st.v ? 600 : 400,
+            }}>
+            {st.label}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
   const exportAdmitted = () => {
     const out = []
     for (const e of evals) {
@@ -319,13 +364,31 @@ export default function Stage3App() {
         )}
       </div>
 
+      {/* 檢視模式切換提示 */}
+      {viewMode === 'center' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, padding: '8px 14px', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: 10 }}>
+          <span style={{ fontSize: 13, color: '#6b21a8', fontWeight: 600 }}>
+            目前檢視：{selectedCenter} 的正備取名單
+          </span>
+          <button onClick={() => setViewMode('dept')}
+            style={{ ...s.btn, ...s.btnSm, background: 'white', borderColor: '#d8b4fe', color: '#7e22ce' }}>
+            ← 回到科系檢視
+          </button>
+        </div>
+      )}
+
       {/* 各中心錄取統計 */}
       {centerSummary.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <CardHead left="各中心錄取統計" right={`${centerSummary.length} 個中心`} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 14 }}>
             {centerSummary.map((cs) => (
-              <div key={cs.center} style={{ ...s.card, padding: '10px 14px', minWidth: 170 }}>
+              <button key={cs.center}
+                onClick={() => { setViewMode('center'); setSelectedCenter(cs.center) }}
+                style={{
+                  ...s.card, padding: '10px 14px', minWidth: 170, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                  border: viewMode === 'center' && selectedCenter === cs.center ? '2px solid #7e22ce' : '1px solid #e8e7e3',
+                }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{cs.center}</div>
                 <div style={{ fontSize: 12, color: '#666' }}>
                   <span style={{ color: '#16a34a' }}>正取 {cs.admitted}</span> ·{' '}
@@ -336,12 +399,13 @@ export default function Stage3App() {
                   <span style={{ color: '#6b7280' }}>待定 {cs.pending}</span> ·{' '}
                   <span style={{ color: '#aaa' }}>共 {cs.total}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </Card>
       )}
 
+      {viewMode === 'dept' ? (
       <Card>
         <CardHead left={dept ? `${dept} · 通過兩階段名單` : '請選擇科系'} right={`${rows.length} 位`} />
         <div style={{ overflowX: 'auto' }}>
@@ -371,23 +435,7 @@ export default function Stage3App() {
                     <td style={td}>{e.total_score ?? '—'}</td>
                     <td style={td}><Pill color={ri.color} bg={ri.bg}>{ri.label}</Pill></td>
                     <td style={td}><Pill color={statusInfo(cur).color} bg={statusInfo(cur).bg}>{statusInfo(cur).label}</Pill></td>
-                    <td style={td}>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {FINAL_STATUSES.map((st) => (
-                          <button key={st.v} onClick={() => setStatus(e, st.v)}
-                            disabled={savingKey === keyOf(e)}
-                            style={{
-                              ...s.btn, ...s.btnSm,
-                              background: cur === st.v ? st.bg : 'white',
-                              borderColor: cur === st.v ? st.color : '#ddd',
-                              color: cur === st.v ? st.color : '#777',
-                              fontWeight: cur === st.v ? 600 : 400,
-                            }}>
-                            {st.label}
-                          </button>
-                        ))}
-                      </div>
-                    </td>
+                    <td style={td}>{statusButtons(e)}</td>
                   </tr>
                 )
               })}
@@ -400,6 +448,43 @@ export default function Stage3App() {
           </table>
         </div>
       </Card>
+      ) : (
+      <Card>
+        <CardHead left={`${selectedCenter} · 正備取名單`} right={`${centerRows.length} 位`} />
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#faf9f6' }}>
+                {['姓名', '帳號', '科系', '志願序', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {centerRows.map((e) => {
+                const cur = statusOf(e)
+                const ri = recInfo(e.recommendation)
+                return (
+                  <tr key={e.id}>
+                    <td style={{ ...td, fontWeight: 500 }}>{e.applications?.name || '—'}</td>
+                    <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
+                    <td style={td}>{deptOf(e)}</td>
+                    <td style={td}>{e.applications?.preference_order ?? '—'}</td>
+                    <td style={td}>{e.total_score ?? '—'}</td>
+                    <td style={td}><Pill color={ri.color} bg={ri.bg}>{ri.label}</Pill></td>
+                    <td style={td}><Pill color={statusInfo(cur).color} bg={statusInfo(cur).bg}>{statusInfo(cur).label}</Pill></td>
+                    <td style={td}>{statusButtons(e)}</td>
+                  </tr>
+                )
+              })}
+              {!centerRows.length && (
+                <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                  {loading ? '載入中…' : '此中心尚無評分資料'}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      )}
 
       <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
         說明：一階為簽到通過制（無分數）；二階分數與老師建議來自各系評分。設定最終狀態後即時寫入；
