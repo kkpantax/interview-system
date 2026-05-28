@@ -25,7 +25,7 @@ export default async function handler(req) {
   const { username, password } = body || {}
   if (!username || !password) return json({ error: '請輸入帳號與密碼' }, 400)
 
-  const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
+  const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!SUPABASE_SERVICE_KEY) return json({ error: '伺服器尚未設定金鑰' }, 500)
 
   // 撈 username 對應的 row（用 service key，繞過 RLS）。
