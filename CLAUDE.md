@@ -29,8 +29,10 @@ interview-system/
 │   ├── pages/
 │   │   ├── Landing.jsx     # 首頁，三入口選擇
 │   │   ├── AdminApp.jsx    # 行政人員：匯入名單、指派日期、查看狀態
-│   │   ├── Stage1App.jsx   # 第一階段老師：簽到、填中心
-│   │   └── Stage2App.jsx   # 第二階段老師：評分
+│   │   ├── TeacherLogin.jsx# 老師/行政登入（#/login?stage=1|2|admin）
+│   │   ├── Stage1App.jsx   # 第一階段老師：簽到、評分、產出通過名單
+│   │   ├── Stage2App.jsx   # 第二階段老師：評分（科系綁帳號）
+│   │   └── Stage3App.jsx   # 行政人員：最終錄取確認、衝突偵測、匯出名單
 │   └── components/
 │       ├── UI.jsx          # 共用元件：Btn, Card, CardHead, BackBtn, PageShell, s(styles)
 │       ├── ScoreForm.jsx   # 評分表（SCORE_ITEMS + QUESTIONS）
@@ -262,3 +264,48 @@ export async function upsertFinalAdmission(row)  // 更新最終錄取狀態
    - 哪些檔案有改動
    - 需要在 Supabase 執行哪些 SQL（若有）
    - 如何測試驗證
+
+---
+
+## 第二批需求（已完成，2026-05）
+
+下列 1~7 已實作完成，記錄規格方便日後延伸；皆為純前端，未異動資料表。
+
+### 需求 1：第一階段名單搜尋
+- `Stage1App.jsx` 應試名單上方加帳號 / 姓名搜尋框（不分大小寫），filter `students`。
+- 搜尋只影響名單顯示，統計（應試 / 已到 / 建議通過）與「產出通過名單」仍以完整名單為準。
+- 邏輯比照 `Stage2App.jsx` 的 `search` 實作。
+
+### 需求 2：第一階段評分表學生資訊擴充
+- `Stage1ScoreForm.jsx` 學生資訊欄加「年齡」與「畢業學校」。
+- 年齡由 `student.birth_date` 計算（`calcAge` helper）；支援 `M/D/Y`（匯入格式）與 `Y-M-D`（date 欄位）。
+- 畢業學校取 `student.high_school`。
+
+### 需求 3：produce() 偵錯輸出
+- `Stage1App.jsx` 的 `produce()` 加 `console.log`（passed 名單與其 recommendation）、
+  記錄每次 `markStage1PassedByAccount` 回傳、catch 內 `console.error` 完整錯誤。
+- 回傳空陣列（0 rows updated）時印出可能的 RLS 修復 SQL：
+  ```sql
+  ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY "allow update applications" ON applications
+    FOR UPDATE USING (true) WITH CHECK (true);
+  ```
+
+### 需求 4：第二階段科系改帳號綁定
+- `Stage2App.jsx` 移除右上角科系下拉，改純文字標籤顯示 `teacher.department`。
+- `dept` state 直接設為 `teacher.department`，不可現場切換（移除 `changeDept` / `depts` / `getDepartments`）。
+- 未設定科系時顯示「此帳號尚未設定科系，請聯絡行政人員」。
+
+### 需求 5：第三階段衝突學生志願序標籤
+- `api.js` `getStage3Data()` 查詢加 `preference_order,center`。
+- `Stage3App.jsx` 通過名單表格：若該學生在 `conflicts`（跨系重複建議錄取）內，
+  名字旁顯示小標籤「第 N 志願」（`applications.preference_order`）。
+
+### 需求 6：第三階段匯出加中心欄與備取名單
+- `EXPORT_COLS` 加 `center`（顯示「面試中心」），`exportAdmitted` 帶入 `center`。
+- 新增 `exportWaitlisted()`（篩 `waitlisted`，檔名「第三階段備取名單.xlsx」）與按鈕。
+
+### 需求 7：第三階段依中心匯出
+- 新增 `exportByCenter()`：蒐集 `admitted` + `waitlisted`，按 `center` 分組（組間空行），
+  中心為第一欄；欄位 `center, department, account, name, name_english, status_label`。
+- 檔名「第三階段錄取名單_依中心.xlsx」，右上角加「⬇ 匯出依中心名單」按鈕。
