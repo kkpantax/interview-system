@@ -361,7 +361,7 @@ export async function loginTeacher(username, password) {
 // 所有二階評分 + 對應 application（只有已過一階者才會有評分）
 export async function getStage3Data() {
   return callProxy(
-    '/rest/v1/evaluations?select=*,applications(account,name,name_english,department,stage1_passed_date)' +
+    '/rest/v1/evaluations?select=*,applications(account,name,name_english,department,stage1_passed_date,preference_order,center)' +
       '&order=department.asc,total_score.desc',
     'GET',
   )

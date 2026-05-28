@@ -86,6 +86,9 @@ export default function Stage3App() {
       .map(([account, v]) => ({ account, name: v.name, depts: [...v.depts] }))
   }, [evals])
 
+  // 衝突帳號集合：表格內這些學生的名字旁標註「第 N 志願」
+  const conflictAccts = useMemo(() => new Set(conflicts.map((c) => c.account)), [conflicts])
+
   // 各系正/備取總覽
   const summary = useMemo(() => deptList.map((d) => {
     const inDept = evals.filter((e) => deptOf(e) === d)
@@ -210,7 +213,14 @@ export default function Stage3App() {
                 const passed = !!e.applications?.stage1_passed_date
                 return (
                   <tr key={e.id}>
-                    <td style={{ ...td, fontWeight: 500 }}>{e.applications?.name || '—'}</td>
+                    <td style={{ ...td, fontWeight: 500 }}>
+                      {e.applications?.name || '—'}
+                      {conflictAccts.has(acctOf(e)) && e.applications?.preference_order != null && (
+                        <span style={{ ...s.pill, marginLeft: 6, background: '#fef3c7', color: '#b45309' }}>
+                          第 {e.applications.preference_order} 志願
+                        </span>
+                      )}
+                    </td>
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
                     <td style={td}>{passed ? <span style={{ color: '#15803d' }}>通過</span> : '—'}</td>
                     <td style={td}>{e.total_score ?? '—'}</td>
