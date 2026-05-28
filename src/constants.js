@@ -47,7 +47,7 @@ export const FIXED_ROLES = [
   { id: 'director', label: '主任',       icon: '★' },
 ]
 
-// Excel 欄位對應
+// Excel 欄位對應（舊版，給已淘汰的 useStore/ListPage 用）
 export const XLS_FIELD_MAP = {
   '序號':              'id',
   '中文姓名':          'chName',
@@ -61,4 +61,30 @@ export const XLS_FIELD_MAP = {
   '申請獎學金 (Y/N)':  'scholarship',
   '志願序':            'preference',
   '學位別':            'degree',
+}
+
+// 新版 Excel 欄位對應（application_export_...xls）→ applications 的 snake_case 欄位
+export const APP_XLS_MAP = {
+  '帳號':              'account',
+  '系所別':            'department',
+  '志願序':            'preference_order',
+  '中文姓名':          'name',
+  '英文姓名':          'name_english',
+  '護照號碼':          'passport_number',
+  '國籍':              'nationality',
+  '性別':              'gender',
+  '生日[西元M/D/Y]':   'birth_date',
+  'Email':             'email',
+  '行動電話':          'phone',
+  '最高學歷畢業學校':  'high_school',
+}
+
+// 第一階段面試中心選項
+export const CENTERS = ['台北中心', '台中中心', '高雄中心', '其他']
+
+// 申請狀態流轉
+export const STATUS = {
+  pending:        '待面試',
+  stage1_passed:  '通過一階',
+  rejected:       '未通過',
 }
