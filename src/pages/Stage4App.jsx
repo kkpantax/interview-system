@@ -213,6 +213,7 @@ export default function Stage4App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#fde7d4' }}>載入中…</span>}
           <Btn style={headerBtn} onClick={() => { window.location.hash = '#/admin' }}>← 行政後台</Btn>
+          <Btn style={headerBtn} onClick={() => { window.location.hash = '#/stage3' }}>← 第三階段</Btn>
           <Btn style={headerBtn} disabled={busy} onClick={doSync}>從Stage3同步正取備取名單</Btn>
           <Btn style={headerBtn} onClick={exportEnrolled}>匯出最終就讀名單</Btn>
           <Btn style={headerBtn} disabled={busy} onClick={load}>↻</Btn>

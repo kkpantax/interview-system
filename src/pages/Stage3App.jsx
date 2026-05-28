@@ -306,6 +306,7 @@ export default function Stage3App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#e9d5ff' }}>載入中…</span>}
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={() => { window.location.hash = '#/admin' }}>← 行政後台</Btn>
+          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={() => { window.location.hash = '#/stage4' }}>第四階段確認 →</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportAdmitted}>⬇ 匯出正取名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportWaitlisted}>⬇ 匯出備取名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportByCenter}>⬇ 匯出依中心名單</Btn>

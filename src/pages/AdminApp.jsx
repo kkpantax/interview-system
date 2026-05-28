@@ -239,6 +239,7 @@ export default function AdminApp() {
           {loading && <span style={{ fontSize: 12, color: '#aaa' }}>載入中…</span>}
           <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>＋ 上傳名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#7e22ce', color: '#e9d5ff' }} onClick={() => { window.location.hash = '#/stage3' }}>③ 第三階段錄取</Btn>
+          <Btn style={{ background: 'none', borderColor: '#7c2d12', color: '#fed7aa' }} onClick={() => { window.location.hash = '#/stage4' }}>④ 第四階段確認 →</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={exportFinal}>⬇ 匯出最終名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#999' }}>{teacher.display_name || teacher.username}</span>
