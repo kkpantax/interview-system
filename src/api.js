@@ -1,5 +1,6 @@
 // 改為呼叫 same-origin 的 /api/submit（Vercel Edge Function），
 // 由它代理到 Supabase，前端不再直接接觸 Supabase URL / KEY，也避免 CORS。
+import { getTeacher } from './auth'
 
 // 透過 proxy 對 Supabase REST 發出請求
 async function callProxy(path, method, body, prefer) {
@@ -230,20 +231,27 @@ export async function getStage1Records(date) {
   return callProxy(`/rest/v1/stage1_records?record_date=eq.${date}&select=*`, 'GET')
 }
 
-// 簽到：以 account + record_date 為 key（一個人一筆）。已存在則 PATCH，否則 POST。
-// rec 需含 account；application_id 仍寫入主志願 id 備查。回傳該筆紀錄。
+// 簽到：以 account + record_date + teacher_id 為 key（每位老師各一筆，支援多老師評分）。
+// teacher_id / teacher_name 由登入的老師帶入；已存在則 PATCH，否則 POST。回傳該筆紀錄。
 export async function saveStage1Checkin(rec) {
+  const teacher = getTeacher()
+  const full = {
+    ...rec,
+    teacher_id: teacher?.id || null,
+    teacher_name: teacher?.display_name || teacher?.username || null,
+  }
+  const tidFilter = full.teacher_id ? `teacher_id=eq.${full.teacher_id}` : 'teacher_id=is.null'
   const existing = await callProxy(
-    `/rest/v1/stage1_records?account=eq.${encodeURIComponent(rec.account)}&record_date=eq.${rec.record_date}&select=id`,
+    `/rest/v1/stage1_records?account=eq.${encodeURIComponent(full.account)}&record_date=eq.${full.record_date}&${tidFilter}&select=id`,
     'GET',
   )
   if (existing && existing.length > 0) {
     return callProxy(
       `/rest/v1/stage1_records?id=eq.${existing[0].id}`,
-      'PATCH', rec, 'return=representation',
+      'PATCH', full, 'return=representation',
     )
   }
-  return callProxy('/rest/v1/stage1_records', 'POST', rec, 'return=representation')
+  return callProxy('/rest/v1/stage1_records', 'POST', full, 'return=representation')
 }
 
 // 依 account + record_date 取單筆簽到/評分紀錄（無則回 null）

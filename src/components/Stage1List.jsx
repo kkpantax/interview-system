@@ -8,7 +8,7 @@ const isScored = (rec) => !!rec && !!rec.scores && Object.keys(rec.scores).lengt
 // 第一階段每日簽到 + 評分名單（presentational）
 // 以「帳號」為單位：每列一位學生，志願欄列出該帳號所有報考系所。
 // records：{ [account]: stage1_record }，onScore(stu)：開啟評分表
-export default function Stage1List({ students, draft, onChange, onSaveRow, savingId, loading, records = {}, onScore }) {
+export default function Stage1List({ students, draft, onChange, onSaveRow, savingId, loading, records = {}, myId, onScore }) {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13, verticalAlign: 'middle' }
 
@@ -25,8 +25,10 @@ export default function Stage1List({ students, draft, onChange, onSaveRow, savin
         <tbody>
           {students.map((stu) => {
             const d = draft[stu.account] || {}
-            const rec = records[stu.account]
-            const scored = isScored(rec)
+            const recs = records[stu.account] || []
+            const own = recs.find((r) => r.teacher_id === myId)
+            const ownScored = isScored(own)
+            const othersScored = recs.filter((r) => r.teacher_id !== myId && isScored(r)).length
             return (
               <tr key={stu.account}>
                 <td style={td}>
@@ -65,20 +67,23 @@ export default function Stage1List({ students, draft, onChange, onSaveRow, savin
                   />
                 </td>
                 <td style={td}>
-                  {!rec ? (
-                    <span style={{ fontSize: 12, color: '#ccc' }}>先儲存簽到</span>
-                  ) : scored ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {(() => { const r = recInfo(rec.recommendation); return <Pill color={r.color} bg={r.bg}>{r.label}</Pill> })()}
-                      <span style={{ fontSize: 11, color: '#aaa' }}>{rec.total_score ?? 0} 分</span>
-                      <button onClick={() => onScore(stu)} style={{ ...s.btn, ...s.btnSm }}>重新評分</button>
-                    </div>
-                  ) : rec.appeared ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {ownScored && (() => { const r = recInfo(own.recommendation); return (
+                      <>
+                        <Pill color={r.color} bg={r.bg}>{r.label}</Pill>
+                        <span style={{ fontSize: 11, color: '#aaa' }}>{own.total_score ?? 0} 分</span>
+                      </>
+                    ) })()}
                     <button onClick={() => onScore(stu)}
-                      style={{ ...s.btn, ...s.btnSm, background: '#dbeafe', borderColor: '#93c5fd', color: '#1e40af' }}>評分 →</button>
-                  ) : (
-                    <span style={{ fontSize: 12, color: '#ccc' }}>未到，免評分</span>
-                  )}
+                      style={ownScored
+                        ? { ...s.btn, ...s.btnSm }
+                        : { ...s.btn, ...s.btnSm, background: '#dbeafe', borderColor: '#93c5fd', color: '#1e40af' }}>
+                      {ownScored ? '重新評分' : '評分 →'}
+                    </button>
+                    {othersScored > 0 && (
+                      <span style={{ fontSize: 11, color: '#aaa' }}>另有 {othersScored} 位老師已評</span>
+                    )}
+                  </div>
                 </td>
                 <td style={td}>
                   <Btn variant="primary" disabled={savingId === stu.account} onClick={() => onSaveRow(stu)}>

@@ -83,11 +83,11 @@ export default function Stage3App() {
 
   const statusOf = (e) => finals.get(keyOf(e))?.final_status || 'pending'
 
-  // 衝突偵測：同帳號在多個系所都被建議錄取（recommendation = admit）
-  const conflicts = useMemo(() => {
+  // 已確認重複正取：同帳號在多個系 final_status = 'admitted'（真正需要處理的問題）
+  const confirmedConflicts = useMemo(() => {
     const byAcct = new Map()
     for (const e of evals) {
-      if (e.recommendation !== 'admit') continue
+      if (statusOf(e) !== 'admitted') continue
       const a = acctOf(e); if (!a) continue
       if (!byAcct.has(a)) byAcct.set(a, { name: e.applications?.name, depts: new Set() })
       byAcct.get(a).depts.add(deptOf(e))
@@ -95,10 +95,34 @@ export default function Stage3App() {
     return [...byAcct.entries()]
       .filter(([, v]) => v.depts.size >= 2)
       .map(([account, v]) => ({ account, name: v.name, depts: [...v.depts] }))
-  }, [evals])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals, finals])
 
-  // 衝突帳號集合：表格內這些學生的名字旁標註「第 N 志願」
-  const conflictAccts = useMemo(() => new Set(conflicts.map((c) => c.account)), [conflicts])
+  // 老師建議重複（行政尚未拍板）：同帳號 ≥2 個系 recommendation = 'admit'，
+  // 且這些系的 final_status 仍為 pending / waitlisted（尚未 admitted / rejected）。
+  // 已確認只有一系正取（其餘 rejected / waitlisted）→ 不在此列。
+  const pendingWarnings = useMemo(() => {
+    const confirmedSet = new Set(confirmedConflicts.map((c) => c.account))
+    const byAcct = new Map()
+    for (const e of evals) {
+      if (e.recommendation !== 'admit') continue
+      const st = statusOf(e)
+      if (st !== 'pending' && st !== 'waitlisted') continue
+      const a = acctOf(e); if (!a) continue
+      if (!byAcct.has(a)) byAcct.set(a, { name: e.applications?.name, depts: new Set() })
+      byAcct.get(a).depts.add(deptOf(e))
+    }
+    return [...byAcct.entries()]
+      .filter(([account, v]) => v.depts.size >= 2 && !confirmedSet.has(account))
+      .map(([account, v]) => ({ account, name: v.name, depts: [...v.depts] }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals, finals, confirmedConflicts])
+
+  // 衝突帳號集合（兩類聯集）：表格內這些學生的名字旁標註「第 N 志願」
+  const conflictAccts = useMemo(
+    () => new Set([...confirmedConflicts, ...pendingWarnings].map((c) => c.account)),
+    [confirmedConflicts, pendingWarnings],
+  )
 
   // 各系正/備取總覽
   const summary = useMemo(() => deptList.map((d) => {
@@ -223,14 +247,28 @@ export default function Stage3App() {
         </div>
       }
     >
-      {/* 衝突警示 */}
-      {conflicts.length > 0 && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+      {/* 已確認重複正取（紅）：同一人被多系正取，需擇一保留 */}
+      {confirmedConflicts.length > 0 && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', marginBottom: 8 }}>
-            ⚠ 跨系重複建議錄取（{conflicts.length} 人）
+            ⚠ 重複正取（{confirmedConflicts.length} 人）— 同一人被多系正取，請擇一保留
           </div>
-          {conflicts.map((c) => (
+          {confirmedConflicts.map((c) => (
             <div key={c.account} style={{ fontSize: 13, color: '#7f1d1d', padding: '3px 0' }}>
+              帳號 <b>{c.account}</b>（{c.name || '—'}）已被以下科系同時正取：{c.depts.join('、')}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 老師建議重複錄取（黃）：尚未確認，請擇一 */}
+      {pendingWarnings.length > 0 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', marginBottom: 8 }}>
+            ⚠ 老師建議重複錄取（{pendingWarnings.length} 人）— 請擇一確認
+          </div>
+          {pendingWarnings.map((c) => (
+            <div key={c.account} style={{ fontSize: 13, color: '#92400e', padding: '3px 0' }}>
               帳號 <b>{c.account}</b>（{c.name || '—'}）同時在以下科系被建議錄取：{c.depts.join('、')}
             </div>
           ))}
@@ -319,7 +357,7 @@ export default function Stage3App() {
 
       <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
         說明：一階為簽到通過制（無分數）；二階分數與老師建議來自各系評分。設定最終狀態後即時寫入；
-        上方警示區會列出同一帳號在多個科系都被建議錄取者，請擇一正取。
+        上方警示區紅色為「同一人已被多系正取」（需擇一保留），黃色為「老師建議重複、行政尚未確認」（請擇一正取）。
       </div>
     </PageShell>
   )
