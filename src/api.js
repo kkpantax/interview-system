@@ -64,6 +64,9 @@ const REVERSE_APP_COLUMN_MAP = Object.fromEntries(
 export function toApplicationRow(local) {
   const out = {}
   for (const [localKey, col] of Object.entries(APP_COLUMN_MAP)) {
+    // id 是 DB 自動產生的 uuid，不可從前端送出（Excel 的序號塞進去會觸發
+    // 22P02 "invalid input syntax for type uuid"，整批 insert 失敗）。
+    if (localKey === 'id') continue
     if (local[localKey] !== undefined) out[col] = local[localKey]
   }
   return out

@@ -83,13 +83,16 @@ export function useStore() {
 
   // ── 匯入學生 ─────────────────────────────────────────────────────────────
   const importStudents = useCallback(async (parsed) => {
-    const existingIds = new Set(students.map((s) => String(s.id)))
-    const newOnes = parsed.filter((s) => !existingIds.has(String(s.id)))
-    setStudents((prev) => [...prev, ...newOnes])
+    // id 改由 DB 產生 uuid，因此用護照號碼（applications 表內穩定的識別欄位）去重。
+    const existing = new Set(students.map((s) => s.passportNo).filter(Boolean))
+    const newOnes = parsed.filter((s) => !s.passportNo || !existing.has(s.passportNo))
     if (!newOnes.length) return { added: 0 }
-    // 整批插入 applications 表（欄位重命名為 snake_case，丟掉非該表欄位）。
+    // 整批插入 applications 表（重命名為 snake_case、丟掉非該表欄位、不送 id）。
     const res = await apiPost(newOnes.map(toApplicationRow))
-    return { added: Array.isArray(res) ? res.length : newOnes.length }
+    // 用 DB 回傳（含產生的 uuid）更新本地 state，讓前端的 id 與後端一致。
+    const created = Array.isArray(res) ? res.map(fromApplicationRow) : newOnes
+    setStudents((prev) => [...prev, ...created])
+    return { added: created.length }
   }, [students])
 
   // ── 進二階 ───────────────────────────────────────────────────────────────
