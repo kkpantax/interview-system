@@ -4,6 +4,7 @@ import { Btn, Card, CardHead, s } from '../components/UI'
 import ExportBtn from '../components/ExportBtn'
 import Stage1List from '../components/Stage1List'
 import { getStage1List, getStage1Pending, saveStage1Record, markStage1Passed } from '../api'
+import { getTeacher, logoutTeacher } from '../auth'
 
 const localToday = () => {
   const d = new Date()
@@ -23,6 +24,7 @@ const EXPORT_COLS = [
 ]
 
 export default function Stage1App() {
+  const teacher = getTeacher()
   const [date, setDate]         = useState(localToday)
   const [showAll, setShowAll]   = useState(false)
   const [students, setStudents] = useState([])
@@ -31,6 +33,9 @@ export default function Stage1App() {
   const [savingId, setSavingId] = useState(null)
   const [producing, setProducing] = useState(false)
   const [toast, setToast]       = useState(null)
+
+  // 守衛：未登入導回登入頁
+  useEffect(() => { if (!teacher) window.location.hash = '#/login?stage=1' }, [teacher])
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -99,10 +104,21 @@ export default function Stage1App() {
 
   const appearedCount = students.filter((stu) => draft[stu.id]?.appeared).length
 
+  if (!teacher) return null
+
   return (
     <PageShell
       title="實踐大學" subtitle="第一階段 · 簽到確認" accent="#1e3a8a" toast={toast}
-      right={loading ? <span style={{ fontSize: 12, color: '#cbd5e1' }}>載入中…</span> : null}
+      right={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {loading && <span style={{ fontSize: 12, color: '#cbd5e1' }}>載入中…</span>}
+          <span style={{ fontSize: 12, color: '#cbd5e1' }}>{teacher.display_name || teacher.username}</span>
+          <button onClick={logoutTeacher}
+            style={{ background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            登出
+          </button>
+        </div>
+      }
     >
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 13, color: '#555' }}>面試日期</label>

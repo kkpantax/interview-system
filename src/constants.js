@@ -9,7 +9,20 @@ export const SCORE_ITEMS = [
   { key: 'impression',    label: '整體印象' },
 ]
 
-export const QUESTIONS = [
+// 共用基礎題（7 題）：第一、第二階段共用，顯示在評分表旁。
+// 第一階段只顯示前 5 題較基本的（用 QUESTIONS_STAGE1.slice(0, 5)），第二階段全顯示。
+export const QUESTIONS_STAGE1 = [
+  { q: '請簡單介紹一下自己。' },
+  { q: '為什麼想來台灣念書？' },
+  { q: '為什麼選擇實踐大學與這個科系？' },
+  { q: '你對這個科系目前有哪些了解？' },
+  { q: '來台灣念書有什麼計畫或規劃？' },
+  { q: '畢業後你會留在台灣工作嗎？' },
+  { q: '有沒有想問我們的問題？' },
+]
+
+// 第二階段延伸參考題庫（原 QUESTIONS），依 cat 分組顯示
+export const QUESTIONS_STAGE2 = [
   { cat: '基本自我介紹', q: '請簡單介紹一下自己。',         focus: '表達能力、自信度' },
   { cat: '基本自我介紹', q: '為什麼想來台灣讀書？',          focus: '留學動機' },
   { cat: '基本自我介紹', q: '為什麼選擇本校與這個科系？',    focus: '是否了解學校與科系' },

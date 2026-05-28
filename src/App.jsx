@@ -3,6 +3,8 @@ import Landing from './pages/Landing'
 import AdminApp from './pages/AdminApp'
 import Stage1App from './pages/Stage1App'
 import Stage2App from './pages/Stage2App'
+import Stage3App from './pages/Stage3App'
+import TeacherLogin from './pages/TeacherLogin'
 
 // 解析 window.location.hash → { path, query }
 // 例：#/stage2?dept=餐飲管理學系(專) → { path:'/stage2', query:{dept:'餐飲管理學系(專)'} }
@@ -25,7 +27,9 @@ export default function App() {
   const { path, query } = route
 
   if (path === '/admin')  return <AdminApp />
+  if (path === '/login')  return <TeacherLogin stage={query.stage || '1'} />
   if (path === '/stage1') return <Stage1App />
   if (path === '/stage2') return <Stage2App dept={query.dept || ''} />
+  if (path === '/stage3') return <Stage3App />
   return <Landing />
 }

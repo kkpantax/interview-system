@@ -1,23 +1,12 @@
-import { useState, useEffect } from 'react'
-import { getDepartments } from '../api'
-
 const ENTRIES = [
-  { key: 'admin',  hash: '#/admin',  icon: '⚙', title: '行政人員',       desc: '上傳名單、查看總覽、匯出最終名單', bg: '#f5f4f0', fg: '#1a1a18' },
-  { key: 'stage1', hash: '#/stage1', icon: '①', title: '第一階段老師',   desc: '每日簽到確認、填中心、產出當日名單', bg: '#eff6ff', fg: '#1e40af' },
-  { key: 'stage2', hash: null,       icon: '②', title: '第二階段老師',   desc: '依科系評分、給予錄取建議',          bg: '#f0fdf4', fg: '#15803d' },
+  { key: 'admin',  hash: '#/login?stage=admin', icon: '⚙', title: '行政人員',     desc: '上傳名單、查看總覽、帳號管理、匯出最終名單', bg: '#f5f4f0', fg: '#1a1a18' },
+  { key: 'stage1', hash: '#/login?stage=1', icon: '①', title: '第一階段老師', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
+  { key: 'stage2', hash: '#/login?stage=2', icon: '②', title: '第二階段老師', desc: '依科系評分、給予錄取建議',                    bg: '#f0fdf4', fg: '#15803d' },
+  { key: 'stage3', hash: '#/stage3',        icon: '③', title: '第三階段錄取', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
 ]
 
 export default function Landing() {
-  const [depts, setDepts] = useState([])
-  const [pickDept, setPickDept] = useState(false)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    getDepartments().then(setDepts).catch((e) => setErr(e.message))
-  }, [])
-
   const go = (hash) => { window.location.hash = hash }
-  const goStage2 = (dept) => { window.location.hash = `#/stage2?dept=${encodeURIComponent(dept)}` }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f4f0', padding: 24 }}>
@@ -28,11 +17,11 @@ export default function Landing() {
           <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>請選擇入口</div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
           {ENTRIES.map((e) => (
             <button
               key={e.key}
-              onClick={() => (e.hash ? go(e.hash) : setPickDept((v) => !v))}
+              onClick={() => go(e.hash)}
               style={{
                 display: 'flex', flexDirection: 'column', gap: 8, padding: '24px 18px',
                 border: '1px solid #e8e7e3', borderRadius: 14, background: 'white',
@@ -51,39 +40,9 @@ export default function Landing() {
           ))}
         </div>
 
-        {/* 第二階段：選科系 */}
-        {pickDept && (
-          <div style={{ marginTop: 16, background: 'white', border: '1px solid #e8e7e3', borderRadius: 14, padding: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: '#15803d' }}>第二階段老師 — 請選擇您的科系</div>
-            {depts.length === 0 ? (
-              <div style={{ fontSize: 13, color: '#aaa' }}>
-                {err ? `載入科系失敗：${err}` : '尚無科系資料（請先由行政人員匯入名單）'}
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-                {depts.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => goStage2(d)}
-                    style={{
-                      padding: '10px 12px', border: '1px solid #bbf7d0', borderRadius: 8,
-                      background: '#f0fdf4', color: '#15803d', cursor: 'pointer',
-                      fontSize: 13, fontFamily: 'inherit', textAlign: 'left',
-                    }}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {err && !pickDept && (
-          <div style={{ marginTop: 14, fontSize: 12, color: '#dc2626', textAlign: 'center' }}>
-            ⚠ 資料載入失敗：{err}
-          </div>
-        )}
+        <div style={{ marginTop: 18, fontSize: 12, color: '#aaa', textAlign: 'center' }}>
+          三個入口皆需登入；老師帳號由行政人員建立
+        </div>
       </div>
     </div>
   )

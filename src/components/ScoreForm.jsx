@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SCORE_ITEMS, DECISIONS, QUESTIONS } from '../constants'
+import { SCORE_ITEMS, DECISIONS, QUESTIONS_STAGE1, QUESTIONS_STAGE2 } from '../constants'
 import { BackBtn, Card, CardHead, Btn, s } from './UI'
 
 const emptyScores = () => Object.fromEntries(SCORE_ITEMS.map((i) => [i.key, 0]))
@@ -10,12 +10,32 @@ export default function ScoreForm({ student, onSave, onBack, saving }) {
   const [scores, setScores] = useState(emptyScores)
   const [rec, setRec]       = useState('pending')
   const [note, setNote]     = useState('')
+  // 自訂題目：[{ question, note }]
+  const [customQs, setCustomQs] = useState([])
+  const [newQ, setNewQ]         = useState('')
 
   const total = sumScores(scores)
   const setStar = (k, v) => setScores((p) => ({ ...p, [k]: p[k] === v ? 0 : v }))
 
+  const addCustom = () => {
+    const q = newQ.trim()
+    if (!q) return
+    setCustomQs((p) => [...p, { question: q, note: '' }])
+    setNewQ('')
+  }
+  const setCustomNote = (i, val) => setCustomQs((p) => p.map((c, idx) => (idx === i ? { ...c, note: val } : c)))
+  const removeCustom  = (i) => setCustomQs((p) => p.filter((_, idx) => idx !== i))
+
   const handleSave = () =>
-    onSave({ scores, total_score: total, recommendation: rec, teacher_note: note })
+    onSave({
+      scores,
+      total_score: total,
+      recommendation: rec,
+      teacher_note: note,
+      stage: 2,
+      // 過濾掉空題目，避免存入空白列
+      custom_questions: customQs.filter((c) => c.question.trim()),
+    })
 
   return (
     <div>
@@ -97,10 +117,22 @@ export default function ScoreForm({ student, onSave, onBack, saving }) {
         <Card>
           <CardHead left="面試題目參考" />
           <div style={{ padding: '14px 18px', maxHeight: 600, overflowY: 'auto' }}>
+            {/* 固定基礎題（共用 7 題） */}
+            <div style={{ marginBottom: 16 }}>
+              <span style={s.secLabel}>固定題目（基礎）</span>
+              {QUESTIONS_STAGE1.map((q, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '7px 0', borderBottom: '1px solid #f5f4f0' }}>
+                  <span style={{ color: '#bbb', fontSize: 13, flexShrink: 0 }}>{i + 1}.</span>
+                  <span style={{ fontSize: 13 }}>{q.q}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 延伸參考題（依分類） */}
             {['基本自我介紹', '學習態度', '品行觀察'].map((cat) => (
               <div key={cat} style={{ marginBottom: 16 }}>
                 <span style={s.secLabel}>{cat}</span>
-                {QUESTIONS.filter((q) => q.cat === cat).map((q, i) => (
+                {QUESTIONS_STAGE2.filter((q) => q.cat === cat).map((q, i) => (
                   <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f5f4f0' }}>
                     <div style={{ fontSize: 13, marginBottom: 2 }}>{q.q}</div>
                     <div style={{ fontSize: 11, color: '#aaa' }}>評估：{q.focus}</div>
@@ -111,6 +143,46 @@ export default function ScoreForm({ student, onSave, onBack, saving }) {
           </div>
         </Card>
       </div>
+
+      {/* 自訂題目（現場新增，連同評分一起儲存） */}
+      <Card style={{ marginTop: 20 }}>
+        <CardHead left="自訂題目" right={customQs.length ? `${customQs.length} 題` : ''} />
+        <div style={{ padding: '14px 18px' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: customQs.length ? 14 : 0 }}>
+            <input
+              style={{ ...s.input, marginBottom: 0 }}
+              placeholder="輸入想問的題目，按 Enter 或「＋ 新增」"
+              value={newQ}
+              onChange={(e) => setNewQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
+            />
+            <Btn variant="primary" onClick={addCustom} disabled={!newQ.trim()}>＋ 新增</Btn>
+          </div>
+
+          {customQs.map((c, i) => (
+            <div key={i} style={{ padding: '10px 0', borderTop: '1px solid #f5f4f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: '#bbb', fontSize: 13 }}>{i + 1}.</span>
+                <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{c.question}</span>
+                <button onClick={() => removeCustom(i)}
+                  style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 16, cursor: 'pointer', padding: '0 4px' }}>✕</button>
+              </div>
+              <input
+                style={{ ...s.input, marginBottom: 0 }}
+                placeholder="學生回答重點 / 備註…"
+                value={c.note}
+                onChange={(e) => setCustomNote(i, e.target.value)}
+              />
+            </div>
+          ))}
+
+          {!customQs.length && (
+            <div style={{ fontSize: 12, color: '#aaa', marginTop: 10 }}>
+              現場想追問的題目可在此新增，每題可記錄學生回答重點；儲存評分時會一併存入。
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   )
 }

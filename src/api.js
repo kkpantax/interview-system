@@ -102,14 +102,20 @@ export async function getDepartments() {
 const IMPORT_BATCH = 50
 
 export async function upsertApplications(rows, onProgress) {
-  const existing = await callProxy('/rest/v1/applications?select=id,account,department', 'GET')
-  const keyOf = (r) => `${r.account ?? ''}__${r.department ?? ''}`
+  // key = 帳號 + 系所 + 志願序，精準對應「一個人的單一志願」。
+  // （只用 account+系所 會把同系不同志願視為同一筆；且需配合 DB 去重避免重複匯入。）
+  const existing = await callProxy('/rest/v1/applications?select=id,account,department,preference_order', 'GET')
+  const keyOf = (r) => `${r.account ?? ''}__${r.department ?? ''}__${r.preference_order ?? ''}`
   const idByKey = new Map((existing || []).map((r) => [keyOf(r), r.id]))
 
   const toInsert = []
   const toUpdate = []
+  const seen = new Set()   // 批次內去重：來源檔同一筆出現多次時，只處理一次
   for (const row of rows) {
-    const id = idByKey.get(keyOf(row))
+    const key = keyOf(row)
+    if (seen.has(key)) continue
+    seen.add(key)
+    const id = idByKey.get(key)
     if (id) toUpdate.push({ id, row })
     else toInsert.push(row)
   }
@@ -196,5 +202,63 @@ export async function getFinalList() {
   return callProxy(
     '/rest/v1/evaluations?select=*,applications(*)&recommendation=eq.admit&order=total_score.desc',
     'GET',
+  )
+}
+
+// ── Teachers（老師帳號）─────────────────────────────────────────────────────
+// 簡單編碼（非正式加密）：btoa(username + ':' + password)
+const encodePw = (username, password) => btoa(`${username}:${password}`)
+
+export async function getTeachers() {
+  return callProxy('/rest/v1/teachers?select=*&order=created_at.asc', 'GET')
+}
+
+export async function createTeacher({ username, password, display_name, role, department }) {
+  return callProxy('/rest/v1/teachers', 'POST', {
+    username,
+    password_hash: encodePw(username, password),
+    display_name: display_name || null,
+    role,
+    department: department || null,
+  }, 'return=representation')
+}
+
+export async function deleteTeacher(id) {
+  return callProxy(`/rest/v1/teachers?id=eq.${id}`, 'DELETE', undefined, 'return=minimal')
+}
+
+// 登入：撈 username 對應的 row，比對 password_hash。成功回傳 teacher，失敗回 null。
+export async function loginTeacher(username, password) {
+  const rows = await callProxy(
+    `/rest/v1/teachers?select=*&username=eq.${encodeURIComponent(username)}`,
+    'GET',
+  )
+  const t = (rows || [])[0]
+  if (!t) return null
+  if (t.password_hash !== encodePw(username, password)) return null
+  return t
+}
+
+// ── Stage 3（第三階段 · 最終錄取）──────────────────────────────────────────
+// 所有二階評分 + 對應 application（只有已過一階者才會有評分）
+export async function getStage3Data() {
+  return callProxy(
+    '/rest/v1/evaluations?select=*,applications(account,name,name_english,department,stage1_passed_date)' +
+      '&order=department.asc,total_score.desc',
+    'GET',
+  )
+}
+
+export async function getFinalAdmissions() {
+  return callProxy('/rest/v1/final_admissions?select=*', 'GET')
+}
+
+// 依 (account, department) upsert 最終錄取狀態（資料表有 UNIQUE(account, department)）
+export async function upsertFinalAdmission(row) {
+  return callProxy(
+    '/rest/v1/final_admissions?on_conflict=account,department',
+    'POST',
+    row,
+    'resolution=merge-duplicates,return=representation',
   )
 }

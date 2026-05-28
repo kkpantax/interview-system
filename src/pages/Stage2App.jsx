@@ -4,6 +4,7 @@ import { Card, CardHead, s } from '../components/UI'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
 import { getStage2List, getDepartments, saveEvaluation } from '../api'
+import { getTeacher, logoutTeacher } from '../auth'
 
 const localToday = () => {
   const d = new Date()
@@ -11,13 +12,18 @@ const localToday = () => {
 }
 
 export default function Stage2App({ dept: initialDept }) {
-  const [dept, setDept]         = useState(initialDept || '')
+  const teacher = getTeacher()
+  // 預設科系：網址帶的 > 老師帳號綁定的科系
+  const [dept, setDept]         = useState(initialDept || teacher?.department || '')
   const [depts, setDepts]       = useState([])
   const [students, setStudents] = useState([])
   const [active, setActive]     = useState(null)   // 評分中的學生
   const [loading, setLoading]   = useState(false)
   const [saving, setSaving]     = useState(false)
   const [toast, setToast]       = useState(null)
+
+  // 守衛：未登入導回登入頁
+  useEffect(() => { if (!teacher) window.location.hash = '#/login?stage=2' }, [teacher])
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -65,18 +71,27 @@ export default function Stage2App({ dept: initialDept }) {
     }
   }
 
+  if (!teacher) return null
+
   return (
     <PageShell
       title="實踐大學" subtitle="第二階段 · 評分" accent="#14532d" toast={toast}
       right={
-        <select
-          style={{ ...s.sel, background: '#ffffff', maxWidth: 220 }}
-          value={dept}
-          onChange={(e) => changeDept(e.target.value)}
-        >
-          <option value="">選擇科系…</option>
-          {depts.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select
+            style={{ ...s.sel, background: '#ffffff', maxWidth: 220 }}
+            value={dept}
+            onChange={(e) => changeDept(e.target.value)}
+          >
+            <option value="">選擇科系…</option>
+            {depts.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <span style={{ fontSize: 12, color: '#cbd5e1' }}>{teacher.display_name || teacher.username}</span>
+          <button onClick={logoutTeacher}
+            style={{ background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            登出
+          </button>
+        </div>
       }
     >
       {!dept ? (

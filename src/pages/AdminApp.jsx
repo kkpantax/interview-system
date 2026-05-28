@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import ImportModal from '../components/ImportModal'
+import TeacherManager from '../components/TeacherManager'
 import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate } from '../api'
+import { getTeacher, logoutTeacher } from '../auth'
 import { STATUS } from '../constants'
 
 const localToday = () => {
@@ -27,7 +29,37 @@ const FINAL_COLS = [
   { key: 'recommendation',     label: '建議' },
 ]
 
+// 同一帳號的多筆 application 合成一筆「人」。資料已按 preference_order 排序，
+// 以志願序最小者作為代表（顯示姓名／護照／國籍等共用欄位）。
+function groupByAccount(apps) {
+  const map = new Map()
+  for (const a of apps) {
+    const key = a.account || `__noacct_${a.id}`
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push(a)
+  }
+  return [...map.entries()].map(([key, list]) => {
+    const sorted = [...list].sort((x, y) => (x.preference_order ?? 99) - (y.preference_order ?? 99))
+    const rep = sorted[0]
+    // 人的狀態取最「進展」者；日期取任一非空值
+    const status = sorted.some((a) => a.status === 'stage1_passed') ? 'stage1_passed'
+      : sorted.some((a) => a.status === 'rejected') ? 'rejected'
+      : 'pending'
+    return {
+      key,
+      account: rep.account,
+      rep,
+      apps: sorted,
+      ids: sorted.map((a) => a.id),
+      status,
+      interview_date: sorted.find((a) => a.interview_date)?.interview_date || '',
+      stage1_passed_date: sorted.find((a) => a.stage1_passed_date)?.stage1_passed_date || '',
+    }
+  })
+}
+
 export default function AdminApp() {
+  const teacher = getTeacher()
   const [apps, setApps]           = useState([])
   const [loading, setLoading]     = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -35,9 +67,11 @@ export default function AdminApp() {
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [selected, setSelected]   = useState(() => new Set())
+  const [selected, setSelected]   = useState(() => new Set())  // 選取的帳號群組 key
+  const [expanded, setExpanded]   = useState(() => new Set())  // 展開的帳號群組 key
   const [assignDate, setAssignDate] = useState(localToday)
   const [assigning, setAssigning] = useState(false)
+  const [tab, setTab]             = useState('students')  // students | teachers
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -51,6 +85,11 @@ export default function AdminApp() {
   }, [showToast])
 
   useEffect(() => { load() }, [load])
+
+  // 守衛：未登入或非 admin 角色導回行政登入頁
+  useEffect(() => {
+    if (!teacher || teacher.role !== 'admin') window.location.hash = '#/login?stage=admin'
+  }, [teacher])
 
   const handleImport = async (rows, skipped, onProgress) => {
     const { added, updated } = await upsertApplications(rows, onProgress)
@@ -77,34 +116,46 @@ export default function AdminApp() {
   }
 
   const depts = [...new Set(apps.map((a) => a.department).filter(Boolean))].sort()
-  const filtered = apps.filter((a) => {
-    if (deptFilter && a.department !== deptFilter) return false
-    if (statusFilter && (a.status || 'pending') !== statusFilter) return false
+
+  // 先分組，再以群組為單位篩選（任一志願符合即顯示）
+  const groups = useMemo(() => groupByAccount(apps), [apps])
+  const groupMap = useMemo(() => new Map(groups.map((g) => [g.key, g])), [groups])
+
+  const filtered = groups.filter((g) => {
+    if (deptFilter && !g.apps.some((a) => a.department === deptFilter)) return false
+    if (statusFilter && g.status !== statusFilter) return false
     if (kw) {
       const q = kw.toLowerCase()
-      const hay = [a.name, a.name_english, a.account, a.passport_number]
+      const hay = [g.rep.name, g.rep.name_english, g.account, g.rep.passport_number]
         .filter(Boolean).map((x) => String(x).toLowerCase())
       if (!hay.some((h) => h.includes(q))) return false
     }
     return true
   })
 
-  // ── 選取 / 指派面試日期 ─────────────────────────────────────────────────────
-  const toggle = (id) => setSelected((prev) => {
+  // ── 選取 / 指派面試日期（以帳號群組為單位）──────────────────────────────────
+  const toggle = (key) => setSelected((prev) => {
     const n = new Set(prev)
-    n.has(id) ? n.delete(id) : n.add(id)
+    n.has(key) ? n.delete(key) : n.add(key)
     return n
   })
-  const allSelected = filtered.length > 0 && filtered.every((a) => selected.has(a.id))
+  const toggleExpand = (key) => setExpanded((prev) => {
+    const n = new Set(prev)
+    n.has(key) ? n.delete(key) : n.add(key)
+    return n
+  })
+  const allSelected = filtered.length > 0 && filtered.every((g) => selected.has(g.key))
   const toggleAll = () => setSelected((prev) => {
     const n = new Set(prev)
-    if (filtered.every((a) => n.has(a.id))) filtered.forEach((a) => n.delete(a.id))
-    else filtered.forEach((a) => n.add(a.id))
+    if (filtered.every((g) => n.has(g.key))) filtered.forEach((g) => n.delete(g.key))
+    else filtered.forEach((g) => n.add(g.key))
     return n
   })
 
   const handleAssign = async () => {
-    const ids = [...selected]
+    const keys = [...selected]
+    // 對同帳號所有 application id 同步指派（一個人面一次）
+    const ids = keys.flatMap((k) => groupMap.get(k)?.ids || [])
     if (!ids.length) { showToast('請先勾選學生', 'warn'); return }
     if (!assignDate)  { showToast('請選擇面試日期', 'warn'); return }
     setAssigning(true)
@@ -112,7 +163,7 @@ export default function AdminApp() {
       const res = await setInterviewDate(ids, assignDate)
       const n = Array.isArray(res) ? res.length : 0
       if (!n) { showToast('指派失敗：0 筆更新（請確認 applications 的 UPDATE RLS 政策）', 'error'); return }
-      showToast(`已指派 ${n} 位面試日期：${assignDate}`)
+      showToast(`已指派 ${keys.length} 位（${n} 筆志願）面試日期：${assignDate}`)
       setSelected(new Set())
       await load()
     } catch (e) {
@@ -125,6 +176,8 @@ export default function AdminApp() {
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
 
+  if (!teacher || teacher.role !== 'admin') return null
+
   return (
     <PageShell
       title="實踐大學"
@@ -134,17 +187,41 @@ export default function AdminApp() {
         <>
           {loading && <span style={{ fontSize: 12, color: '#aaa' }}>載入中…</span>}
           <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>＋ 上傳名單</Btn>
+          <Btn style={{ background: 'none', borderColor: '#7e22ce', color: '#e9d5ff' }} onClick={() => { window.location.hash = '#/stage3' }}>③ 第三階段錄取</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={exportFinal}>⬇ 匯出最終名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={load}>↻</Btn>
+          <span style={{ fontSize: 12, color: '#999' }}>{teacher.display_name || teacher.username}</span>
+          <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={logoutTeacher}>登出</Btn>
         </>
       }
     >
+      {/* 分頁 */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e8e7e3' }}>
+        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }].map((t) => (
+          <button key={t.k} onClick={() => setTab(t.k)}
+            style={{
+              padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
+              fontSize: 14, fontFamily: 'inherit', marginBottom: -1,
+              color: tab === t.k ? '#1a1a18' : '#999',
+              fontWeight: tab === t.k ? 600 : 400,
+              borderBottom: tab === t.k ? '2px solid #1a1a18' : '2px solid transparent',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'teachers' && <TeacherManager depts={depts} showToast={showToast} />}
+
+      {tab === 'students' && (
+       <>
       {/* 摘要 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
+          { label: '報名人數', value: groups.length },
           { label: '志願總數', value: apps.length },
-          { label: '已排面試', value: apps.filter((a) => a.interview_date).length },
-          { label: '通過一階', value: apps.filter((a) => a.status === 'stage1_passed').length },
+          { label: '已排面試', value: groups.filter((g) => g.interview_date).length },
+          { label: '通過一階', value: groups.filter((g) => g.status === 'stage1_passed').length },
           { label: '科系數',   value: depts.length },
         ].map((c) => (
           <div key={c.label} style={{ ...s.card, padding: '12px 18px', minWidth: 110 }}>
@@ -166,7 +243,7 @@ export default function AdminApp() {
           <option value="">全部狀態</option>
           {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 筆</span>
+        <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 人</span>
       </div>
 
       {/* 指派面試日期 */}
@@ -180,11 +257,11 @@ export default function AdminApp() {
         {selected.size > 0 && (
           <button onClick={() => setSelected(new Set())} style={{ ...s.btn, ...s.btnSm }}>清除選取</button>
         )}
-        <span style={{ fontSize: 12, color: '#7b8794' }}>勾選下方學生後指派，第一階段老師即可依日期看到名單</span>
+        <span style={{ fontSize: 12, color: '#7b8794' }}>勾選下方學生後指派，同帳號的所有志願會一起排同一天（一人面一次）</span>
       </div>
 
       <Card>
-        <CardHead left="學生總覽" right={`${filtered.length} / ${apps.length}`} />
+        <CardHead left="學生總覽" right={`${filtered.length} / ${groups.length} 人`} />
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -192,33 +269,63 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '中文姓名', '英文姓名', '系所', '志願序', '國籍', '面試日', '狀態', '通過一階日'].map((h) => (
+                {['帳號', '中文姓名', '英文姓名', '護照號碼', '國籍', '第1志願系所', '志願', '面試日', '狀態', '通過一階日'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((a) => {
-                const si = statusInfo(a.status)
+              {filtered.map((g) => {
+                const si = statusInfo(g.status)
+                const extra = g.apps.length - 1
+                const isOpen = expanded.has(g.key)
                 return (
-                  <tr key={a.id} style={selected.has(a.id) ? { background: '#f5faff' } : undefined}>
-                    <td style={td}>
-                      <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggle(a.id)} />
-                    </td>
-                    <td style={{ ...td, color: '#888' }}>{a.account}</td>
-                    <td style={{ ...td, fontWeight: 500 }}>{a.name}</td>
-                    <td style={{ ...td, color: '#777' }}>{a.name_english}</td>
-                    <td style={{ ...td, color: '#777' }}>{a.department}</td>
-                    <td style={td}>{a.preference_order ?? '—'}</td>
-                    <td style={td}>{a.nationality}</td>
-                    <td style={{ ...td, color: a.interview_date ? '#1e40af' : '#ccc' }}>{a.interview_date || '—'}</td>
-                    <td style={td}><Pill color={si.color} bg={si.bg}>{si.label}</Pill></td>
-                    <td style={{ ...td, color: '#888' }}>{a.stage1_passed_date || '—'}</td>
-                  </tr>
+                  <FragmentRow key={g.key}>
+                    <tr style={selected.has(g.key) ? { background: '#f5faff' } : undefined}>
+                      <td style={td}>
+                        <input type="checkbox" checked={selected.has(g.key)} onChange={() => toggle(g.key)} />
+                      </td>
+                      <td style={{ ...td, color: '#888' }}>{g.account}</td>
+                      <td style={{ ...td, fontWeight: 500 }}>{g.rep.name}</td>
+                      <td style={{ ...td, color: '#777' }}>{g.rep.name_english}</td>
+                      <td style={{ ...td, color: '#777' }}>{g.rep.passport_number}</td>
+                      <td style={td}>{g.rep.nationality}</td>
+                      <td style={{ ...td, color: '#555' }}>{g.rep.department}</td>
+                      <td style={td}>
+                        {extra > 0 ? (
+                          <button onClick={() => toggleExpand(g.key)}
+                            style={{ ...s.btn, ...s.btnSm, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#15803d' }}>
+                            {isOpen ? '▼ 收合' : `＋${extra} 個志願`}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 12, color: '#ccc' }}>單一志願</span>
+                        )}
+                      </td>
+                      <td style={{ ...td, color: g.interview_date ? '#1e40af' : '#ccc' }}>{g.interview_date || '—'}</td>
+                      <td style={td}><Pill color={si.color} bg={si.bg}>{si.label}</Pill></td>
+                      <td style={{ ...td, color: '#888' }}>{g.stage1_passed_date || '—'}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td></td>
+                        <td colSpan={9} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                          <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願</div>
+                          {g.apps.map((a) => (
+                            <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
+                              <span style={{ width: 56, color: '#888' }}>第 {a.preference_order ?? '—'} 志願</span>
+                              <span style={{ flex: 1 }}>{a.department}</span>
+                              {(() => { const s2 = statusInfo(a.status); return <Pill color={s2.color} bg={s2.bg}>{s2.label}</Pill> })()}
+                              <span style={{ color: a.interview_date ? '#1e40af' : '#ccc', minWidth: 90 }}>{a.interview_date || '未排'}</span>
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                  </FragmentRow>
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={11} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '沒有資料，請先上傳報名名單'}
                 </td></tr>
               )}
@@ -226,8 +333,15 @@ export default function AdminApp() {
           </table>
         </div>
       </Card>
+       </>
+      )}
 
       {showImport && <ImportModal onImport={handleImport} onClose={() => setShowImport(false)} />}
     </PageShell>
   )
+}
+
+// 一個帳號群組要 render 主列 +（可選）展開列兩個 <tr>，用 Fragment 包起來
+function FragmentRow({ children }) {
+  return <>{children}</>
 }
