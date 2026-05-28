@@ -497,3 +497,32 @@ export async function updateStage4Status(id, fields) {
     'PATCH', fields, 'return=representation',
   )
 }
+
+// ── 年度重置（行政）────────────────────────────────────────────────────────
+// 一次撈五張表全部資料，給「匯出年度備份」做成多工作表 Excel。
+export async function exportAllData() {
+  const [apps, s1, s2, s3, s4] = await Promise.all([
+    callProxy('/rest/v1/applications?select=*', 'GET'),
+    callProxy('/rest/v1/stage1_records?select=*', 'GET'),
+    callProxy('/rest/v1/evaluations?select=*', 'GET'),
+    callProxy('/rest/v1/final_admissions?select=*', 'GET'),
+    callProxy('/rest/v1/stage4_confirmations?select=*', 'GET'),
+  ])
+  return { apps, s1, s2, s3, s4 }
+}
+
+// 清空本年度所有學生相關資料（中心名單與老師帳號不動）。
+// 走 server-side 的 /api/reset：伺服器用 service key 繞過 RLS 刪除，
+// 故五張表的 DELETE RLS 政策維持關閉，anon key（/api/submit）仍無法刪除。
+// 須帶 admin 帳密，伺服器驗證帳密 + 角色為 admin 後才執行。
+export async function clearAllData(username, password) {
+  const res = await fetch('/api/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  let data = {}
+  try { data = await res.json() } catch { /* 非 JSON 回應 */ }
+  if (!res.ok) throw new Error(data.error || '清空失敗')
+  return data
+}

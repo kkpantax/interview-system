@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import ImportModal from '../components/ImportModal'
@@ -6,7 +7,7 @@ import TeacherManager from '../components/TeacherManager'
 import CenterManager from '../components/CenterManager'
 import StudentEditModal from '../components/StudentEditModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, exportAllData, clearAllData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { STATUS } from '../constants'
 
@@ -74,10 +75,13 @@ export default function AdminApp() {
   const [expanded, setExpanded]   = useState(() => new Set())  // 展開的帳號群組 key
   const [assignDate, setAssignDate] = useState(localToday)
   const [assigning, setAssigning] = useState(false)
-  const [tab, setTab]             = useState('students')  // students | teachers | centers
+  const [tab, setTab]             = useState('students')  // students | teachers | centers | reset
   const [editGroup, setEditGroup] = useState(null)        // 編輯中的考生群組
   const [centers, setCenters]     = useState([])          // 面試中心清單
   const [batchCenter, setBatchCenter] = useState('')      // 批次設定中心：選定的中心名稱
+  const [confirmText, setConfirmText] = useState('')      // 年度重置：清空確認字串
+  const [clearPassword, setClearPassword] = useState('')  // 年度重置：行政密碼（再次驗證）
+  const [clearing, setClearing]   = useState(false)       // 年度重置：清空進行中
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -126,6 +130,40 @@ export default function AdminApp() {
       writeXlsx(FINAL_COLS, rows, '最終建議錄取名單.xlsx')
       showToast(`已匯出 ${rows.length} 筆`)
     } catch (e) { showToast('匯出失敗：' + e.message, 'error') }
+  }
+
+  // 年度備份：五張表各一個工作表，做成單一 Excel
+  const exportBackup = async () => {
+    try {
+      const { apps: a, s1, s2, s3, s4 } = await exportAllData()
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(a || []),  '學生名單')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s1 || []), '第一階段評分')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s2 || []), '第二階段評分')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s3 || []), '第三階段錄取')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s4 || []), '第四階段確認')
+      XLSX.writeFile(wb, `年度備份_${new Date().getFullYear()}.xlsx`)
+      showToast('已匯出年度備份')
+    } catch (e) { showToast('匯出失敗：' + e.message, 'error') }
+  }
+
+  // 年度重置：清空五張學生相關資料表。
+  // 需輸入「確認清空」+ 再次輸入行政密碼，由 /api/reset 在伺服器端驗證後用 service key 刪除。
+  const handleClear = async () => {
+    if (confirmText !== '確認清空' || !clearPassword) return
+    if (!window.confirm('最後確認：即將清空所有學生資料，此操作無法復原。確定繼續？')) return
+    setClearing(true)
+    try {
+      await clearAllData(teacher.username, clearPassword)
+      setConfirmText('')
+      setClearPassword('')
+      showToast('已成功清空本年度所有學生資料')
+      await load()
+    } catch (e) {
+      showToast('清空失敗：' + e.message, 'error')
+    } finally {
+      setClearing(false)
+    }
   }
 
   const depts = [...new Set(apps.map((a) => a.department).filter(Boolean))].sort()
@@ -249,7 +287,7 @@ export default function AdminApp() {
     >
       {/* 分頁 */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e8e7e3' }}>
-        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }].map((t) => (
+        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'reset', label: '年度重置' }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{
               padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
@@ -267,6 +305,76 @@ export default function AdminApp() {
 
       {tab === 'centers' && (
         <CenterManager centers={centers} usage={centerUsage} showToast={showToast} onReload={loadCenters} />
+      )}
+
+      {tab === 'reset' && (
+        <div style={{ maxWidth: 720 }}>
+          {/* 第一區塊：匯出年度備份 */}
+          <Card>
+            <CardHead left="匯出年度備份" />
+            <div style={{ padding: 18 }}>
+              <p style={{ fontSize: 13, color: '#555', margin: '0 0 14px', lineHeight: 1.7 }}>
+                請先匯出今年度完整資料備份，再執行清空。備份檔為單一 Excel，內含五個工作表：
+                學生名單、第一階段評分、第二階段評分、第三階段錄取、第四階段確認。
+              </p>
+              <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={exportBackup}>
+                ⬇ 匯出年度備份 Excel
+              </Btn>
+            </div>
+          </Card>
+
+          {/* 第二區塊：清空資料（紅色警示） */}
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: 20, marginTop: 36 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#b91c1c', marginBottom: 10 }}>
+              ⚠ 危險操作：清空本年度所有學生資料
+            </div>
+            <p style={{ fontSize: 12.5, color: '#dc2626', margin: '0 0 18px', lineHeight: 1.8 }}>
+              此操作將清空以下資料表：學生名單、第一階段評分、第二階段評分、第三階段錄取、第四階段確認。
+              中心名單與老師帳號不受影響。此操作無法復原，請務必先完成上方備份。
+              清空在伺服器端執行，需再次輸入您的行政密碼確認身分。
+            </p>
+            <label style={{ display: 'block', fontSize: 13, color: '#991b1b', fontWeight: 600, marginBottom: 6 }}>
+              請輸入「確認清空」以啟用清空按鈕
+            </label>
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="確認清空"
+              style={{ ...s.input, maxWidth: 260, marginBottom: 12, borderColor: '#fca5a5', outlineColor: '#ef4444' }}
+            />
+            <label style={{ display: 'block', fontSize: 13, color: '#991b1b', fontWeight: 600, marginBottom: 6 }}>
+              行政密碼（{teacher.display_name || teacher.username}）
+            </label>
+            <input
+              type="password"
+              value={clearPassword}
+              onChange={(e) => setClearPassword(e.target.value)}
+              placeholder="請輸入您的登入密碼"
+              autoComplete="off"
+              style={{ ...s.input, maxWidth: 260, marginBottom: 16, borderColor: '#fca5a5', outlineColor: '#ef4444' }}
+            />
+            <div>
+              {(() => {
+                const ready = confirmText === '確認清空' && !!clearPassword && !clearing
+                return (
+                  <button
+                    onClick={handleClear}
+                    disabled={!ready}
+                    style={{
+                      ...s.btn, fontWeight: 600,
+                      background:  ready ? '#dc2626' : '#f3f4f6',
+                      color:       ready ? '#fff'    : '#bbb',
+                      borderColor: ready ? '#dc2626' : '#e5e7eb',
+                      cursor:      ready ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {clearing ? '清空中…' : '清空本年度資料'}
+                  </button>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
       )}
 
       {tab === 'students' && (

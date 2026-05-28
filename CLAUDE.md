@@ -87,7 +87,8 @@ fetch('/api/submit', {
 ## 資安說明（重要）
 
 - **`SUPABASE_SERVICE_KEY`（service_role key）只放在 Vercel 環境變數**，絕對不能進 git、
-  不能加 `VITE_` 前綴（加了會被打包進前端 bundle 而外洩）。目前只有 `api/login.js` 會用到它。
+  不能加 `VITE_` 前綴（加了會被打包進前端 bundle 而外洩）。目前只有 `api/login.js`
+  與 `api/reset.js` 會用到它。
 - **登入驗證走 `/api/login`（Vercel Edge Function），不走前端直打 Supabase。**
   前端 `loginTeacher()` 只 POST 帳密到 `/api/login`，由伺服器用 service key 撈 teachers 表、
   在伺服器端比對 `password_hash === btoa(username + ':' + password)`，回傳的 teacher 不含 `password_hash`。
@@ -97,7 +98,13 @@ fetch('/api/submit', {
   任何人都無法透過前端或 anon key 直接清空資料表。
   - 注意：`centers` 改為唯讀後，行政端的「新增 / 刪除面試中心」（`createCenter` / `deleteCenter`）會失效；
     `teachers` 維持可寫，老師帳號的新增 / 刪除（`createTeacher` / `deleteTeacher`）才能運作。
-- `api/submit.js`（代理層）使用的是 publishable（anon）key，受 RLS 限制；service key 只在 `api/login.js`。
+- **年度重置（清空學生資料）走 `/api/reset`（Vercel Edge Function），不開放 anon key DELETE。**
+  前端 `clearAllData(username, password)` POST 帳密到 `/api/reset`，伺服器用 service key
+  先驗證帳密且 `role === 'admin'`，通過後才用 service key（繞過 RLS）依序刪除
+  stage4_confirmations → final_admissions → evaluations → stage1_records → applications。
+  故 DELETE 的 RLS 政策維持全關，anon key 仍無法刪任何資料。`centers` / `teachers` 不受影響。
+- `api/submit.js`（代理層）使用的是 publishable（anon）key，受 RLS 限制；
+  service key 只在 `api/login.js` 與 `api/reset.js`。
 
 ## 程式碼風格
 - 純 React（無 TypeScript）
