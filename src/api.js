@@ -416,15 +416,16 @@ export async function syncStage4FromStage3() {
     'GET',
   )
   const apps = await callProxy(
-    '/rest/v1/applications?select=account,department,preference_order,center,name,name_english&order=preference_order.asc',
+    '/rest/v1/applications?select=account,department,preference_order,center&order=preference_order.asc',
     'GET',
   )
 
   // account__department → total_score（evaluations 無 account 欄位，經 applications join 取得）
   const evalMap = new Map((evals || []).map((e) => [`${e.applications?.account}__${e.department}`, e.total_score]))
-  // account__department → { preference_order, center, name, name_english }
+  // account__department → { preference_order, center }
   const appMap = new Map((apps || []).map((a) => [`${a.account}__${a.department}`, a]))
 
+  // 只取 stage4_confirmations 實際存在的欄位（勿 spread ...app，避免帶入表中沒有的欄位）
   const rows = (admissions || []).map((a) => {
     const key = `${a.account}__${a.department}`
     const app = appMap.get(key) || {}
@@ -437,8 +438,6 @@ export async function syncStage4FromStage3() {
       stage2_score: evalMap.get(key) ?? null,
       standby_rank: null,
       contact_status: 'pending',
-      name: app.name || '',
-      name_english: app.name_english || '',
     }
   })
 
