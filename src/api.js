@@ -123,6 +123,17 @@ export async function upsertApplications(rows) {
   return { added: toInsert.length, updated: toUpdate.length }
 }
 
+// 指派/清除面試日期（批次，需要 applications 的 UPDATE RLS 政策）
+export async function setInterviewDate(ids, date) {
+  if (!ids || !ids.length) return []
+  return callProxy(
+    `/rest/v1/applications?id=in.(${ids.join(',')})`,
+    'PATCH',
+    { interview_date: date || null },
+    'return=representation',
+  )
+}
+
 // ── Stage 1（第一階段簽到）──────────────────────────────────────────────────
 // 某日應試名單：有帳號、interview_date = date
 export async function getStage1List(date) {
