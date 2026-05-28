@@ -1,34 +1,56 @@
-﻿const SCRIPT_URL = import.meta.env.VITE_SCRIPT_URL || ''
+﻿const SUPABASE_URL = 'https://lveekehjxkfvigwfwgvn.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_YpPdYBr3FIXZQzjbRwPpcw_1DmxNCq8'
 
-export const getScriptUrl = () => SCRIPT_URL
-
-function jsonp(url) {
-  return new Promise((resolve, reject) => {
-    const cb = 'cb_' + Math.random().toString(36).slice(2)
-    const script = document.createElement('script')
-    window[cb] = (data) => {
-      delete window[cb]
-      document.body.removeChild(script)
-      resolve(data)
-    }
-    script.onerror = () => {
-      delete window[cb]
-      document.body.removeChild(script)
-      reject(new Error('JSONP failed'))
-    }
-    script.src = url + '&callback=' + cb
-    document.body.appendChild(script)
-  })
+const headers = {
+  'Content-Type': 'application/json',
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
 }
 
-export async function apiGet(action, params = {}) {
-  if (!SCRIPT_URL) return null
-  const q = new URLSearchParams({ action, ...params }).toString()
-  return jsonp(`${SCRIPT_URL}?${q}`)
-}
-
+// 新增一筆申請資料
 export async function apiPost(body) {
-  if (!SCRIPT_URL) throw new Error('未設定 VITE_SCRIPT_URL 環境變數')
-  const q = new URLSearchParams({ payload: JSON.stringify(body) }).toString()
-  return jsonp(`${SCRIPT_URL}?${q}`)
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/applications`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.message || '送出失敗')
+  }
+  return res.json()
+}
+
+// 查詢申請資料
+export async function apiGet(action, params = {}) {
+  const query = new URLSearchParams(params).toString()
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/applications?${query}`, {
+    method: 'GET',
+    headers,
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.message || '查詢失敗')
+  }
+  return res.json()
+}
+
+// 更新申請資料（依 id）
+export async function apiPatch(id, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/applications?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      ...headers,
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.message || '更新失敗')
+  }
+  return res.json()
 }
