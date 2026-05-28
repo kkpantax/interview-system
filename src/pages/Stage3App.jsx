@@ -26,6 +26,7 @@ const EXPORT_COLS = [
   { key: 'name',         label: '中文姓名' },
   { key: 'name_english', label: '英文姓名' },
   { key: 'department',   label: '科系' },
+  { key: 'center',       label: '面試中心' },
   { key: 'status_label', label: '最終狀態' },
 ]
 
@@ -135,12 +136,31 @@ export default function Stage3App() {
         name:         e.applications?.name ?? '',
         name_english: e.applications?.name_english ?? '',
         department:   deptOf(e),
+        center:       e.applications?.center ?? '',
         status_label: '正取',
       })
     }
     if (!out.length) { showToast('目前沒有正取的學生', 'warn'); return }
     writeXlsx(EXPORT_COLS, out, '第三階段正取名單.xlsx')
     showToast(`已匯出 ${out.length} 筆正取名單`)
+  }
+
+  const exportWaitlisted = () => {
+    const out = []
+    for (const e of evals) {
+      if (statusOf(e) !== 'waitlisted') continue
+      out.push({
+        account:      acctOf(e) ?? '',
+        name:         e.applications?.name ?? '',
+        name_english: e.applications?.name_english ?? '',
+        department:   deptOf(e),
+        center:       e.applications?.center ?? '',
+        status_label: '備取',
+      })
+    }
+    if (!out.length) { showToast('目前沒有備取的學生', 'warn'); return }
+    writeXlsx(EXPORT_COLS, out, '第三階段備取名單.xlsx')
+    showToast(`已匯出 ${out.length} 筆備取名單`)
   }
 
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
@@ -156,6 +176,7 @@ export default function Stage3App() {
           {loading && <span style={{ fontSize: 12, color: '#e9d5ff' }}>載入中…</span>}
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={() => { window.location.hash = '#/admin' }}>← 行政後台</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportAdmitted}>⬇ 匯出正取名單</Btn>
+          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportWaitlisted}>⬇ 匯出備取名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#e9d5ff' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={logoutTeacher}>登出</Btn>
