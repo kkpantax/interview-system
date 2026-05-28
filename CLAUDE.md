@@ -84,6 +84,21 @@ fetch('/api/submit', {
 ```
 新增資料表或 API 操作時，一律在 `src/api.js` 新增 function，走這個 proxy 格式。
 
+## 資安說明（重要）
+
+- **`SUPABASE_SERVICE_KEY`（service_role key）只放在 Vercel 環境變數**，絕對不能進 git、
+  不能加 `VITE_` 前綴（加了會被打包進前端 bundle 而外洩）。目前只有 `api/login.js` 會用到它。
+- **登入驗證走 `/api/login`（Vercel Edge Function），不走前端直打 Supabase。**
+  前端 `loginTeacher()` 只 POST 帳密到 `/api/login`，由伺服器用 service key 撈 teachers 表、
+  在伺服器端比對 `password_hash === btoa(username + ':' + password)`，回傳的 teacher 不含 `password_hash`。
+  登入狀態仍存在 `sessionStorage`（key: `teacher`），由 `TeacherLogin.jsx` 在角色權限檢查通過後寫入。
+- **所有資料表的 DELETE 已用 RLS 政策關閉**（applications / stage1_records / evaluations /
+  final_admissions / centers 只保留 read / insert / update，centers 僅 read）。
+  任何人都無法透過前端或 anon key 直接清空資料表。
+  - 注意：`centers` 改為唯讀後，行政端的「新增 / 刪除面試中心」（`createCenter` / `deleteCenter`）會失效；
+    `teachers` 維持可寫，老師帳號的新增 / 刪除（`createTeacher` / `deleteTeacher`）才能運作。
+- `api/submit.js`（代理層）使用的是 publishable（anon）key，受 RLS 限制；service key 只在 `api/login.js`。
+
 ## 程式碼風格
 - 純 React（無 TypeScript）
 - 不使用任何 CSS framework，所有樣式用 inline style，參考 `src/components/UI.jsx` 的 `s` 物件

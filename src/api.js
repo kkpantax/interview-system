@@ -353,16 +353,18 @@ export async function deleteTeacher(id) {
   return callProxy(`/rest/v1/teachers?id=eq.${id}`, 'DELETE', undefined, 'return=minimal')
 }
 
-// 登入：撈 username 對應的 row，比對 password_hash。成功回傳 teacher，失敗回 null。
+// 登入：改打 server-side 的 /api/login，由伺服器用 service key 比對帳密，
+// 前端不再直接撈 teachers 表。成功回傳 teacher（不含 password_hash），失敗丟出錯誤。
 export async function loginTeacher(username, password) {
-  const rows = await callProxy(
-    `/rest/v1/teachers?select=*&username=eq.${encodeURIComponent(username)}`,
-    'GET',
-  )
-  const t = (rows || [])[0]
-  if (!t) return null
-  if (t.password_hash !== encodePw(username, password)) return null
-  return t
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  let data = {}
+  try { data = await res.json() } catch { /* 非 JSON 回應 */ }
+  if (!res.ok) throw new Error(data.error || '登入失敗')
+  return data.teacher
 }
 
 // ── Stage 3（第三階段 · 最終錄取）──────────────────────────────────────────
