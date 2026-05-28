@@ -412,7 +412,7 @@ export async function syncStage4FromStage3() {
     'GET',
   )
   const evals = await callProxy(
-    '/rest/v1/evaluations?select=account,department,total_score&order=total_score.desc',
+    '/rest/v1/evaluations?select=department,total_score,applications(account)&order=total_score.desc',
     'GET',
   )
   const apps = await callProxy(
@@ -420,8 +420,8 @@ export async function syncStage4FromStage3() {
     'GET',
   )
 
-  // account__department → total_score
-  const evalMap = new Map((evals || []).map((e) => [`${e.account}__${e.department}`, e.total_score]))
+  // account__department → total_score（evaluations 無 account 欄位，經 applications join 取得）
+  const evalMap = new Map((evals || []).map((e) => [`${e.applications?.account}__${e.department}`, e.total_score]))
   // account__department → { preference_order, center, name, name_english }
   const appMap = new Map((apps || []).map((a) => [`${a.account}__${a.department}`, a]))
 
