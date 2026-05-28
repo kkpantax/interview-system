@@ -390,3 +390,103 @@ export async function upsertFinalAdmission(row) {
     'resolution=merge-duplicates,return=representation',
   )
 }
+
+// ── Stage 4（第四階段 · 繳費就讀確認 / 候補遞補）──────────────────────────────
+// 撈 stage4_confirmations 全部資料（依 中心 → 科系 → 類別(正取先) → 備取排名 排序）
+export async function getStage4Data() {
+  return callProxy(
+    '/rest/v1/stage4_confirmations?select=*&order=center.asc,department.asc,stage3_status.asc,standby_rank.asc',
+    'GET',
+  )
+}
+
+// 從 Stage3（final_admissions 的 admitted + waitlisted）同步到 Stage4：
+//   1. 取 evaluations 的 total_score、applications 的 preference_order / center / 姓名
+//   2. 依 中心 + 科系 分組，waitlisted 以 preference_order asc, total_score desc 計算 standby_rank
+//   3. admitted 的 standby_rank 為 null
+//   4. upsert（on_conflict account+department，merge-duplicates）；
+//      已存在且 contact_status != 'pending' 的不覆蓋，保護進行中（候補詢問/就讀/放棄…）的資料
+export async function syncStage4FromStage3() {
+  const admissions = await callProxy(
+    '/rest/v1/final_admissions?select=*&or=(final_status.eq.admitted,final_status.eq.waitlisted)',
+    'GET',
+  )
+  const evals = await callProxy(
+    '/rest/v1/evaluations?select=account,department,total_score&order=total_score.desc',
+    'GET',
+  )
+  const apps = await callProxy(
+    '/rest/v1/applications?select=account,department,preference_order,center,name,name_english&order=preference_order.asc',
+    'GET',
+  )
+
+  // account__department → total_score
+  const evalMap = new Map((evals || []).map((e) => [`${e.account}__${e.department}`, e.total_score]))
+  // account__department → { preference_order, center, name, name_english }
+  const appMap = new Map((apps || []).map((a) => [`${a.account}__${a.department}`, a]))
+
+  const rows = (admissions || []).map((a) => {
+    const key = `${a.account}__${a.department}`
+    const app = appMap.get(key) || {}
+    return {
+      account: a.account,
+      department: a.department,
+      center: app.center || '',
+      stage3_status: a.final_status,
+      preference_order: app.preference_order || null,
+      stage2_score: evalMap.get(key) ?? null,
+      standby_rank: null,
+      contact_status: 'pending',
+      name: app.name || '',
+      name_english: app.name_english || '',
+    }
+  })
+
+  // 計算 standby_rank：依 中心 + 科系 分組，只對 waitlisted 排序
+  const groups = {}
+  for (const r of rows) {
+    if (r.stage3_status !== 'waitlisted') continue
+    const k = `${r.center}__${r.department}`
+    if (!groups[k]) groups[k] = []
+    groups[k].push(r)
+  }
+  for (const group of Object.values(groups)) {
+    group.sort((a, b) => {
+      if (a.preference_order !== b.preference_order) return (a.preference_order || 99) - (b.preference_order || 99)
+      return (b.stage2_score || 0) - (a.stage2_score || 0)
+    })
+    group.forEach((r, i) => { r.standby_rank = i + 1 })
+  }
+
+  // 保護進行中資料：已存在且 contact_status != 'pending' 的 (account,department) 不重新同步
+  const existing = await callProxy(
+    '/rest/v1/stage4_confirmations?select=account,department,contact_status',
+    'GET',
+  )
+  const locked = new Set(
+    (existing || [])
+      .filter((r) => r.contact_status && r.contact_status !== 'pending')
+      .map((r) => `${r.account}__${r.department}`),
+  )
+  const writable = rows.filter((r) => !locked.has(`${r.account}__${r.department}`))
+
+  // 分批 upsert，每批 50 筆
+  const BATCH = 50
+  for (let i = 0; i < writable.length; i += BATCH) {
+    const chunk = writable.slice(i, i + BATCH)
+    await callProxy(
+      '/rest/v1/stage4_confirmations?on_conflict=account,department',
+      'POST', chunk,
+      'resolution=merge-duplicates,return=minimal',
+    )
+  }
+  return writable.length
+}
+
+// 更新單筆 stage4 狀態（聯繫狀態 / 備注…）
+export async function updateStage4Status(id, fields) {
+  return callProxy(
+    `/rest/v1/stage4_confirmations?id=eq.${id}`,
+    'PATCH', fields, 'return=representation',
+  )
+}
