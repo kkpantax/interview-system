@@ -187,20 +187,42 @@ export async function setInterviewDate(ids, date) {
 }
 
 // ── Stage 1（第一階段簽到）──────────────────────────────────────────────────
-// 某日應試名單：有帳號、interview_date = date
+// 第一階段以「帳號」為單位：同一人多個志願只面試、評分一次。
+// 把多筆 application（同 account）合併成一筆，附上所有志願清單 allDepts，
+// 並用 preference_order 最小的那筆作為主資料（id / department）。
+function groupByAccount(rows) {
+  const map = {}
+  for (const r of rows) {
+    if (!map[r.account]) map[r.account] = { ...r, allDepts: [] }
+    map[r.account].allDepts.push({
+      id: r.id,
+      department: r.department,
+      preference_order: r.preference_order,
+    })
+  }
+  return Object.values(map).map((g) => {
+    g.allDepts.sort((a, b) => (a.preference_order ?? 99) - (b.preference_order ?? 99))
+    const primary = g.allDepts[0]
+    return { ...g, id: primary.id, department: primary.department, preference_order: primary.preference_order }
+  })
+}
+
+// 某日應試名單：有帳號、interview_date = date（按帳號合併）
 export async function getStage1List(date) {
-  return callProxy(
+  const rows = await callProxy(
     `/rest/v1/applications?select=*&account=not.is.null&interview_date=eq.${date}&order=name.asc`,
     'GET',
   )
+  return groupByAccount(rows || [])
 }
 
-// 備援：尚未通過一階的所有帳號持有者（interview_date 尚未排期時用）
+// 備援：尚未通過一階的所有帳號持有者（interview_date 尚未排期時用，按帳號合併）
 export async function getStage1Pending() {
-  return callProxy(
+  const rows = await callProxy(
     '/rest/v1/applications?select=*&account=not.is.null&stage1_passed_date=is.null&order=name.asc',
     'GET',
   )
+  return groupByAccount(rows || [])
 }
 
 // 當日所有簽到/評分紀錄（一次撈回，前端以 application_id 建 map，避免逐生打 API）
@@ -208,10 +230,11 @@ export async function getStage1Records(date) {
   return callProxy(`/rest/v1/stage1_records?record_date=eq.${date}&select=*`, 'GET')
 }
 
-// 簽到：同一 application_id + record_date 已存在則 PATCH，否則 POST。回傳該筆紀錄。
+// 簽到：以 account + record_date 為 key（一個人一筆）。已存在則 PATCH，否則 POST。
+// rec 需含 account；application_id 仍寫入主志願 id 備查。回傳該筆紀錄。
 export async function saveStage1Checkin(rec) {
   const existing = await callProxy(
-    `/rest/v1/stage1_records?application_id=eq.${rec.application_id}&record_date=eq.${rec.record_date}&select=id`,
+    `/rest/v1/stage1_records?account=eq.${encodeURIComponent(rec.account)}&record_date=eq.${rec.record_date}&select=id`,
     'GET',
   )
   if (existing && existing.length > 0) {
@@ -223,6 +246,15 @@ export async function saveStage1Checkin(rec) {
   return callProxy('/rest/v1/stage1_records', 'POST', rec, 'return=representation')
 }
 
+// 依 account + record_date 取單筆簽到/評分紀錄（無則回 null）
+export async function getStage1RecordByAccount(account, date) {
+  const rows = await callProxy(
+    `/rest/v1/stage1_records?account=eq.${encodeURIComponent(account)}&record_date=eq.${date}&select=*`,
+    'GET',
+  )
+  return rows && rows.length > 0 ? rows[0] : null
+}
+
 // 寫入第一階段評分（依 stage1_records.id 更新已建立的簽到紀錄）
 export async function saveStage1Score(recordId, payload) {
   return callProxy(
@@ -231,7 +263,7 @@ export async function saveStage1Score(recordId, payload) {
   )
 }
 
-// 標記通過一階（更新 applications，需要 UPDATE 的 RLS 政策）
+// 標記通過一階（更新單筆 application，需要 UPDATE 的 RLS 政策）
 export async function markStage1Passed(applicationId, date) {
   return callProxy(
     `/rest/v1/applications?id=eq.${applicationId}`,
@@ -241,16 +273,41 @@ export async function markStage1Passed(applicationId, date) {
   )
 }
 
+// 通過一階：把該帳號「所有志願」的 applications 一起標記通過（一人面一次、全志願進二階）
+export async function markStage1PassedByAccount(account, date) {
+  return callProxy(
+    `/rest/v1/applications?account=eq.${encodeURIComponent(account)}`,
+    'PATCH',
+    { stage1_passed_date: date, status: 'stage1_passed' },
+    'return=representation',
+  )
+}
+
 // ── Stage 2（第二階段評分）──────────────────────────────────────────────────
-// 某科系、已過一階、尚未評分（用 embed evaluations(id) 後在前端過濾）
+// 某科系、已過一階的「所有」學生，附上各自的 evaluations 摘要（前端再分待評/已評）。
+// 同一學生在同系可能有多筆評分（多老師、多輪），故全帶回不去重。
 export async function getStage2List(dept) {
   const rows = await callProxy(
-    `/rest/v1/applications?select=*,evaluations(id)` +
+    `/rest/v1/applications?select=*,evaluations(id,recommendation,total_score,eval_date)` +
       `&department=eq.${encodeURIComponent(dept)}` +
       `&stage1_passed_date=not.is.null&order=name.asc`,
     'GET',
   )
-  return (rows || []).filter((a) => !a.evaluations || a.evaluations.length === 0)
+  return rows || []
+}
+
+// 某科系評分統計：以 evaluations.recommendation 計筆數（不去重，含多老師多輪）
+export async function getStage2Stats(dept) {
+  const rows = await callProxy(
+    `/rest/v1/evaluations?select=recommendation&department=eq.${encodeURIComponent(dept)}`,
+    'GET',
+  )
+  const stats = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
+  for (const r of (rows || [])) {
+    if (stats[r.recommendation] !== undefined) stats[r.recommendation]++
+    else stats.pending++
+  }
+  return stats
 }
 
 export async function saveEvaluation(ev) {

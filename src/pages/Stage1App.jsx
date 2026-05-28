@@ -4,7 +4,7 @@ import { Btn, Card, CardHead, s } from '../components/UI'
 import ExportBtn from '../components/ExportBtn'
 import Stage1List from '../components/Stage1List'
 import Stage1ScoreForm from '../components/Stage1ScoreForm'
-import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score, markStage1Passed } from '../api'
+import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score, markStage1PassedByAccount } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { DECISIONS_STAGE1 } from '../constants'
 
@@ -16,17 +16,16 @@ const localToday = () => {
 const recLabel = (v) => DECISIONS_STAGE1.find((d) => d.v === v)?.label || ''
 
 const EXPORT_COLS = [
-  { key: 'account',          label: '帳號' },
-  { key: 'name',             label: '中文姓名' },
-  { key: 'name_english',     label: '英文姓名' },
-  { key: 'department',       label: '系所' },
-  { key: 'preference_order', label: '志願序' },
-  { key: 'nationality',      label: '國籍' },
-  { key: 'center',           label: '中心' },
-  { key: 'appeared',         label: '出席' },
-  { key: 'total_score',      label: '評分總分' },
-  { key: 'recommendation',   label: '建議' },
-  { key: 'note',             label: '備註' },
+  { key: 'account',        label: '帳號' },
+  { key: 'name',           label: '中文姓名' },
+  { key: 'name_english',   label: '英文姓名' },
+  { key: 'departments',    label: '報考志願' },
+  { key: 'nationality',    label: '國籍' },
+  { key: 'center',         label: '中心' },
+  { key: 'appeared',       label: '出席' },
+  { key: 'total_score',    label: '評分總分' },
+  { key: 'recommendation', label: '建議' },
+  { key: 'note',           label: '備註' },
 ]
 
 export default function Stage1App() {
@@ -34,7 +33,7 @@ export default function Stage1App() {
   const [date, setDate]         = useState(localToday)
   const [showAll, setShowAll]   = useState(false)
   const [students, setStudents] = useState([])
-  const [records, setRecords]   = useState({})   // { [application_id]: stage1_record }
+  const [records, setRecords]   = useState({})   // { [account]: stage1_record }
   const [draft, setDraft]       = useState({})
   const [loading, setLoading]   = useState(false)
   const [savingId, setSavingId] = useState(null)
@@ -55,13 +54,14 @@ export default function Stage1App() {
     try {
       const list = (showAll ? await getStage1Pending() : await getStage1List(date)) || []
       const recList = (await getStage1Records(date)) || []
-      const recMap = Object.fromEntries(recList.map((r) => [r.application_id, r]))
+      // 以 account 建 map（一個人一筆簽到/評分）。忽略尚未帶 account 的舊資料。
+      const recMap = Object.fromEntries(recList.filter((r) => r.account).map((r) => [r.account, r]))
       setStudents(list)
       setRecords(recMap)
       // 既有簽到的 appeared / 備註帶回草稿
-      setDraft(Object.fromEntries(list.map((r) => {
-        const rec = recMap[r.id]
-        return [r.id, { appeared: !!rec?.appeared, note: rec?.teacher_note || '' }]
+      setDraft(Object.fromEntries(list.map((stu) => {
+        const rec = recMap[stu.account]
+        return [stu.account, { appeared: !!rec?.appeared, note: rec?.teacher_note || '' }]
       })))
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
@@ -75,18 +75,19 @@ export default function Stage1App() {
   const patch = (id, p) => setDraft((d) => ({ ...d, [id]: { ...d[id], ...p } }))
 
   const saveRow = async (stu) => {
-    setSavingId(stu.id)
+    setSavingId(stu.account)
     try {
-      const d = draft[stu.id] || {}
+      const d = draft[stu.account] || {}
       const res = await saveStage1Checkin({
-        application_id: stu.id,
+        account: stu.account,
+        application_id: stu.id,            // 主志願 id（備查）
         record_date: date,
         appeared: !!d.appeared,
         confirmed_dept: stu.department || null,
         teacher_note: d.note || null,
       })
       const saved = Array.isArray(res) ? res[0] : res
-      if (saved) setRecords((m) => ({ ...m, [stu.id]: { ...m[stu.id], ...saved } }))
+      if (saved) setRecords((m) => ({ ...m, [stu.account]: { ...m[stu.account], ...saved } }))
       showToast(`已儲存 ${stu.name} 的簽到`)
     } catch (e) {
       showToast('儲存失敗：' + e.message, 'error')
@@ -96,13 +97,13 @@ export default function Stage1App() {
   }
 
   const handleSaveScore = async (payload) => {
-    const rec = records[scoringStu.id]
+    const rec = records[scoringStu.account]
     if (!rec?.id) { showToast('找不到簽到紀錄，請先儲存簽到', 'error'); return }
     setScoreSaving(true)
     try {
       const res = await saveStage1Score(rec.id, payload)
       const saved = Array.isArray(res) ? res[0] : res
-      if (saved) setRecords((m) => ({ ...m, [scoringStu.id]: { ...m[scoringStu.id], ...saved } }))
+      if (saved) setRecords((m) => ({ ...m, [scoringStu.account]: { ...m[scoringStu.account], ...saved } }))
       showToast(`已儲存 ${scoringStu.name} 的評分`)
       setScoringStu(null)
     } catch (e) {
@@ -113,12 +114,12 @@ export default function Stage1App() {
   }
 
   const produce = async () => {
-    // 只把「建議通過」的學生標記為通過一階
-    const passed = students.filter((stu) => records[stu.id]?.recommendation === 'pass')
+    // 只把「建議通過」的學生標記為通過一階；同帳號所有志願一起標記
+    const passed = students.filter((stu) => records[stu.account]?.recommendation === 'pass')
     if (!passed.length) { showToast('尚未有評分為「建議通過」的學生', 'warn'); return }
     setProducing(true)
     try {
-      for (const stu of passed) await markStage1Passed(stu.id, date)
+      for (const stu of passed) await markStage1PassedByAccount(stu.account, date)
       showToast(`已產出今日通過名單：${passed.length} 位`)
       await load()
     } catch (e) {
@@ -129,21 +130,21 @@ export default function Stage1App() {
   }
 
   const exportRows = students.map((stu) => {
-    const rec = records[stu.id]
+    const rec = records[stu.account]
     return {
       account: stu.account, name: stu.name, name_english: stu.name_english,
-      department: stu.department, preference_order: stu.preference_order ?? '',
+      departments: (stu.allDepts || []).map((d) => `${d.preference_order ?? '?'}.${d.department}`).join(' / '),
       nationality: stu.nationality,
       center: stu.center || '',
-      appeared: rec?.appeared ? '已到' : (draft[stu.id]?.appeared ? '已到' : '未到'),
+      appeared: draft[stu.account]?.appeared ? '已到' : '未到',
       total_score: rec?.total_score ?? '',
       recommendation: recLabel(rec?.recommendation),
-      note: draft[stu.id]?.note || '',
+      note: draft[stu.account]?.note || '',
     }
   })
 
-  const appearedCount = students.filter((stu) => draft[stu.id]?.appeared).length
-  const passCount = students.filter((stu) => records[stu.id]?.recommendation === 'pass').length
+  const appearedCount = students.filter((stu) => draft[stu.account]?.appeared).length
+  const passCount = students.filter((stu) => records[stu.account]?.recommendation === 'pass').length
 
   if (!teacher) return null
 
@@ -164,7 +165,7 @@ export default function Stage1App() {
       {scoringStu ? (
         <Stage1ScoreForm
           student={scoringStu}
-          initial={records[scoringStu.id]}
+          initial={records[scoringStu.account]}
           onSave={handleSaveScore}
           onBack={() => setScoringStu(null)}
           saving={scoreSaving}
