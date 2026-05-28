@@ -2,20 +2,24 @@ import { useState } from 'react'
 import { Btn, s } from '../components/UI'
 import { loginTeacher } from '../api'
 
-// 老師登入頁。stage = '1' | '2'，驗證成功後把 teacher 存入 sessionStorage 再導回對應階段。
+// 老師登入頁。stage = '1' | '2' | 'admin' | 'stage4'（亦接受 '4'）。驗證成功後把 teacher
+// 存入 sessionStorage 再導回對應頁面。stage4 沿用行政（admin）權限，只是登入後導向第四階段。
 export default function TeacherLogin({ stage }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [err, setErr]           = useState('')
 
-  const isAdmin    = stage === 'admin'
-  const stageLabel = isAdmin ? '行政人員' : stage === '2' ? '第二階段' : '第一階段'
-  const accent     = isAdmin ? '#1a1a18' : stage === '2' ? '#15803d' : '#1e40af'
-  const accentBg   = isAdmin ? '#ecebe6' : stage === '2' ? '#f0fdf4' : '#eff6ff'
-  const targetHash = isAdmin ? '#/admin'  : stage === '2' ? '#/stage2' : '#/stage1'
-  const stageRole  = isAdmin ? 'admin'    : stage === '2' ? 'stage2'   : 'stage1'
-  const headerLabel = isAdmin ? '行政人員登入' : `${stageLabel}老師登入`
+  const isAdmin   = stage === 'admin'
+  const isStage4  = stage === 'stage4' || stage === '4'
+  const needAdmin = isAdmin || isStage4   // 兩者皆需 admin 角色
+
+  const stageLabel  = needAdmin ? '行政人員' : stage === '2' ? '第二階段' : '第一階段'
+  const accent      = needAdmin ? '#1a1a18' : stage === '2' ? '#15803d' : '#1e40af'
+  const accentBg    = needAdmin ? '#ecebe6' : stage === '2' ? '#f0fdf4' : '#eff6ff'
+  const targetHash  = isStage4 ? '#/stage4' : isAdmin ? '#/admin' : stage === '2' ? '#/stage2' : '#/stage1'
+  const stageRole   = needAdmin ? 'admin'   : stage === '2' ? 'stage2'   : 'stage1'
+  const headerLabel = isStage4 ? '第四階段確認登入' : isAdmin ? '行政人員登入' : `${stageLabel}老師登入`
 
   const submit = async (e) => {
     e.preventDefault()
@@ -25,7 +29,7 @@ export default function TeacherLogin({ stage }) {
       const teacher = await loginTeacher(username.trim(), password)
       if (!teacher) { setErr('帳號或密碼錯誤'); return }
       // admin 角色只給行政；both 給一階/二階但不含行政
-      const allowed = teacher.role === stageRole || (!isAdmin && teacher.role === 'both')
+      const allowed = teacher.role === stageRole || (!needAdmin && teacher.role === 'both')
       if (!allowed) { setErr(`此帳號沒有${stageLabel}的權限`); return }
       sessionStorage.setItem('teacher', JSON.stringify(teacher))
       window.location.hash = targetHash

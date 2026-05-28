@@ -3,7 +3,7 @@ const ENTRIES = [
   { key: 'stage1', hash: '#/login?stage=1', icon: '①', title: '第一階段老師', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
   { key: 'stage2', hash: '#/login?stage=2', icon: '②', title: '第二階段老師', desc: '依科系評分、給予錄取建議',                    bg: '#f0fdf4', fg: '#15803d' },
   { key: 'stage3', hash: '#/stage3',        icon: '③', title: '第三階段錄取', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
-  { key: 'stage4', hash: '#/stage4',        icon: '④', title: '第四階段確認', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
+  { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '第四階段確認', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
 ]
 
 export default function Landing() {

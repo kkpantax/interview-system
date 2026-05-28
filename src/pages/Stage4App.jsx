@@ -50,8 +50,8 @@ export default function Stage4App() {
   const [busy, setBusy]       = useState(false)
   const [toast, setToast]     = useState(null)
 
-  // 守衛：只有 admin 能進
-  useEffect(() => { if (!teacher || teacher.role !== 'admin') window.location.hash = '#/login?stage=admin' }, [teacher])
+  // 守衛：只有 admin 能進（導向 stage4 專用登入，登入後會回到本頁）
+  useEffect(() => { if (!teacher || teacher.role !== 'admin') window.location.hash = '#/login?stage=stage4' }, [teacher])
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
