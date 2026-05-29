@@ -55,7 +55,7 @@ export default function Stage3App() {
   const [toast, setToast]       = useState(null)
 
   // 守衛：只有 admin 能進
-  useEffect(() => { if (!teacher || teacher.role !== 'admin') window.location.hash = '#/login?stage=admin' }, [teacher])
+  useEffect(() => { if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) window.location.hash = '#/login?stage=admin' }, [teacher])
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -297,7 +297,7 @@ export default function Stage3App() {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
 
-  if (!teacher || teacher.role !== 'admin') return null
+  if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) return null
 
   return (
     <PageShell
