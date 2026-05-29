@@ -193,8 +193,21 @@ export default function Stage3App() {
   // 依最終狀態（正→備→不錄→待定）、志願序 asc、二階分數 desc 排序
   const centerLabelOf = (e) => e.applications?.center || '（未設定中心）'
   const centerRows = useMemo(() => {
-    return evals
-      .filter((e) => centerLabelOf(e) === selectedCenter)
+    const inCenter = evals.filter((e) => centerLabelOf(e) === selectedCenter)
+    // 以帳號為單位，算出每人在該中心的最佳狀態（admitted > waitlisted > rejected > pending）
+    const bestByAcct = new Map()
+    for (const e of inCenter) {
+      const a = acctOf(e); if (!a) continue
+      const pri = CENTER_SORT_PRIORITY[statusOf(e)] ?? 9
+      const prev = bestByAcct.get(a)
+      if (prev == null || pri < prev) bestByAcct.set(a, pri)
+    }
+    return inCenter
+      .filter((e) => {
+        const a = acctOf(e)
+        if (!a) return true  // 無帳號的列全保留
+        return (CENTER_SORT_PRIORITY[statusOf(e)] ?? 9) === bestByAcct.get(a)
+      })
       .sort((a, b) => {
         const sa = CENTER_SORT_PRIORITY[statusOf(a)] ?? 9
         const sb = CENTER_SORT_PRIORITY[statusOf(b)] ?? 9
@@ -451,7 +464,7 @@ export default function Stage3App() {
       </Card>
       ) : (
       <Card>
-        <CardHead left={`${selectedCenter} · 正備取名單`} right={`${centerRows.length} 位`} />
+        <CardHead left={`${selectedCenter} · 正備取名單`} right={`${centerRows.length} 筆（每人取最優狀態顯示）`} />
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
