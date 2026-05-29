@@ -50,7 +50,7 @@ export default async function handler(req) {
   if (!teacher || teacher.password_hash !== expected) {
     return json({ error: '帳號或密碼錯誤' }, 401)
   }
-  if (teacher.role !== 'admin') {
+  if (teacher.role !== 'admin' && teacher.role !== 'superadmin') {
     return json({ error: '只有行政人員可執行年度重置' }, 403)
   }
 

@@ -29,7 +29,10 @@ export default function TeacherLogin({ stage }) {
       const teacher = await loginTeacher(username.trim(), password)
       if (!teacher) { setErr('帳號或密碼錯誤'); return }
       // admin 角色只給行政；both 給一階/二階但不含行政
-      const allowed = teacher.role === stageRole || (!needAdmin && teacher.role === 'both')
+      const allowed =
+        teacher.role === 'superadmin' ||
+        teacher.role === stageRole ||
+        (!needAdmin && teacher.role === 'both')
       if (!allowed) { setErr(`此帳號沒有${stageLabel}的權限`); return }
       sessionStorage.setItem('teacher', JSON.stringify(teacher))
       window.location.hash = targetHash

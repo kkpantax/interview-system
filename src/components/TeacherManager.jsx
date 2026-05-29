@@ -3,10 +3,11 @@ import { Btn, Card, CardHead, Pill, s } from './UI'
 import { getTeachers, createTeacher, deleteTeacher } from '../api'
 
 const ROLES = [
-  { v: 'stage1', label: '一階老師' },
-  { v: 'stage2', label: '二階老師' },
-  { v: 'both',   label: '一階＋二階' },
-  { v: 'admin',  label: '行政人員' },
+  { v: 'stage1',     label: '一階老師' },
+  { v: 'stage2',     label: '二階老師' },
+  { v: 'both',       label: '一階＋二階' },
+  { v: 'admin',      label: '行政人員' },
+  { v: 'superadmin', label: '⭐ 超級管理員（全系統）' },
 ]
 const roleLabel = (r) => ROLES.find((x) => x.v === r)?.label || r
 const needsDept = (r) => r === 'stage2' || r === 'both'
