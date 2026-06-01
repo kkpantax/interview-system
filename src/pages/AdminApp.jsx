@@ -71,6 +71,7 @@ export default function AdminApp() {
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [centerFilter, setCenterFilter] = useState('')
   const [selected, setSelected]   = useState(() => new Set())  // 選取的帳號群組 key
   const [expanded, setExpanded]   = useState(() => new Set())  // 展開的帳號群組 key
   const [assignDate, setAssignDate] = useState(localToday)
@@ -176,6 +177,12 @@ export default function AdminApp() {
   const filtered = groups.filter((g) => {
     if (deptFilter && !g.apps.some((a) => a.department === deptFilter)) return false
     if (statusFilter && g.status !== statusFilter) return false
+    if (centerFilter === '__none__') {
+      // 篩出「未設定中心」的學生
+      if (g.center) return false
+    } else if (centerFilter) {
+      if (g.center !== centerFilter) return false
+    }
     if (kw) {
       const q = kw.toLowerCase()
       const hay = [g.rep.name, g.rep.name_english, g.account, g.rep.passport_number]
@@ -407,6 +414,11 @@ export default function AdminApp() {
         <select style={s.sel} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">全部狀態</option>
           {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select style={s.sel} value={centerFilter} onChange={(e) => setCenterFilter(e.target.value)}>
+          <option value="">全部中心</option>
+          <option value="__none__">（未設定中心）</option>
+          {centers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
         </select>
         <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 人</span>
       </div>
