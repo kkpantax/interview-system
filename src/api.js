@@ -492,10 +492,15 @@ export async function syncStage4FromStage3() {
 
 // 更新單筆 stage4 狀態（聯繫狀態 / 備注…）
 export async function updateStage4Status(id, fields) {
-  return callProxy(
+  const result = await callProxy(
     `/rest/v1/stage4_confirmations?id=eq.${id}`,
     'PATCH', fields, 'return=representation',
   )
+  // return=representation 回傳更新後的資料陣列；若為空代表 id 不存在或 RLS 阻擋
+  if (!result || (Array.isArray(result) && result.length === 0)) {
+    throw new Error('更新失敗（找不到該筆資料，或 stage4_confirmations 缺少 UPDATE 的 RLS 政策）')
+  }
+  return result
 }
 
 // ── 年度重置（行政）────────────────────────────────────────────────────────

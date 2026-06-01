@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Btn, s } from '../components/UI'
 import { loginTeacher } from '../api'
 
@@ -21,6 +21,19 @@ export default function TeacherLogin({ stage }) {
   const stageRole   = needAdmin ? 'admin'   : stage === '2' ? 'stage2'   : 'stage1'
   const headerLabel = isStage4 ? '第四階段確認登入' : isAdmin ? '行政人員登入' : `${stageLabel}老師登入`
 
+  // 已登入且角色符合 → 直接跳轉，不顯示登入表單
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('teacher'))
+      if (!stored) return
+      const alreadyAllowed =
+        stored.role === 'superadmin' ||
+        stored.role === stageRole ||
+        (!needAdmin && stored.role === 'both')
+      if (alreadyAllowed) window.location.hash = targetHash
+    } catch { /* ignore */ }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const submit = async (e) => {
     e.preventDefault()
     if (!username.trim() || !password) { setErr('請輸入帳號與密碼'); return }
@@ -34,7 +47,7 @@ export default function TeacherLogin({ stage }) {
         teacher.role === stageRole ||
         (!needAdmin && teacher.role === 'both')
       if (!allowed) { setErr(`此帳號沒有${stageLabel}的權限`); return }
-      sessionStorage.setItem('teacher', JSON.stringify(teacher))
+      localStorage.setItem('teacher', JSON.stringify(teacher))
       window.location.hash = targetHash
     } catch (e2) {
       setErr('登入失敗：' + e2.message)
