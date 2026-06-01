@@ -72,6 +72,7 @@ export default function AdminApp() {
   const [deptFilter, setDeptFilter]     = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [centerFilter, setCenterFilter] = useState('')
+  const [nationalityFilter, setNationalityFilter] = useState('')
   const [selected, setSelected]   = useState(() => new Set())  // 選取的帳號群組 key
   const [expanded, setExpanded]   = useState(() => new Set())  // 展開的帳號群組 key
   const [assignDate, setAssignDate] = useState(localToday)
@@ -169,6 +170,7 @@ export default function AdminApp() {
   }
 
   const depts = [...new Set(apps.map((a) => a.department).filter(Boolean))].sort()
+  const nationalities = [...new Set(apps.map((a) => a.nationality).filter(Boolean))].sort()
 
   // 先分組，再以群組為單位篩選（任一志願符合即顯示）
   const groups = useMemo(() => groupByAccount(apps), [apps])
@@ -183,6 +185,7 @@ export default function AdminApp() {
     } else if (centerFilter) {
       if (g.center !== centerFilter) return false
     }
+    if (nationalityFilter && g.rep.nationality !== nationalityFilter) return false
     if (kw) {
       const q = kw.toLowerCase()
       const hay = [g.rep.name, g.rep.name_english, g.account, g.rep.passport_number]
@@ -419,6 +422,10 @@ export default function AdminApp() {
           <option value="">全部中心</option>
           <option value="__none__">（未設定中心）</option>
           {centers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+        </select>
+        <select style={s.sel} value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
+          <option value="">全部國籍</option>
+          {nationalities.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
         <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 人</span>
       </div>
