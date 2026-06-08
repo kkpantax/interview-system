@@ -1,15 +1,15 @@
 import { useState } from 'react'
 
 const PORTALS = [
-  { key: 'intl', icon: '🏛', title: '國際事務處入口', desc: '行政人員、第一／三／四階段（行政作業與錄取流程）', bg: '#eef2ff', fg: '#3730a3' },
+  { key: 'intl', icon: '🏛', title: '國際事務處入口', desc: '書審通過、實體面試、放榜會議、確認就學', bg: '#eef2ff', fg: '#3730a3' },
   { key: 'dept', icon: '✎',  title: '各系評分入口',  desc: '第二階段老師（各科系面試評分）',                 bg: '#f0fdf4', fg: '#15803d' },
 ]
 
 const INTL_ENTRIES = [
-  { key: 'admin',  hash: '#/login?stage=admin', icon: '⚙', title: '行政人員',     desc: '上傳名單、查看總覽、帳號管理、匯出最終名單', bg: '#f5f4f0', fg: '#1a1a18' },
-  { key: 'stage1', hash: '#/login?stage=1',      icon: '①', title: '第一階段老師', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
-  { key: 'stage3', hash: '#/stage3',             icon: '③', title: '第三階段錄取', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
-  { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '第四階段確認', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
+  { key: 'admin',  hash: '#/login?stage=admin', icon: '⚙', title: '書審通過名單',     desc: '上傳名單、查看總覽、帳號管理、匯出最終名單', bg: '#f5f4f0', fg: '#1a1a18' },
+  { key: 'stage1', hash: '#/login?stage=1',      icon: '①', title: '第一階段實體面試名單', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
+  { key: 'stage3', hash: '#/stage3',             icon: '③', title: '放榜會議名單', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
+  { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '確認就學名單', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
 ]
 
 export default function Landing() {
@@ -32,7 +32,7 @@ export default function Landing() {
       <div style={{ width: 760, maxWidth: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontSize: 30, fontWeight: 700 }}>實踐大學</div>
-          <div style={{ fontSize: 16, color: '#555' }}>國際生面試管理系統</div>
+          <div style={{ fontSize: 16, color: '#555' }}>國際專修部面試管理系統</div>
           <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>
             {view === 'home' ? '請選擇入口' : '國際事務處入口 — 請選擇作業'}
           </div>
