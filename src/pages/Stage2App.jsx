@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageShell } from '../components/PageShell'
-import { Card, CardHead, s } from '../components/UI'
+import { Card, CardHead, Btn, Modal, s } from '../components/UI'
+import { writeXlsx } from '../components/ExportBtn'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
-import { getStage2List, getStage2Stats, saveEvaluation } from '../api'
-import { getTeacher, logoutTeacher } from '../auth'
+import { SCORE_ITEMS, DECISIONS } from '../constants'
+import {
+  getStage2List, getStage2Stats, saveEvaluation,
+  getStage2DeptSummary, getStage2EvalsByDate,
+} from '../api'
 
 const localToday = () => {
   const d = new Date()
@@ -12,28 +16,125 @@ const localToday = () => {
 }
 
 const EMPTY_STATS = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
+const ghostBtn = { background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
 
-export default function Stage2App() {
-  const teacher = getTeacher()
-  // 科系綁定老師帳號，不再讓老師現場切換
-  const [dept]                  = useState(teacher?.department || '')
-  const [students, setStudents] = useState([])
-  const [stats, setStats]       = useState(EMPTY_STATS)
-  const [search, setSearch]     = useState('')
-  const [active, setActive]     = useState(null)   // 評分中的學生
-  const [loading, setLoading]   = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [toast, setToast]       = useState(null)
+function DeptPicker() {
+  const [rows, setRows]       = useState([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr]         = useState('')
 
-  // 守衛：未登入導回登入頁
-  useEffect(() => { if (!teacher) window.location.hash = '#/login?stage=2' }, [teacher])
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const data = await getStage2DeptSummary()
+        if (alive) setRows(data || [])
+      } catch (e) {
+        if (alive) setErr(e.message)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  const pick = (dept) => { window.location.hash = '#/stage2?dept=' + encodeURIComponent(dept) }
+
+  return (
+    <PageShell
+      title="實踐大學" subtitle="第二階段 · 選擇科系" accent="#14532d"
+      right={<button onClick={() => { window.location.hash = '#/' }} style={ghostBtn}>← 返回首頁</button>}
+    >
+      {loading ? (
+        <Card><div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 14 }}>載入中…</div></Card>
+      ) : err ? (
+        <Card><div style={{ padding: 40, textAlign: 'center', color: '#dc2626', fontSize: 14 }}>載入失敗：{err}</div></Card>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+          {rows.map((r) => (
+            <button key={r.department} onClick={() => pick(r.department)}
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 12, padding: '18px 18px',
+                border: '1px solid #e8e7e3', borderRadius: 14, background: 'white',
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all .15s',
+              }}
+              onMouseEnter={(ev) => { ev.currentTarget.style.borderColor = '#15803d'; ev.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseLeave={(ev) => { ev.currentTarget.style.borderColor = '#e8e7e3'; ev.currentTarget.style.transform = 'none' }}
+            >
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a18', lineHeight: 1.35 }}>{r.department}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { label: '等待評分', n: r.waiting,   bg: '#eff6ff', color: '#1e40af' },
+                  { label: '已評選',   n: r.evaluated, bg: '#f1f5f9', color: '#475569' },
+                  { label: '建議錄取', n: r.admitted,  bg: '#dcfce7', color: '#15803d' },
+                ].map((c) => (
+                  <div key={c.label} style={{ flex: 1, background: c.bg, color: c.color, borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</div>
+                    <div style={{ fontSize: 11, marginTop: 2 }}>{c.label}</div>
+                  </div>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </PageShell>
+  )
+}
+
+function EvaluatorGate({ dept, onStart }) {
+  const [name, setName] = useState('')
+  const [date, setDate] = useState(localToday())
+  const start = () => { if (name.trim()) onStart({ name: name.trim(), date }) }
+
+  return (
+    <PageShell
+      title="實踐大學" subtitle={`第二階段 · ${dept}`} accent="#14532d"
+      right={<button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>}
+    >
+      <Card style={{ maxWidth: 460, margin: '0 auto' }}>
+        <CardHead left="評分人員資料" />
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.6 }}>
+            進入「{dept}」評分前，請填寫評分老師姓名與評分日期。此資料會記錄在每一筆評分上，並可下載當日評分 Excel 供行政人員查核。
+          </div>
+          <span style={s.secLabel}>評分老師姓名</span>
+          <input style={s.input} placeholder="請輸入姓名" value={name} autoFocus
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
+          <span style={s.secLabel}>評分日期</span>
+          <input type="date" style={s.input} value={date} onChange={(e) => setDate(e.target.value)} />
+          <Btn variant="primary" onClick={start} disabled={!name.trim()}
+            style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
+            開始評分
+          </Btn>
+        </div>
+      </Card>
+    </PageShell>
+  )
+}
+
+export default function Stage2App({ dept = '' }) {
+  if (!dept) return <DeptPicker />
+  return <Stage2Scoring dept={dept} />
+}
+
+function Stage2Scoring({ dept }) {
+  const [evaluator, setEvaluator] = useState(null)
+  const [students, setStudents]   = useState([])
+  const [stats, setStats]         = useState(EMPTY_STATS)
+  const [search, setSearch]       = useState('')
+  const [active, setActive]       = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [toast, setToast]         = useState(null)
+  const [finishing, setFinishing] = useState(null)   // 今日總結 { total, admit, waitlist, reject, pending }
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
   }, [])
 
   const load = useCallback(async () => {
-    if (!dept) { setStudents([]); setStats(EMPTY_STATS); return }
     setLoading(true)
     try {
       const [list, st] = await Promise.all([getStage2List(dept), getStage2Stats(dept)])
@@ -46,9 +147,10 @@ export default function Stage2App() {
     }
   }, [dept, showToast])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (evaluator) load() }, [evaluator, load])
 
-  // 搜尋（帳號 / 姓名，不分大小寫），再分待評 / 已評兩區
+  if (!evaluator) return <EvaluatorGate dept={dept} onStart={setEvaluator} />
+
   const q = search.trim().toLowerCase()
   const filtered = students.filter((stu) =>
     !q ||
@@ -71,13 +173,14 @@ export default function Stage2App() {
     try {
       await saveEvaluation({
         application_id: active.id,
-        eval_date: localToday(),
+        eval_date: evaluator.date,
+        evaluator_name: evaluator.name,
         department: dept,
         ...payload,
       })
       showToast(`已儲存 ${active.name} 的評分`)
       setActive(null)
-      await load()          // 評分後該生從待評名單移除
+      await load()
     } catch (e) {
       showToast('儲存失敗：' + e.message, 'error')
     } finally {
@@ -85,47 +188,84 @@ export default function Stage2App() {
     }
   }
 
-  if (!teacher) return null
+  const downloadToday = async () => {
+    try {
+      const evs = await getStage2EvalsByDate(dept, evaluator.date)
+      if (!evs || !evs.length) { showToast('該日期尚無評分可下載', 'error'); return }
+      const decLabel = (v) => (DECISIONS.find((d) => d.v === v) || {}).label || v || ''
+      const columns = [
+        { key: 'evaluator_name', label: '評分老師' },
+        { key: 'eval_date',      label: '評分日期' },
+        { key: 'account',        label: '帳號' },
+        { key: 'name',           label: '中文姓名' },
+        { key: 'name_english',   label: '英文姓名' },
+        { key: 'nationality',    label: '國籍' },
+        { key: 'department',     label: '系所' },
+        ...SCORE_ITEMS.map((it) => ({ key: it.key, label: it.label })),
+        { key: 'total_score',    label: '總分' },
+        { key: 'recommendation', label: '建議' },
+        { key: 'teacher_note',   label: '備註' },
+      ]
+      const rows = evs.map((e) => ({
+        evaluator_name: e.evaluator_name || '',
+        eval_date:      e.eval_date || '',
+        account:        e.applications?.account || '',
+        name:           e.applications?.name || '',
+        name_english:   e.applications?.name_english || '',
+        nationality:    e.applications?.nationality || '',
+        department:     e.department || '',
+        ...Object.fromEntries(SCORE_ITEMS.map((it) => [it.key, e.scores?.[it.key] ?? ''])),
+        total_score:    e.total_score ?? '',
+        recommendation: decLabel(e.recommendation),
+        teacher_note:   e.teacher_note || '',
+      }))
+      writeXlsx(columns, rows, `第二階段評分_${dept}_${evaluator.date}.xlsx`)
+    } catch (err) {
+      showToast('下載失敗：' + err.message, 'error')
+    }
+  }
+
+  // 收尾：彈出今日總結，確認「今天都評完了嗎」
+  const openFinish = async () => {
+    try {
+      const evs = await getStage2EvalsByDate(dept, evaluator.date)
+      const c = { total: (evs || []).length, admit: 0, waitlist: 0, reject: 0, pending: 0 }
+      for (const e of (evs || [])) { if (c[e.recommendation] !== undefined) c[e.recommendation]++; else c.pending++ }
+      setFinishing(c)
+    } catch (err) {
+      showToast('讀取今日評分失敗：' + err.message, 'error')
+    }
+  }
+  const leave = () => { window.location.hash = '#/stage2' }
+  const finishAndDownload = async () => { await downloadToday(); leave() }
 
   return (
     <PageShell
       title="實踐大學" subtitle="第二階段 · 評分" accent="#14532d" toast={toast}
       right={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {dept && !active && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {!active && (
             <input
-              style={{ ...s.input, marginBottom: 0, width: 180 }}
+              style={{ ...s.input, marginBottom: 0, width: 160 }}
               placeholder="搜尋帳號 / 姓名"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           )}
-          {dept ? (
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f4f0', padding: '4px 10px', background: '#ffffff1a', borderRadius: 6 }}>
-              {dept}
-            </span>
-          ) : (
-            <span style={{ fontSize: 12, color: '#fca5a5' }}>此帳號尚未設定科系，請聯絡行政人員</span>
-          )}
-          <span style={{ fontSize: 12, color: '#cbd5e1' }}>{teacher.display_name || teacher.username}</span>
-          <button onClick={logoutTeacher}
-            style={{ background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-            登出
-          </button>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f4f0', padding: '4px 10px', background: '#ffffff1a', borderRadius: 6 }}>
+            {dept}
+          </span>
+          <span style={{ fontSize: 12, color: '#cbd5e1' }}>評分：{evaluator.name} · {evaluator.date}</span>
+          {!active && <button onClick={downloadToday} style={ghostBtn}>下載今日評分</button>}
+          {!active && <button onClick={openFinish} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>完成今日評分</button>}
+          <button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>
         </div>
       }
     >
-      {!dept ? (
-        <Card>
-          <div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 14 }}>
-            此帳號尚未設定科系，請聯絡行政人員
-          </div>
-        </Card>
-      ) : active ? (
-        <ScoreForm student={active} onSave={handleSave} onBack={() => setActive(null)} saving={saving} />
+      {active ? (
+        <ScoreForm student={active} evaluator={evaluator} onSave={handleSave} onBack={() => setActive(null)} saving={saving} />
       ) : (
         <>
-          {/* 統計 Dashboard */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             {statCards.map((c) => (
               <div key={c.label} style={{
@@ -148,6 +288,39 @@ export default function Stage2App() {
             <Stage2List students={scored} onOpen={setActive} loading={loading} showEvalSummary />
           </Card>
         </>
+      )}
+
+      {finishing && (
+        <Modal title="完成今日評分" onClose={() => setFinishing(null)} width={420}>
+          <div style={{ fontSize: 13, color: '#555', marginBottom: 12, lineHeight: 1.6 }}>
+            今日（{evaluator.date}）於「{dept}」共評 <b>{finishing.total}</b> 位。今日的評分都確定完成了嗎？
+          </div>
+          <div style={{ background: '#faf9f6', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            {[
+              { label: '建議錄取',   n: finishing.admit,    color: '#15803d' },
+              { label: '備取',       n: finishing.waitlist, color: '#b45309' },
+              { label: '不建議錄取', n: finishing.reject,   color: '#dc2626' },
+              { label: '待定',       n: finishing.pending,  color: '#6b7280' },
+            ].map((c) => (
+              <div key={c.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: '#666' }}>{c.label}</span>
+                <span style={{ fontWeight: 600, color: c.color }}>{c.n}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: '#999', marginTop: 10, lineHeight: 1.6 }}>
+            每位學生的評分在送出時即已存檔，這裡是收尾確認；建議下載查核表交給行政人員。
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Btn onClick={() => setFinishing(null)} style={{ flex: 1, justifyContent: 'center' }}>尚未，繼續評分</Btn>
+            <Btn variant="primary" onClick={finishAndDownload} style={{ flex: 1, justifyContent: 'center' }}>下載查核表並離開</Btn>
+          </div>
+          <div style={{ textAlign: 'center', marginTop: 10 }}>
+            <button onClick={leave} style={{ background: 'none', border: 'none', color: '#888', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+              不需下載，直接離開
+            </button>
+          </div>
+        </Modal>
       )}
     </PageShell>
   )

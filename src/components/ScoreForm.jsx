@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { SCORE_ITEMS, DECISIONS, QUESTIONS_STAGE1, QUESTIONS_STAGE2 } from '../constants'
-import { BackBtn, Card, CardHead, Btn, s } from './UI'
+import { BackBtn, Card, CardHead, Btn, Modal, s } from './UI'
 
 const emptyScores = () => Object.fromEntries(SCORE_ITEMS.map((i) => [i.key, 0]))
 const sumScores = (sc) => SCORE_ITEMS.reduce((a, i) => a + Number(sc[i.key] || 0), 0)
 
 // 第二階段評分表（寫入 evaluations）
-export default function ScoreForm({ student, onSave, onBack, saving }) {
+export default function ScoreForm({ student, onSave, onBack, saving, evaluator }) {
   const [scores, setScores] = useState(emptyScores)
   const [rec, setRec]       = useState('pending')
   const [note, setNote]     = useState('')
+  const [confirming, setConfirming] = useState(false)
   // 自訂題目：[{ question, note }]
   const [customQs, setCustomQs] = useState([])
   const [newQ, setNewQ]         = useState('')
@@ -106,7 +107,7 @@ export default function ScoreForm({ student, onSave, onBack, saving }) {
                 value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
 
-            <Btn variant="primary" onClick={handleSave} disabled={saving}
+            <Btn variant="primary" onClick={() => setConfirming(true)} disabled={saving}
               style={{ width: '100%', justifyContent: 'center', marginTop: 16 }}>
               {saving ? '儲存中...' : '儲存評分'}
             </Btn>
@@ -183,6 +184,46 @@ export default function ScoreForm({ student, onSave, onBack, saving }) {
           )}
         </div>
       </Card>
+
+      {confirming && (
+        <Modal title="確認送出評分" onClose={() => setConfirming(false)} width={460}>
+          <div style={{ fontSize: 13, color: '#555', marginBottom: 12 }}>
+            請確認以下評分內容無誤後再送出：
+          </div>
+          <div style={{ background: '#faf9f6', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            <div style={{ marginBottom: 8 }}>
+              <b style={{ fontSize: 14 }}>{student.name}</b> {student.name_english} · {student.department}
+            </div>
+            {evaluator && (
+              <div style={{ color: '#666', marginBottom: 10 }}>
+                評分老師：{evaluator.name} · 日期：{evaluator.date}
+              </div>
+            )}
+            {SCORE_ITEMS.map((it) => (
+              <div key={it.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                <span style={{ color: '#666' }}>{it.label}</span>
+                <span style={{ fontWeight: 600 }}>{scores[it.key] || 0}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 6, borderTop: '1px solid #e8e7e3' }}>
+              <span>總分</span><span style={{ fontWeight: 700 }}>{total} / 40</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 0' }}>
+              <span>錄取建議</span>
+              <span style={{ fontWeight: 600 }}>{(DECISIONS.find((d) => d.v === rec) || {}).label || '—'}</span>
+            </div>
+            {note.trim() && <div style={{ marginTop: 8, color: '#666' }}>備註：{note.trim()}</div>}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Btn onClick={() => setConfirming(false)} style={{ flex: 1, justifyContent: 'center' }}>返回修改</Btn>
+            <Btn variant="primary" disabled={saving}
+              onClick={() => { setConfirming(false); handleSave() }}
+              style={{ flex: 1, justifyContent: 'center' }}>
+              確認送出
+            </Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

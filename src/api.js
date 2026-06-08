@@ -322,6 +322,36 @@ export async function saveEvaluation(ev) {
   return callProxy('/rest/v1/evaluations', 'POST', ev, 'return=representation')
 }
 
+// 各系評分總覽：列出所有系所，並計每系（一階通過的學生）
+//   waiting=尚未有任何評分, evaluated=已有至少一筆評分, admitted=評分中有任一筆 recommendation=admit
+export async function getStage2DeptSummary() {
+  const [depts, rows] = await Promise.all([
+    getDepartments(),
+    callProxy(
+      '/rest/v1/applications?select=department,evaluations(recommendation)&stage1_passed_date=not.is.null',
+      'GET',
+    ),
+  ])
+  const map = new Map(depts.map((d) => [d, { department: d, waiting: 0, evaluated: 0, admitted: 0 }]))
+  for (const r of (rows || [])) {
+    const m = map.get(r.department)
+    if (!m) continue
+    const evs = r.evaluations || []
+    if (evs.length === 0) m.waiting++
+    else { m.evaluated++; if (evs.some((e) => e.recommendation === 'admit')) m.admitted++ }
+  }
+  return depts.map((d) => map.get(d))
+}
+
+// 某系某日的評分明細（含學生資料），供下載查核 Excel 使用
+export async function getStage2EvalsByDate(dept, date) {
+  return callProxy(
+    `/rest/v1/evaluations?select=*,applications(account,name,name_english,nationality,gender)` +
+      `&department=eq.${encodeURIComponent(dept)}&eval_date=eq.${date}&order=total_score.desc`,
+    'GET',
+  )
+}
+
 // ── Admin 匯出最終名單 ──────────────────────────────────────────────────────
 // recommendation = admit 的評分，連同 applications 一起帶出
 export async function getFinalList() {

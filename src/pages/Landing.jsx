@@ -18,7 +18,7 @@ export default function Landing() {
 
   const onCard = (e) => {
     if (e.portal) {
-      if (e.key === 'dept') return go('#/login?stage=2')
+      if (e.key === 'dept') return go('#/stage2')
       if (e.key === 'intl') return setView('intl')
     }
     go(e.hash)
