@@ -2,6 +2,20 @@ import { Btn, Pill } from './UI'
 import { DECISIONS } from '../constants'
 
 const decInfo = (v) => DECISIONS.find((d) => d.v === v) || DECISIONS.find((d) => d.v === 'pending')
+
+// 志願序小標籤（第一志願綠底凸顯），待評分／已評分名單共用
+function PrefPill({ order }) {
+  if (!order) return '—'
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 6,
+      fontSize: 12, fontWeight: 600,
+      background: order === 1 ? '#dcfce7' : '#f1f5f9',
+      color: order === 1 ? '#15803d' : '#475569',
+    }}>第 {order} 志願</span>
+  )
+}
+
 // 多筆評分取 eval_date 最新的一筆（多老師、多輪）
 const latestEval = (evs) =>
   (evs || []).reduce((latest, e) =>
@@ -9,11 +23,11 @@ const latestEval = (evs) =>
 
 // 第二階段名單（presentational）
 // showEvalSummary=true：已評分區，顯示最新建議 badge、已評次數，按鈕為「再次評分」
-export default function Stage2List({ students, onOpen, loading, showEvalSummary = false }) {
+export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false }) {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const headers = showEvalSummary
-    ? ['中文姓名', '英文姓名', '帳號', '評分結果', '']
+    ? ['中文姓名', '英文姓名', '帳號', '志願', '評分結果', '']
     : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '一階通過日', '']
 
   return (
@@ -35,6 +49,7 @@ export default function Stage2List({ students, onOpen, loading, showEvalSummary 
                 {showEvalSummary ? (
                   <>
                     <td style={{ ...td, color: '#999', fontSize: 12 }}>{stu.account}</td>
+                    <td style={td}><PrefPill order={stu.preference_order} /></td>
                     <td style={td}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {info && <Pill color={info.color} bg={info.bg}>{info.label}</Pill>}
@@ -45,25 +60,21 @@ export default function Stage2List({ students, onOpen, loading, showEvalSummary 
                 ) : (
                   <>
                     <td style={{ ...td, color: '#999', fontSize: 12 }}>{stu.account}</td>
-                    <td style={td}>
-                      {stu.preference_order
-                        ? <span style={{
-                            display: 'inline-block', padding: '2px 8px', borderRadius: 6,
-                            fontSize: 12, fontWeight: 600,
-                            background: stu.preference_order === 1 ? '#dcfce7' : '#f1f5f9',
-                            color: stu.preference_order === 1 ? '#15803d' : '#475569',
-                          }}>第 {stu.preference_order} 志願</span>
-                        : '—'}
-                    </td>
+                    <td style={td}><PrefPill order={stu.preference_order} /></td>
                     <td style={td}>{stu.nationality}</td>
                     <td style={td}>{stu.gender}</td>
                     <td style={{ ...td, color: '#15803d' }}>{stu.stage1_passed_date || '—'}</td>
                   </>
                 )}
                 <td style={td}>
-                  <Btn variant="primary" onClick={() => onOpen(stu)}>
-                    {showEvalSummary ? '再次評分 →' : '評分 →'}
-                  </Btn>
+                  {showEvalSummary ? (
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <Btn onClick={() => onView(stu)}>查看</Btn>
+                      <Btn variant="primary" onClick={() => onOpen(stu)}>再次評分 →</Btn>
+                    </div>
+                  ) : (
+                    <Btn variant="primary" onClick={() => onOpen(stu)}>評分 →</Btn>
+                  )}
                 </td>
               </tr>
             )

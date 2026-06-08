@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageShell } from '../components/PageShell'
-import { Card, CardHead, Btn, Modal, s } from '../components/UI'
+import { Card, CardHead, Btn, Modal, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
@@ -132,6 +132,65 @@ function EvaluatorGate({ dept, onStart }) {
   )
 }
 
+// 唯讀檢視某學生在本系的所有評分內容（不進入再評分頁）
+function EvalDetailModal({ student, onClose }) {
+  const decInfo = (v) => DECISIONS.find((d) => d.v === v) || DECISIONS.find((d) => d.v === 'pending')
+  const evs = [...(student.evaluations || [])].sort(
+    (a, b) => String(b.eval_date || '').localeCompare(String(a.eval_date || '')),
+  )
+  return (
+    <Modal title={`${student.name} 的評分紀錄`} onClose={onClose} width={560}>
+      <div style={{ fontSize: 13, color: '#666', marginBottom: 14 }}>
+        {student.name_english} · {student.account} · {student.department}
+      </div>
+      {evs.length === 0 && (
+        <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 20 }}>尚無評分紀錄</div>
+      )}
+      {evs.map((e, idx) => {
+        const info = decInfo(e.recommendation)
+        const sc = e.scores || {}
+        const cqs = Array.isArray(e.custom_questions) ? e.custom_questions : []
+        return (
+          <div key={e.id || idx} style={{ border: '1px solid #e8e7e3', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <b style={{ fontSize: 14 }}>{e.evaluator_name || '（未填老師）'}</b>
+              <span style={{ fontSize: 12, color: '#888' }}>{e.eval_date || ''}</span>
+              <Pill color={info.color} bg={info.bg}>{info.label}</Pill>
+              <span style={{ marginLeft: 'auto', fontSize: 13 }}>
+                總分 <b style={{ fontSize: 16 }}>{e.total_score ?? '—'}</b> / 40
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 16px', fontSize: 13 }}>
+              {SCORE_ITEMS.map((it) => (
+                <div key={it.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                  <span style={{ color: '#666' }}>{it.label}</span>
+                  <span style={{ fontWeight: 600 }}>{sc[it.key] ?? 0}</span>
+                </div>
+              ))}
+            </div>
+            {e.teacher_note && (
+              <div style={{ marginTop: 10, fontSize: 13, color: '#555', background: '#faf9f6', borderRadius: 6, padding: '8px 10px', whiteSpace: 'pre-wrap' }}>
+                備註：{e.teacher_note}
+              </div>
+            )}
+            {cqs.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>自訂題目</div>
+                {cqs.map((c, i) => (
+                  <div key={i} style={{ padding: '4px 0', borderTop: i ? '1px solid #f5f4f0' : 'none', fontSize: 13 }}>
+                    <div style={{ fontWeight: 500 }}>{i + 1}. {c.question}</div>
+                    {c.note && <div style={{ color: '#666', marginTop: 2 }}>{c.note}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </Modal>
+  )
+}
+
 export default function Stage2App({ dept = '' }) {
   if (!dept) return <DeptPicker />
   return <Stage2Scoring dept={dept} />
@@ -144,6 +203,7 @@ function Stage2Scoring({ dept }) {
   const [quota, setQuota]         = useState(null)
   const [search, setSearch]       = useState('')
   const [active, setActive]       = useState(null)
+  const [viewing, setViewing]     = useState(null)
   const [loading, setLoading]     = useState(false)
   const [saving, setSaving]       = useState(false)
   const [toast, setToast]         = useState(null)
@@ -307,10 +367,12 @@ function Stage2Scoring({ dept }) {
 
           <Card>
             <CardHead left={`${dept} · 已評分`} right={`${scored.length} 位`} />
-            <Stage2List students={scored} onOpen={setActive} loading={loading} showEvalSummary />
+            <Stage2List students={scored} onOpen={setActive} onView={setViewing} loading={loading} showEvalSummary />
           </Card>
         </>
       )}
+
+      {viewing && <EvalDetailModal student={viewing} onClose={() => setViewing(null)} />}
 
       {finishing && (
         <Modal title="完成今日評分" onClose={() => setFinishing(null)} width={420}>
