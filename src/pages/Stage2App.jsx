@@ -5,10 +5,10 @@ import { writeXlsx } from '../components/ExportBtn'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
 import Stage2GuideModal from '../components/Stage2GuideModal'
-import { SCORE_ITEMS, DECISIONS, CAMPUSES, campusOf } from '../constants'
+import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation,
-  getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas,
+  getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
 } from '../api'
 
 const localToday = () => {
@@ -39,6 +39,7 @@ const ghostBtn = { background: 'none', border: '1px solid #ffffff33', color: '#f
 
 function DeptPicker() {
   const [rows, setRows]       = useState([])
+  const [campusMap, setCampusMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [err, setErr]         = useState('')
   const [showGuide, setShowGuide] = useState(false)
@@ -47,8 +48,11 @@ function DeptPicker() {
     let alive = true
     ;(async () => {
       try {
-        const [data, quotas] = await Promise.all([getStage2DeptSummary(), getDepartmentQuotas()])
-        if (alive) setRows((data || []).map((r) => ({ ...r, quota: quotas[r.department] ?? null })))
+        const [data, quotas, cm] = await Promise.all([getStage2DeptSummary(), getDepartmentQuotas(), getDepartmentCampuses()])
+        if (alive) {
+          setCampusMap(cm || {})
+          setRows((data || []).map((r) => ({ ...r, quota: quotas[r.department] ?? null })))
+        }
       } catch (e) {
         if (alive) setErr(e.message)
       } finally {
@@ -61,8 +65,8 @@ function DeptPicker() {
   const pick = (dept) => { window.location.hash = '#/stage2?dept=' + encodeURIComponent(dept) }
 
   const groups = [
-    ...CAMPUSES.map((c) => ({ name: c.name, items: rows.filter((r) => campusOf(r.department) === c.name) })),
-    { name: '其他', items: rows.filter((r) => campusOf(r.department) === '其他') },
+    ...CAMPUSES.map((c) => ({ name: c.name, items: rows.filter((r) => resolveCampus(r.department, campusMap) === c.name) })),
+    { name: '其他', items: rows.filter((r) => resolveCampus(r.department, campusMap) === '其他') },
   ].filter((g) => g.items.length)
 
   const card = (r) => (

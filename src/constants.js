@@ -127,3 +127,11 @@ export const campusOf = (dept = '') => {
   for (const c of CAMPUSES) if (c.keywords.some((k) => dept.includes(k))) return c.name
   return '其他'
 }
+
+// 後台「校區設定」可選的校區（同時也是選系頁的分組順序來源）
+export const CAMPUS_OPTIONS = ['台北校區', '高雄校區', '其他']
+
+// 解析某系所屬校區：優先用後台手動設定（overrides: { 系名: 校區 }），
+// 未設定者回退關鍵字判斷（campusOf）。overrides 由 department_campus 載入。
+export const resolveCampus = (dept = '', overrides = {}) =>
+  (overrides && overrides[dept]) || campusOf(dept)

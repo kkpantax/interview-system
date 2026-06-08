@@ -13,6 +13,7 @@ const TABLES = [
   'evaluations',
   'stage1_records',
   'applications',
+  'department_quota',
 ]
 
 const json = (data, status = 200) =>

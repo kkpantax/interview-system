@@ -112,6 +112,21 @@ export async function setDepartmentQuota(department, quota) {
   )
 }
 
+// ── 各系所屬校區（行政後台設定，存於 department_campus）──
+// 回傳 { 系名: 校區 } 的 map；未設定的系不在 map 內，由前端用關鍵字 fallback。
+export async function getDepartmentCampuses() {
+  const rows = await callProxy('/rest/v1/department_campus?select=department,campus', 'GET')
+  return Object.fromEntries((rows || []).map((r) => [r.department, r.campus]))
+}
+export async function setDepartmentCampus(department, campus) {
+  return callProxy(
+    '/rest/v1/department_campus?on_conflict=department',
+    'POST',
+    { department, campus, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates,return=representation',
+  )
+}
+
 // 以 (account, department) 為 key 手動 upsert（資料表無 unique 約束）。
 // 回傳 { added, updated }。注意：更新走 PATCH，需要 applications 有 UPDATE 的 RLS 政策。
 const IMPORT_BATCH = 50

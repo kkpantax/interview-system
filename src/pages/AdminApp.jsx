@@ -6,6 +6,7 @@ import ImportModal from '../components/ImportModal'
 import TeacherManager from '../components/TeacherManager'
 import CenterManager from '../components/CenterManager'
 import DeptQuotaManager from '../components/DeptQuotaManager'
+import CampusManager from '../components/CampusManager'
 import StudentEditModal from '../components/StudentEditModal'
 import CenterMatchModal from '../components/CenterMatchModal'
 import { writeXlsx } from '../components/ExportBtn'
@@ -334,7 +335,7 @@ export default function AdminApp() {
     >
       {/* 分頁 */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e8e7e3' }}>
-        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'quota', label: '預計錄取人數' }, { k: 'reset', label: '年度重置' }].map((t) => (
+        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'campus', label: '校區設定' }, { k: 'quota', label: '預計錄取人數' }, { k: 'reset', label: '年度重置' }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{
               padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
@@ -354,6 +355,7 @@ export default function AdminApp() {
         <CenterManager centers={centers} usage={centerUsage} showToast={showToast} onReload={loadCenters} />
       )}
 
+      {tab === 'campus' && <CampusManager depts={depts} showToast={showToast} />}
       {tab === 'quota' && <DeptQuotaManager depts={depts} showToast={showToast} />}
 
       {tab === 'reset' && (
@@ -378,7 +380,7 @@ export default function AdminApp() {
               ⚠ 危險操作：清空本年度所有學生資料
             </div>
             <p style={{ fontSize: 12.5, color: '#dc2626', margin: '0 0 18px', lineHeight: 1.8 }}>
-              此操作將清空以下資料表：學生名單、第一階段評分、第二階段評分、第三階段錄取、第四階段確認。
+              此操作將清空以下資料表：學生名單、第一階段評分、第二階段評分、第三階段錄取、第四階段確認、各系預計錄取名額。
               中心名單與老師帳號不受影響。此操作無法復原，請務必先完成上方備份。
               清空在伺服器端執行，需再次輸入您的行政密碼確認身分。
             </p>

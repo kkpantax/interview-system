@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Btn, Card, CardHead, Pill, s } from './UI'
-import { getDepartmentQuotas, setDepartmentQuota } from '../api'
-import { campusOf } from '../constants'
+import { getDepartmentQuotas, setDepartmentQuota, getDepartmentCampuses } from '../api'
+import { resolveCampus } from '../constants'
 
 export default function DeptQuotaManager({ depts = [], showToast }) {
   const [quotas, setQuotas]         = useState({})
+  const [campusMap, setCampusMap]   = useState({})
   const [loading, setLoading]       = useState(true)
   const [savingDept, setSavingDept] = useState(null)
 
   const reload = async () => {
     setLoading(true)
     try {
-      const q = await getDepartmentQuotas()
+      const [q, cm] = await Promise.all([getDepartmentQuotas(), getDepartmentCampuses()])
+      setCampusMap(cm)
       setQuotas(Object.fromEntries(depts.map((d) => [d, q[d] == null ? '' : String(q[d])])))
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
@@ -37,7 +39,7 @@ export default function DeptQuotaManager({ depts = [], showToast }) {
     }
   }
 
-  const rank = (d) => ({ 台北校區: 0, 高雄校區: 1, 其他: 2 }[campusOf(d)] ?? 2)
+  const rank = (d) => ({ 台北校區: 0, 高雄校區: 1, 其他: 2 }[resolveCampus(d, campusMap)] ?? 2)
   const ordered = [...depts].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, 'zh-Hant'))
 
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
@@ -59,7 +61,7 @@ export default function DeptQuotaManager({ depts = [], showToast }) {
           <tbody>
             {ordered.map((d) => (
               <tr key={d}>
-                <td style={td}><Pill color="#475569" bg="#f1f5f9">{campusOf(d)}</Pill></td>
+                <td style={td}><Pill color="#475569" bg="#f1f5f9">{resolveCampus(d, campusMap)}</Pill></td>
                 <td style={{ ...td, fontWeight: 500 }}>{d}</td>
                 <td style={td}>
                   <input
