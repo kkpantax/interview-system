@@ -7,6 +7,7 @@ import TeacherManager from '../components/TeacherManager'
 import CenterManager from '../components/CenterManager'
 import DeptQuotaManager from '../components/DeptQuotaManager'
 import StudentEditModal from '../components/StudentEditModal'
+import CenterMatchModal from '../components/CenterMatchModal'
 import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, exportAllData, clearAllData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -68,6 +69,7 @@ export default function AdminApp() {
   const [apps, setApps]           = useState([])
   const [loading, setLoading]     = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showCenterMatch, setShowCenterMatch] = useState(false)
   const [toast, setToast]         = useState(null)
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
@@ -274,6 +276,15 @@ export default function AdminApp() {
     }
   }
 
+  const handleCenterMatchApply = async (centerName, ids, peopleCount) => {
+    if (!ids.length) { showToast('沒有可套用的人員', 'warn'); return }
+    const res = await batchSetCenter(ids, centerName)
+    const n = Array.isArray(res) ? res.length : 0
+    if (!n) { showToast('套用失敗：0 筆更新（請確認 applications 的 UPDATE RLS 政策）', 'error'); throw new Error('0 rows updated') }
+    setApps((prev) => prev.map((a) => (ids.includes(a.id) ? { ...a, center: centerName } : a)))
+    showToast(`已依中心名單標註 ${peopleCount} 位（${n} 筆志願）→ ${centerName}`)
+  }
+
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
 
@@ -459,6 +470,11 @@ export default function AdminApp() {
           套用到已選 {selected.size} 位
         </Btn>
         <span style={{ fontSize: 12, color: '#7b8794' }}>同帳號的所有志願會一起套用同一個中心；亦可在下方每列直接設定</span>
+        <span style={{ flex: 1 }} />
+        <Btn style={{ background: '#fff', borderColor: '#c4b5fd', color: '#6d28d9' }}
+          onClick={() => setShowCenterMatch(true)}>
+          📋 上傳中心名單核對
+        </Btn>
       </div>
 
       <Card>
@@ -554,6 +570,14 @@ export default function AdminApp() {
       )}
 
       {showImport && <ImportModal onImport={handleImport} onClose={() => setShowImport(false)} />}
+      {showCenterMatch && (
+        <CenterMatchModal
+          centers={centers}
+          groups={groups}
+          onApply={handleCenterMatchApply}
+          onClose={() => setShowCenterMatch(false)}
+        />
+      )}
       {editGroup && (
         <StudentEditModal
           group={editGroup} depts={depts} showToast={showToast}
