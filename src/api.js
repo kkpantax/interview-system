@@ -98,6 +98,20 @@ export async function getDepartments() {
   return [...new Set((rows || []).map((r) => r.department).filter(Boolean))].sort()
 }
 
+// ── 各系預計錄取人數（行政後台設定的固定值，存於 department_quota）──
+export async function getDepartmentQuotas() {
+  const rows = await callProxy('/rest/v1/department_quota?select=department,quota', 'GET')
+  return Object.fromEntries((rows || []).map((r) => [r.department, r.quota]))
+}
+export async function setDepartmentQuota(department, quota) {
+  return callProxy(
+    '/rest/v1/department_quota?on_conflict=department',
+    'POST',
+    { department, quota, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates,return=representation',
+  )
+}
+
 // 以 (account, department) 為 key 手動 upsert（資料表無 unique 約束）。
 // 回傳 { added, updated }。注意：更新走 PATCH，需要 applications 有 UPDATE 的 RLS 政策。
 const IMPORT_BATCH = 50

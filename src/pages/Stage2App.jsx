@@ -4,10 +4,10 @@ import { Card, CardHead, Btn, Modal, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
-import { SCORE_ITEMS, DECISIONS } from '../constants'
+import { SCORE_ITEMS, DECISIONS, CAMPUSES, campusOf } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation,
-  getStage2DeptSummary, getStage2EvalsByDate,
+  getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas,
 } from '../api'
 
 const localToday = () => {
@@ -27,8 +27,8 @@ function DeptPicker() {
     let alive = true
     ;(async () => {
       try {
-        const data = await getStage2DeptSummary()
-        if (alive) setRows(data || [])
+        const [data, quotas] = await Promise.all([getStage2DeptSummary(), getDepartmentQuotas()])
+        if (alive) setRows((data || []).map((r) => ({ ...r, quota: quotas[r.department] ?? null })))
       } catch (e) {
         if (alive) setErr(e.message)
       } finally {
@@ -40,6 +40,40 @@ function DeptPicker() {
 
   const pick = (dept) => { window.location.hash = '#/stage2?dept=' + encodeURIComponent(dept) }
 
+  const groups = [
+    ...CAMPUSES.map((c) => ({ name: c.name, items: rows.filter((r) => campusOf(r.department) === c.name) })),
+    { name: '其他', items: rows.filter((r) => campusOf(r.department) === '其他') },
+  ].filter((g) => g.items.length)
+
+  const card = (r) => (
+    <button key={r.department} onClick={() => pick(r.department)}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px',
+        border: '1px solid #e8e7e3', borderRadius: 14, background: 'white',
+        cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all .15s',
+      }}
+      onMouseEnter={(ev) => { ev.currentTarget.style.borderColor = '#15803d'; ev.currentTarget.style.transform = 'translateY(-2px)' }}
+      onMouseLeave={(ev) => { ev.currentTarget.style.borderColor = '#e8e7e3'; ev.currentTarget.style.transform = 'none' }}
+    >
+      <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a18', lineHeight: 1.35 }}>{r.department}</div>
+      <div style={{ fontSize: 12, color: '#475569' }}>
+        預計錄取：<b style={{ color: '#15803d' }}>{r.quota == null ? '未設定' : `${r.quota} 人`}</b>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {[
+          { label: '等待評分', n: r.waiting,   bg: '#eff6ff', color: '#1e40af' },
+          { label: '已評選',   n: r.evaluated, bg: '#f1f5f9', color: '#475569' },
+          { label: '建議錄取', n: r.admitted,  bg: '#dcfce7', color: '#15803d' },
+        ].map((c) => (
+          <div key={c.label} style={{ flex: 1, background: c.bg, color: c.color, borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</div>
+            <div style={{ fontSize: 11, marginTop: 2 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+    </button>
+  )
+
   return (
     <PageShell
       title="實踐大學" subtitle="第二階段 · 選擇科系" accent="#14532d"
@@ -50,33 +84,17 @@ function DeptPicker() {
       ) : err ? (
         <Card><div style={{ padding: 40, textAlign: 'center', color: '#dc2626', fontSize: 14 }}>載入失敗：{err}</div></Card>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
-          {rows.map((r) => (
-            <button key={r.department} onClick={() => pick(r.department)}
-              style={{
-                display: 'flex', flexDirection: 'column', gap: 12, padding: '18px 18px',
-                border: '1px solid #e8e7e3', borderRadius: 14, background: 'white',
-                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all .15s',
-              }}
-              onMouseEnter={(ev) => { ev.currentTarget.style.borderColor = '#15803d'; ev.currentTarget.style.transform = 'translateY(-2px)' }}
-              onMouseLeave={(ev) => { ev.currentTarget.style.borderColor = '#e8e7e3'; ev.currentTarget.style.transform = 'none' }}
-            >
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a18', lineHeight: 1.35 }}>{r.department}</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[
-                  { label: '等待評分', n: r.waiting,   bg: '#eff6ff', color: '#1e40af' },
-                  { label: '已評選',   n: r.evaluated, bg: '#f1f5f9', color: '#475569' },
-                  { label: '建議錄取', n: r.admitted,  bg: '#dcfce7', color: '#15803d' },
-                ].map((c) => (
-                  <div key={c.label} style={{ flex: 1, background: c.bg, color: c.color, borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</div>
-                    <div style={{ fontSize: 11, marginTop: 2 }}>{c.label}</div>
-                  </div>
-                ))}
-              </div>
-            </button>
-          ))}
-        </div>
+        groups.map((g) => (
+          <div key={g.name} style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #e8e7e3' }}>
+              <div style={{ fontSize: 17, fontWeight: 700 }}>{g.name}</div>
+              <div style={{ fontSize: 12, color: '#aaa' }}>{g.items.length} 系</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+              {g.items.map(card)}
+            </div>
+          </div>
+        ))
       )}
     </PageShell>
   )

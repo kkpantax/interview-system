@@ -116,3 +116,14 @@ export const STATUS = {
   stage1_passed:  '通過一階',
   rejected:       '未通過',
 }
+
+// ── 兩校區與所屬系所 ──
+// 以系名關鍵字比對（容忍 (專) 等後綴）；先比台北、再比高雄。
+export const CAMPUSES = [
+  { name: '台北校區', keywords: ['家庭研究', '建築設計', '社會工作', '資訊科技與管理', '食品營養', '餐飲管理'] },
+  { name: '高雄校區', keywords: ['休閒產業', '資訊科技與通訊', '資訊管理'] },
+]
+export const campusOf = (dept = '') => {
+  for (const c of CAMPUSES) if (c.keywords.some((k) => dept.includes(k))) return c.name
+  return '其他'
+}

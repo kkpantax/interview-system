@@ -5,6 +5,7 @@ import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import ImportModal from '../components/ImportModal'
 import TeacherManager from '../components/TeacherManager'
 import CenterManager from '../components/CenterManager'
+import DeptQuotaManager from '../components/DeptQuotaManager'
 import StudentEditModal from '../components/StudentEditModal'
 import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, exportAllData, clearAllData } from '../api'
@@ -298,7 +299,7 @@ export default function AdminApp() {
     >
       {/* 分頁 */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e8e7e3' }}>
-        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'reset', label: '年度重置' }].map((t) => (
+        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'quota', label: '預計錄取人數' }, { k: 'reset', label: '年度重置' }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{
               padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
@@ -317,6 +318,8 @@ export default function AdminApp() {
       {tab === 'centers' && (
         <CenterManager centers={centers} usage={centerUsage} showToast={showToast} onReload={loadCenters} />
       )}
+
+      {tab === 'quota' && <DeptQuotaManager depts={depts} showToast={showToast} />}
 
       {tab === 'reset' && (
         <div style={{ maxWidth: 720 }}>
