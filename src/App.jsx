@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Landing from './pages/Landing'
 import AdminApp from './pages/AdminApp'
 import Stage1App from './pages/Stage1App'
+import Stage1ConfirmApp from './pages/Stage1ConfirmApp'
 import Stage2App from './pages/Stage2App'
 import Stage3App from './pages/Stage3App'
 import Stage4App from './pages/Stage4App'
@@ -30,6 +31,7 @@ export default function App() {
   if (path === '/admin')  return <AdminApp />
   if (path === '/login')  return <TeacherLogin stage={query.stage || '1'} />
   if (path === '/stage1') return <Stage1App />
+  if (path === '/confirm1') return <Stage1ConfirmApp />
   if (path === '/stage2') return <Stage2App dept={query.dept || ''} />
   if (path === '/stage3') return <Stage3App />
   if (path === '/stage4') return <Stage4App />

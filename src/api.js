@@ -324,6 +324,19 @@ export async function markStage1PassedByAccount(account, date) {
   )
 }
 
+// 實體面試確認：把該帳號所有志願一起設定確認結果（需要 applications 的 UPDATE RLS 政策）。
+//   'pass' → 進二階；'reject' → 不通過；'pending' → 退回待確認
+export async function setStage1ConfirmByAccount(account, result, date) {
+  const fields =
+    result === 'pass'   ? { stage1_passed_date: date, status: 'stage1_passed' }
+    : result === 'reject' ? { stage1_passed_date: null, status: 'rejected' }
+    :                       { stage1_passed_date: null, status: 'pending' }
+  return callProxy(
+    `/rest/v1/applications?account=eq.${encodeURIComponent(account)}`,
+    'PATCH', fields, 'return=representation',
+  )
+}
+
 // ── Stage 2（第二階段評分）──────────────────────────────────────────────────
 // 某科系、已過一階的「所有」學生，附上各自的 evaluations 摘要（前端再分待評/已評）。
 // 同一學生在同系可能有多筆評分（多老師、多輪），故全帶回不去重。

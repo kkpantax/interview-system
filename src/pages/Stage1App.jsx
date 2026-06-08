@@ -1,19 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageShell } from '../components/PageShell'
-import { Btn, Card, CardHead, s } from '../components/UI'
-import ExportBtn from '../components/ExportBtn'
+import { Card, CardHead, s } from '../components/UI'
 import Stage1List from '../components/Stage1List'
 import Stage1ScoreForm from '../components/Stage1ScoreForm'
-import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score, markStage1PassedByAccount } from '../api'
+import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
+import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
-import { DECISIONS_STAGE1 } from '../constants'
 
 const localToday = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-
-const recLabel = (v) => DECISIONS_STAGE1.find((d) => d.v === v)?.label || ''
 
 // records[account] 現為陣列（多老師各一筆）。把儲存後的單筆 saved 併回對應帳號的陣列：
 // 已有同 id / 同 teacher_id 的就取代，否則 append。
@@ -23,20 +20,6 @@ function mergeRec(map, account, saved) {
   const next = idx >= 0 ? list.map((r, i) => (i === idx ? { ...r, ...saved } : r)) : [...list, saved]
   return { ...map, [account]: next }
 }
-
-const EXPORT_COLS_BEFORE = [
-  { key: 'account',        label: '帳號' },
-  { key: 'name',           label: '中文姓名' },
-  { key: 'name_english',   label: '英文姓名' },
-]
-const EXPORT_COLS_AFTER = [
-  { key: 'nationality',    label: '國籍' },
-  { key: 'center',         label: '中心' },
-  { key: 'appeared',       label: '出席' },
-  { key: 'total_score',    label: '評分總分' },
-  { key: 'recommendation', label: '建議' },
-  { key: 'note',           label: '備註' },
-]
 
 export default function Stage1App() {
   const teacher = getTeacher()
@@ -49,7 +32,7 @@ export default function Stage1App() {
   const [savingId, setSavingId] = useState(null)
   const [scoringStu, setScoringStu] = useState(null)  // 評分中的學生
   const [scoreSaving, setScoreSaving] = useState(false)
-  const [producing, setProducing] = useState(false)
+  const [viewing, setViewing]   = useState(null)  // 查看評分中的學生 { account, ... }
   const [search, setSearch]     = useState('')
   const [toast, setToast]       = useState(null)
 
@@ -149,63 +132,7 @@ export default function Stage1App() {
     }
   }
 
-  const produce = async () => {
-    // 只把「建議通過」的學生標記為通過一階；同帳號所有志願一起標記。
-    // 多老師情境：任一老師建議通過即視為通過。
-    const passed = students.filter((stu) => anyPass(stu.account))
-    // debug：確認被視為通過的學生與各老師的 recommendation
-    console.log('[produce] passed array:', passed.map((stu) => ({
-      account: stu.account, name: stu.name,
-      recommendations: (records[stu.account] || []).map((r) => r.recommendation),
-    })))
-    if (!passed.length) { showToast('尚未有評分為「建議通過」的學生', 'warn'); return }
-    setProducing(true)
-    try {
-      for (const stu of passed) {
-        const res = await markStage1PassedByAccount(stu.account, date)
-        console.log('[produce] markStage1PassedByAccount 回傳：', stu.account, res)
-        // PATCH return=representation 會回傳被更新的列；空陣列代表「請求成功但 0 列被更新」，
-        // 幾乎都是 applications 缺少 UPDATE 的 RLS 政策所致。
-        if (Array.isArray(res) && res.length === 0) {
-          console.error(
-            `[produce] 帳號 ${stu.account} 沒有任何 application 被更新（0 rows）。\n` +
-            '若所有學生都是 0 rows，請在 Supabase SQL Editor 執行以下政策後再試：\n' +
-            'ALTER TABLE applications ENABLE ROW LEVEL SECURITY;\n' +
-            'CREATE POLICY "allow update applications" ON applications\n' +
-            '  FOR UPDATE USING (true) WITH CHECK (true);',
-          )
-        }
-      }
-      showToast(`已產出今日通過名單：${passed.length} 位`)
-      await load()
-    } catch (e) {
-      console.error('[produce] 產出失敗：', e)
-      showToast('產出失敗：' + e.message, 'error')
-    } finally {
-      setProducing(false)
-    }
-  }
-
-  const exportRows = students.map((stu) => {
-    const own = ownRec(stu.account)
-    return {
-      account: stu.account, name: stu.name, name_english: stu.name_english,
-      ...Object.fromEntries((stu.allDepts || []).map((d, i) => [`pref${i + 1}`, d.department || ''])),
-      nationality: stu.nationality,
-      center: stu.center || '',
-      appeared: draft[stu.account]?.appeared ? '已到' : '未到',
-      total_score: own?.total_score ?? '',
-      recommendation: recLabel(own?.recommendation),
-      note: draft[stu.account]?.note || '',
-    }
-  })
-
-  // 依「最多志願數」動態產生志願欄（志願1 / 志願2 / …），方便下載後在 Excel 逐志願篩選
-  const maxPrefs = Math.max(1, ...students.map((stu) => (stu.allDepts || []).length))
-  const prefCols = Array.from({ length: maxPrefs }, (_, i) => ({ key: `pref${i + 1}`, label: `志願${i + 1}` }))
-  const exportColumns = [...EXPORT_COLS_BEFORE, ...prefCols, ...EXPORT_COLS_AFTER]
-
-  // 搜尋（帳號 / 姓名，不分大小寫）；只影響名單顯示，統計與產出仍以完整名單為準
+  // 搜尋（帳號 / 姓名，不分大小寫）；只影響名單顯示，統計仍以完整名單為準
   const q = search.trim().toLowerCase()
   const filtered = students.filter((stu) =>
     !q ||
@@ -257,13 +184,6 @@ export default function Stage1App() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位 · 建議通過 {passCount} 位</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <ExportBtn columns={exportColumns} rows={exportRows} filename={`第一階段簽到評分表_${date}.xlsx`}
-            label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
-          <Btn variant="green" onClick={produce} disabled={producing || !passCount}>
-            {producing ? '產出中…' : `產出今日通過名單（${passCount}）`}
-          </Btn>
-        </div>
       </div>
 
       <Card>
@@ -271,16 +191,19 @@ export default function Stage1App() {
         <Stage1List
           students={filtered} draft={draft} onChange={patch}
           onSaveRow={saveRow} savingId={savingId} loading={loading}
-          records={records} myId={myId} onScore={setScoringStu}
+          records={records} myId={myId} onScore={setScoringStu} onView={setViewing}
         />
       </Card>
 
       <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
         說明：學生的中心已由行政人員事先登記，此處唯讀顯示。逐列確認出席、填備註後按「儲存簽到」；
-        簽到後出席者可按「評分 →」開啟評分表，完成後狀態列顯示建議；
-        最後按「產出今日通過名單」把所有「建議通過」的學生標記為通過第一階段。
+        簽到後出席者可按「評分 →」開啟評分表，可按「查看」檢視各老師的評分內容。
+        實體面試結果由行政人員在「實體面試確認名單」階段確認後，才會進入第二階段各系評分。
       </div>
        </>
+      )}
+      {viewing && (
+        <Stage1EvalDetailModal student={viewing} recs={records[viewing.account] || []} onClose={() => setViewing(null)} />
       )}
     </PageShell>
   )
