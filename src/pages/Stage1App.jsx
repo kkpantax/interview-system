@@ -24,11 +24,12 @@ function mergeRec(map, account, saved) {
   return { ...map, [account]: next }
 }
 
-const EXPORT_COLS = [
+const EXPORT_COLS_BEFORE = [
   { key: 'account',        label: '帳號' },
   { key: 'name',           label: '中文姓名' },
   { key: 'name_english',   label: '英文姓名' },
-  { key: 'departments',    label: '報考志願' },
+]
+const EXPORT_COLS_AFTER = [
   { key: 'nationality',    label: '國籍' },
   { key: 'center',         label: '中心' },
   { key: 'appeared',       label: '出席' },
@@ -189,7 +190,7 @@ export default function Stage1App() {
     const own = ownRec(stu.account)
     return {
       account: stu.account, name: stu.name, name_english: stu.name_english,
-      departments: (stu.allDepts || []).map((d) => `${d.preference_order ?? '?'}.${d.department}`).join(' / '),
+      ...Object.fromEntries((stu.allDepts || []).map((d, i) => [`pref${i + 1}`, d.department || ''])),
       nationality: stu.nationality,
       center: stu.center || '',
       appeared: draft[stu.account]?.appeared ? '已到' : '未到',
@@ -198,6 +199,11 @@ export default function Stage1App() {
       note: draft[stu.account]?.note || '',
     }
   })
+
+  // 依「最多志願數」動態產生志願欄（志願1 / 志願2 / …），方便下載後在 Excel 逐志願篩選
+  const maxPrefs = Math.max(1, ...students.map((stu) => (stu.allDepts || []).length))
+  const prefCols = Array.from({ length: maxPrefs }, (_, i) => ({ key: `pref${i + 1}`, label: `志願${i + 1}` }))
+  const exportColumns = [...EXPORT_COLS_BEFORE, ...prefCols, ...EXPORT_COLS_AFTER]
 
   // 搜尋（帳號 / 姓名，不分大小寫）；只影響名單顯示，統計與產出仍以完整名單為準
   const q = search.trim().toLowerCase()
@@ -214,7 +220,7 @@ export default function Stage1App() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第一階段 · 簽到評分" accent="#1e3a8a" toast={toast}
+      title="實踐大學" subtitle="第一階段 · 簽到評分" accent="#1e3a8a" toast={toast} intlBack
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {loading && <span style={{ fontSize: 12, color: '#cbd5e1' }}>載入中…</span>}
@@ -252,7 +258,7 @@ export default function Stage1App() {
         />
         <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位 · 建議通過 {passCount} 位</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <ExportBtn columns={EXPORT_COLS} rows={exportRows} filename={`第一階段簽到評分表_${date}.xlsx`}
+          <ExportBtn columns={exportColumns} rows={exportRows} filename={`第一階段簽到評分表_${date}.xlsx`}
             label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
           <Btn variant="green" onClick={produce} disabled={producing || !passCount}>
             {producing ? '產出中…' : `產出今日通過名單（${passCount}）`}

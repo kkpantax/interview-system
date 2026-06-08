@@ -314,7 +314,7 @@ export default function Stage3App() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第三階段 · 最終錄取" accent="#581c87" toast={toast}
+      title="實踐大學" subtitle="第三階段 · 最終錄取" accent="#581c87" toast={toast} intlBack
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#e9d5ff' }}>載入中…</span>}

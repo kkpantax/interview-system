@@ -1,7 +1,7 @@
 import { Toast } from './UI'
 
 // 三入口共用外框：頂部深色 header（含回首頁）+ 內容區 + toast
-export function PageShell({ title, subtitle, accent = '#1a1a18', right, toast, children }) {
+export function PageShell({ title, subtitle, accent = '#1a1a18', right, toast, children, intlBack = false }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f5f4f0' }}>
       <div
@@ -22,6 +22,18 @@ export function PageShell({ title, subtitle, accent = '#1a1a18', right, toast, c
           >
             ← 首頁
           </button>
+          {intlBack && (
+            <button
+              onClick={() => { window.location.hash = '#/intl' }}
+              style={{
+                background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0',
+                borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              ← 國際事務處
+            </button>
+          )}
           <span style={{ fontSize: 15, fontWeight: 700, color: '#f5f4f0', letterSpacing: '.03em' }}>
             {title}
           </span>
