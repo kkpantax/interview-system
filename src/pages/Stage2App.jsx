@@ -16,6 +16,24 @@ const localToday = () => {
 }
 
 const EMPTY_STATS = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
+
+// 評分老師的「當日工作階段」存 localStorage：重新整理／返回各系都不必重輸入。
+// EVAL_SESSION_KEY 存 { name, date }，按「完成今日評分」時清除；只在 date === 今天 時自動沿用，
+// 避免跨日後仍以昨天日期記錄評分。EVAL_NAME_KEY 記住老師姓名（同一台電腦長期保留，供預填）。
+const EVAL_SESSION_KEY = 'stage2_evaluator'
+const EVAL_NAME_KEY    = 'stage2_evaluator_name'
+
+const readEvaluatorSession = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(EVAL_SESSION_KEY) || 'null')
+    if (v && v.name && v.date === localToday()) return v
+  } catch { /* ignore */ }
+  return null
+}
+const readRememberedName = () => {
+  try { return localStorage.getItem(EVAL_NAME_KEY) || '' } catch { return '' }
+}
+
 const ghostBtn = { background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
 
 function DeptPicker() {
@@ -100,8 +118,8 @@ function DeptPicker() {
   )
 }
 
-function EvaluatorGate({ dept, onStart }) {
-  const [name, setName] = useState('')
+function EvaluatorGate({ dept, onStart, initialName = '' }) {
+  const [name, setName] = useState(initialName)
   const [date, setDate] = useState(localToday())
   const start = () => { if (name.trim()) onStart({ name: name.trim(), date }) }
 
@@ -197,7 +215,7 @@ export default function Stage2App({ dept = '' }) {
 }
 
 function Stage2Scoring({ dept }) {
-  const [evaluator, setEvaluator] = useState(null)
+  const [evaluator, setEvaluator] = useState(readEvaluatorSession)
   const [students, setStudents]   = useState([])
   const [stats, setStats]         = useState(EMPTY_STATS)
   const [quota, setQuota]         = useState(null)
@@ -229,7 +247,16 @@ function Stage2Scoring({ dept }) {
 
   useEffect(() => { if (evaluator) load() }, [evaluator, load])
 
-  if (!evaluator) return <EvaluatorGate dept={dept} onStart={setEvaluator} />
+  if (!evaluator) {
+    const startEvaluator = (v) => {
+      try {
+        localStorage.setItem(EVAL_SESSION_KEY, JSON.stringify(v))
+        localStorage.setItem(EVAL_NAME_KEY, v.name)
+      } catch { /* ignore */ }
+      setEvaluator(v)
+    }
+    return <EvaluatorGate dept={dept} onStart={startEvaluator} initialName={readRememberedName()} />
+  }
 
   const q = search.trim().toLowerCase()
   const filtered = students.filter((stu) =>
@@ -317,7 +344,10 @@ function Stage2Scoring({ dept }) {
       showToast('讀取今日評分失敗：' + err.message, 'error')
     }
   }
-  const leave = () => { window.location.hash = '#/stage2' }
+  const leave = () => {
+    try { localStorage.removeItem(EVAL_SESSION_KEY) } catch { /* ignore */ }
+    window.location.hash = '#/stage2'
+  }
   const finishAndDownload = async () => { await downloadToday(); leave() }
 
   return (
