@@ -9,7 +9,7 @@ import DeptQuotaManager from '../components/DeptQuotaManager'
 import StudentEditModal from '../components/StudentEditModal'
 import CenterMatchModal from '../components/CenterMatchModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, exportAllData, clearAllData } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, exportAllData, clearAllData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { STATUS } from '../constants'
 
@@ -76,6 +76,7 @@ export default function AdminApp() {
   const [statusFilter, setStatusFilter] = useState('')
   const [centerFilter, setCenterFilter] = useState('')
   const [nationalityFilter, setNationalityFilter] = useState('')
+  const [paperFilter, setPaperFilter] = useState(false)   // 僅顯示書審未全過
   const [selected, setSelected]   = useState(() => new Set())  // 選取的帳號群組 key
   const [expanded, setExpanded]   = useState(() => new Set())  // 展開的帳號群組 key
   const [assignDate, setAssignDate] = useState(localToday)
@@ -189,6 +190,7 @@ export default function AdminApp() {
       if (g.center !== centerFilter) return false
     }
     if (nationalityFilter && g.rep.nationality !== nationalityFilter) return false
+    if (paperFilter && !g.apps.some((a) => a.paper_passed === false)) return false
     if (kw) {
       const q = kw.toLowerCase()
       const hay = [g.rep.name, g.rep.name_english, g.account, g.rep.passport_number]
@@ -283,6 +285,20 @@ export default function AdminApp() {
     if (!n) { showToast('套用失敗：0 筆更新（請確認 applications 的 UPDATE RLS 政策）', 'error'); throw new Error('0 rows updated') }
     setApps((prev) => prev.map((a) => (ids.includes(a.id) ? { ...a, center: centerName } : a)))
     showToast(`已依中心名單標註 ${peopleCount} 位（${n} 筆志願）→ ${centerName}`)
+  }
+
+  // 書審：paper_passed 預設視為通過（缺欄位 / null / true 都算通過，只有明確 false 才是未通過）
+  const paperOK = (a) => a.paper_passed !== false
+  const setAppPaper = async (appId, passed) => {
+    try {
+      const res = await setPaperPassed(appId, passed)
+      if (!Array.isArray(res) || !res.length) {
+        showToast('書審狀態更新失敗：0 筆（請確認 applications 的 UPDATE RLS 政策與 paper_passed 欄位）', 'error'); return
+      }
+      setApps((prev) => prev.map((a) => (a.id === appId ? { ...a, paper_passed: passed } : a)))
+    } catch (e) {
+      showToast('書審狀態更新失敗：' + e.message, 'error')
+    }
   }
 
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
@@ -411,6 +427,7 @@ export default function AdminApp() {
           { label: '志願總數', value: apps.length },
           { label: '已排面試', value: groups.filter((g) => g.interview_date).length },
           { label: '通過一階', value: groups.filter((g) => g.status === 'stage1_passed').length },
+          { label: '書審未全過', value: groups.filter((g) => g.apps.some((a) => a.paper_passed === false)).length },
           { label: '科系數',   value: depts.length },
         ].map((c) => (
           <div key={c.label} style={{ ...s.card, padding: '12px 18px', minWidth: 110 }}>
@@ -441,6 +458,10 @@ export default function AdminApp() {
           <option value="">全部國籍</option>
           {nationalities.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: paperFilter ? '#dc2626' : '#666', alignSelf: 'center', cursor: 'pointer' }}>
+          <input type="checkbox" checked={paperFilter} onChange={(e) => setPaperFilter(e.target.checked)} />
+          僅顯示書審未全過
+        </label>
         <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 人</span>
       </div>
 
@@ -486,7 +507,7 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '中文姓名', '英文姓名', '護照號碼', '國籍', '中心', '第1志願系所', '志願', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
+                {['帳號', '中文姓名', '英文姓名', '護照號碼', '國籍', '中心', '第1志願系所', '志願', '書審', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
@@ -531,6 +552,22 @@ export default function AdminApp() {
                           <span style={{ fontSize: 12, color: '#ccc' }}>單一志願</span>
                         )}
                       </td>
+                      <td style={td}>
+                        {(() => {
+                          const failed = g.apps.filter((a) => a.paper_passed === false)
+                          return failed.length === 0 ? (
+                            <button onClick={() => toggleExpand(g.key)}
+                              style={{ ...s.btn, ...s.btnSm, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#15803d' }}>
+                              全通過 ▾
+                            </button>
+                          ) : (
+                            <button onClick={() => toggleExpand(g.key)}
+                              style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', borderColor: '#fecaca', color: '#b91c1c' }}>
+                              ✗ {failed.length} 系未過 ▾
+                            </button>
+                          )
+                        })()}
+                      </td>
                       <td style={{ ...td, color: g.interview_date ? '#1e40af' : '#ccc' }}>{g.interview_date || '—'}</td>
                       <td style={td}><Pill color={si.color} bg={si.bg}>{si.label}</Pill></td>
                       <td style={{ ...td, color: '#888' }}>{g.stage1_passed_date || '—'}</td>
@@ -541,12 +578,16 @@ export default function AdminApp() {
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={12} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
-                          <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願</div>
+                        <td colSpan={13} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                          <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願（取消勾選＝該系書審未通過，第二階段將不會出現）</div>
                           {g.apps.map((a) => (
                             <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
                               <span style={{ width: 56, color: '#888' }}>第 {a.preference_order ?? '—'} 志願</span>
                               <span style={{ flex: 1 }}>{a.department}</span>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, minWidth: 96, color: paperOK(a) ? '#15803d' : '#dc2626', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={paperOK(a)} onChange={(e) => setAppPaper(a.id, e.target.checked)} />
+                                書審{paperOK(a) ? '通過' : '未通過'}
+                              </label>
                               {(() => { const s2 = statusInfo(a.status); return <Pill color={s2.color} bg={s2.bg}>{s2.label}</Pill> })()}
                               <span style={{ color: a.interview_date ? '#1e40af' : '#ccc', minWidth: 90 }}>{a.interview_date || '未排'}</span>
                             </div>
@@ -558,7 +599,7 @@ export default function AdminApp() {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={13} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={14} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '沒有資料，請先上傳報名名單'}
                 </td></tr>
               )}

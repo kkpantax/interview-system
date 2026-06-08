@@ -295,6 +295,16 @@ export async function markStage1Passed(applicationId, date) {
   )
 }
 
+// 設定單一志願（application）的書審通過與否（需要 applications 的 UPDATE RLS 政策）。
+export async function setPaperPassed(id, passed) {
+  return callProxy(
+    `/rest/v1/applications?id=eq.${id}`,
+    'PATCH',
+    { paper_passed: !!passed },
+    'return=representation',
+  )
+}
+
 // 通過一階：把該帳號「所有志願」的 applications 一起標記通過（一人面一次、全志願進二階）
 export async function markStage1PassedByAccount(account, date) {
   return callProxy(
@@ -312,7 +322,7 @@ export async function getStage2List(dept) {
   const rows = await callProxy(
     `/rest/v1/applications?select=*,evaluations(id,recommendation,total_score,eval_date,evaluator_name,scores,teacher_note,custom_questions)` +
       `&department=eq.${encodeURIComponent(dept)}` +
-      `&stage1_passed_date=not.is.null&order=name.asc`,
+      `&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc`,
     'GET',
   )
   return rows || []
@@ -342,7 +352,7 @@ export async function getStage2DeptSummary() {
   const [depts, rows] = await Promise.all([
     getDepartments(),
     callProxy(
-      '/rest/v1/applications?select=department,evaluations(recommendation)&stage1_passed_date=not.is.null',
+      '/rest/v1/applications?select=department,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true',
       'GET',
     ),
   ])
