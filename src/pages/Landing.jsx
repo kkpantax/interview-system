@@ -11,6 +11,7 @@ const INTL_ENTRIES = [
   { key: 'confirm1', hash: '#/login?stage=confirm1', icon: '✓', title: '實體面試確認名單', desc: '確認實體面試結果、產出進二階名單、下載定稿名單', bg: '#ecfeff', fg: '#0f766e' },
   { key: 'stage3', hash: '#/stage3',             icon: '③', title: '放榜會議名單', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
   { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '確認就學名單', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
+  { key: 'stats',  hash: '#/login?stage=stats',  icon: '📊', title: '報名統計儀表板', desc: '報名人數、國籍分布、各系志願統計，可匯出報表', bg: '#f0fdfa', fg: '#0f766e' },
 ]
 
 export default function Landing({ initialView = 'home' }) {
