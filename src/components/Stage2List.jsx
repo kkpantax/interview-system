@@ -14,7 +14,7 @@ export default function Stage2List({ students, onOpen, loading, showEvalSummary 
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const headers = showEvalSummary
     ? ['中文姓名', '英文姓名', '帳號', '評分結果', '']
-    : ['中文姓名', '英文姓名', '國籍', '性別', '一階通過日', '']
+    : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '一階通過日', '']
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -44,6 +44,17 @@ export default function Stage2List({ students, onOpen, loading, showEvalSummary 
                   </>
                 ) : (
                   <>
+                    <td style={{ ...td, color: '#999', fontSize: 12 }}>{stu.account}</td>
+                    <td style={td}>
+                      {stu.preference_order
+                        ? <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 6,
+                            fontSize: 12, fontWeight: 600,
+                            background: stu.preference_order === 1 ? '#dcfce7' : '#f1f5f9',
+                            color: stu.preference_order === 1 ? '#15803d' : '#475569',
+                          }}>第 {stu.preference_order} 志願</span>
+                        : '—'}
+                    </td>
                     <td style={td}>{stu.nationality}</td>
                     <td style={td}>{stu.gender}</td>
                     <td style={{ ...td, color: '#15803d' }}>{stu.stage1_passed_date || '—'}</td>

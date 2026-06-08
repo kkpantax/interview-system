@@ -141,6 +141,7 @@ function Stage2Scoring({ dept }) {
   const [evaluator, setEvaluator] = useState(null)
   const [students, setStudents]   = useState([])
   const [stats, setStats]         = useState(EMPTY_STATS)
+  const [quota, setQuota]         = useState(null)
   const [search, setSearch]       = useState('')
   const [active, setActive]       = useState(null)
   const [loading, setLoading]     = useState(false)
@@ -155,9 +156,10 @@ function Stage2Scoring({ dept }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, st] = await Promise.all([getStage2List(dept), getStage2Stats(dept)])
+      const [list, st, quotas] = await Promise.all([getStage2List(dept), getStage2Stats(dept), getDepartmentQuotas()])
       setStudents(list || [])
       setStats(st || EMPTY_STATS)
+      setQuota(quotas?.[dept] ?? null)
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -179,6 +181,7 @@ function Stage2Scoring({ dept }) {
   const scored   = filtered.filter((stu) => stu.evaluations && stu.evaluations.length > 0)
 
   const statCards = [
+    { label: '預計錄取',   n: quota == null ? '—' : quota, bg: '#ecfdf5', color: '#047857', target: true },
     { label: '建議錄取',   n: stats.admit,    bg: '#dcfce7', color: '#15803d' },
     { label: '備取',       n: stats.waitlist, bg: '#fef3c7', color: '#b45309' },
     { label: '不建議錄取', n: stats.reject,   bg: '#fee2e2', color: '#dc2626' },
@@ -289,6 +292,7 @@ function Stage2Scoring({ dept }) {
               <div key={c.label} style={{
                 flex: '1 1 120px', minWidth: 110, background: c.bg, color: c.color,
                 borderRadius: 10, padding: '12px 16px',
+                border: c.target ? '2px solid #047857' : '2px solid transparent',
               }}>
                 <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</div>
                 <div style={{ fontSize: 12, marginTop: 2 }}>{c.label}</div>
