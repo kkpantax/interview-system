@@ -4,6 +4,7 @@ import { Card, CardHead, Btn, Modal, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
+import Stage2GuideModal from '../components/Stage2GuideModal'
 import { SCORE_ITEMS, DECISIONS, CAMPUSES, campusOf } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation,
@@ -40,6 +41,7 @@ function DeptPicker() {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr]         = useState('')
+  const [showGuide, setShowGuide] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -95,25 +97,47 @@ function DeptPicker() {
   return (
     <PageShell
       title="實踐大學" subtitle="第二階段 · 選擇科系" accent="#14532d"
-      right={<button onClick={() => { window.location.hash = '#/' }} style={ghostBtn}>← 返回首頁</button>}
+      right={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setShowGuide(true)} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>📖 操作說明</button>
+          <button onClick={() => { window.location.hash = '#/' }} style={ghostBtn}>← 返回首頁</button>
+        </div>
+      }
     >
       {loading ? (
         <Card><div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 14 }}>載入中…</div></Card>
       ) : err ? (
         <Card><div style={{ padding: 40, textAlign: 'center', color: '#dc2626', fontSize: 14 }}>載入失敗：{err}</div></Card>
       ) : (
-        groups.map((g) => (
-          <div key={g.name} style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #e8e7e3' }}>
-              <div style={{ fontSize: 17, fontWeight: 700 }}>{g.name}</div>
-              <div style={{ fontSize: 12, color: '#aaa' }}>{g.items.length} 系</div>
+        <>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 12,
+            padding: '12px 16px', marginBottom: 22,
+          }}>
+            <span style={{ fontSize: 20 }}>📖</span>
+            <div style={{ flex: 1, minWidth: 200, fontSize: 13.5, color: '#166534', lineHeight: 1.6 }}>
+              <b>第一次評分，或想複習操作流程？</b> 點右側按鈕看完整的評分操作說明（選系、打分、送出、完成今日評分）。
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
-              {g.items.map(card)}
-            </div>
+            <button onClick={() => setShowGuide(true)}
+              style={{ background: '#15803d', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              查看操作說明
+            </button>
           </div>
-        ))
+          {groups.map((g) => (
+            <div key={g.name} style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #e8e7e3' }}>
+                <div style={{ fontSize: 17, fontWeight: 700 }}>{g.name}</div>
+                <div style={{ fontSize: 12, color: '#aaa' }}>{g.items.length} 系</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+                {g.items.map(card)}
+              </div>
+            </div>
+          ))}
+        </>
       )}
+      {showGuide && <Stage2GuideModal onClose={() => setShowGuide(false)} />}
     </PageShell>
   )
 }
