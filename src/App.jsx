@@ -33,5 +33,6 @@ export default function App() {
   if (path === '/stage2') return <Stage2App dept={query.dept || ''} />
   if (path === '/stage3') return <Stage3App />
   if (path === '/stage4') return <Stage4App />
+  if (path === '/intl')   return <Landing initialView="intl" />
   return <Landing />
 }

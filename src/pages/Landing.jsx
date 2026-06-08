@@ -12,8 +12,8 @@ const INTL_ENTRIES = [
   { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '確認就學名單', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
 ]
 
-export default function Landing() {
-  const [view, setView] = useState('home')
+export default function Landing({ initialView = 'home' }) {
+  const [view, setView] = useState(initialView)
   const go = (hash) => { window.location.hash = hash }
 
   const onCard = (e) => {
