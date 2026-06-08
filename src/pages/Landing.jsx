@@ -7,7 +7,7 @@ const PORTALS = [
 
 const INTL_ENTRIES = [
   { key: 'admin',  hash: '#/login?stage=admin', icon: '⚙', title: '書審通過名單',     desc: '上傳名單、查看總覽、帳號管理、匯出最終名單', bg: '#f5f4f0', fg: '#1a1a18' },
-  { key: 'stage1', hash: '#/login?stage=1',      icon: '①', title: '第一階段實體面試名單', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
+  { key: 'stage1', hash: '#/login?stage=1',      icon: '①', title: '實體面試名單', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
   { key: 'stage3', hash: '#/stage3',             icon: '③', title: '放榜會議名單', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
   { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '確認就學名單', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
 ]
