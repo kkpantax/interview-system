@@ -305,6 +305,15 @@ export async function setPaperPassed(id, passed) {
   )
 }
 
+// 計算某志願（application）已有的第二階段評分筆數（取消書審通過前的提醒用）
+export async function countEvaluationsForApplication(appId) {
+  const rows = await callProxy(
+    `/rest/v1/evaluations?select=id&application_id=eq.${appId}`,
+    'GET',
+  )
+  return Array.isArray(rows) ? rows.length : 0
+}
+
 // 通過一階：把該帳號「所有志願」的 applications 一起標記通過（一人面一次、全志願進二階）
 export async function markStage1PassedByAccount(account, date) {
   return callProxy(

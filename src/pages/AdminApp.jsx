@@ -9,7 +9,7 @@ import DeptQuotaManager from '../components/DeptQuotaManager'
 import StudentEditModal from '../components/StudentEditModal'
 import CenterMatchModal from '../components/CenterMatchModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, exportAllData, clearAllData } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { STATUS } from '../constants'
 
@@ -291,6 +291,12 @@ export default function AdminApp() {
   const paperOK = (a) => a.paper_passed !== false
   const setAppPaper = async (appId, passed) => {
     try {
+      if (!passed) {
+        const n = await countEvaluationsForApplication(appId)
+        if (n > 0 && !window.confirm(`此志願已有 ${n} 筆第二階段評分紀錄。\n標記為「書審未通過」後，該系將不再出現在二階名單（已存在的評分不會刪除）。\n確定要繼續？`)) {
+          return
+        }
+      }
       const res = await setPaperPassed(appId, passed)
       if (!Array.isArray(res) || !res.length) {
         showToast('書審狀態更新失敗：0 筆（請確認 applications 的 UPDATE RLS 政策與 paper_passed 欄位）', 'error'); return
