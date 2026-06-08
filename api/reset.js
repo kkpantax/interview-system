@@ -7,13 +7,16 @@ export const config = { runtime: 'edge' }
 const SUPABASE_URL = 'https://lveekehjxkfvigwfwgvn.supabase.co'
 
 // 刪除順序：先下游（參照 applications 者）後上游，避免 FK 衝突。
+// PostgREST 的 DELETE 必須帶過濾條件，故每張表用「該表一定存在的欄位」當條件：
+// 多數表有 id；department_quota / department_campus 以 department 為主鍵、無 id 欄位。
 const TABLES = [
-  'stage4_confirmations',
-  'final_admissions',
-  'evaluations',
-  'stage1_records',
-  'applications',
-  'department_quota',
+  { name: 'stage4_confirmations', key: 'id' },
+  { name: 'final_admissions',     key: 'id' },
+  { name: 'evaluations',          key: 'id' },
+  { name: 'stage1_records',       key: 'id' },
+  { name: 'applications',         key: 'id' },
+  { name: 'department_quota',     key: 'department' },
+  { name: 'department_campus',    key: 'department' },
 ]
 
 const json = (data, status = 200) =>
@@ -57,13 +60,13 @@ export default async function handler(req) {
 
   // 用 service key 逐表刪除（繞過 RLS）。
   for (const t of TABLES) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=not.is.null`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${t.name}?${t.key}=not.is.null`, {
       method: 'DELETE',
       headers: { ...auth, Prefer: 'return=minimal' },
     })
     if (!res.ok && res.status !== 204) {
       const text = await res.text()
-      return json({ error: `清空 ${t} 失敗：${text}` }, 500)
+      return json({ error: `清空 ${t.name} 失敗：${text}` }, 500)
     }
   }
 
