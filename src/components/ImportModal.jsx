@@ -36,41 +36,57 @@ export default function ImportModal({ onImport, onClose }) {
   const [error, setError]       = useState('')
   const [busy, setBusy]         = useState(false)
   const [progress, setProgress] = useState(null) // { done, total }
+  const [loaded, setLoaded]     = useState(false)
   const fileRef = useRef()
 
   const handleFile = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    setFileName(file.name); setError(''); setRows([]); setSkipped(0)
+    setFileName(file.name); setError(''); setRows([]); setSkipped(0); setLoaded(false)
 
     const reader = new FileReader()
     reader.onload = (evt) => {
       try {
         const wb  = XLSX.read(evt.target.result, { type: 'array', cellDates: true })
         const ws  = wb.Sheets[wb.SheetNames[0]]
-        const raw = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false })
-        if (!raw.length) { setError('檔案沒有資料'); return }
+        // 以陣列方式讀，自動偵測「標題列」——容許檔案上方有標題或空白列
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, blankrows: false })
+        if (!aoa.length) { setError('檔案沒有資料'); setLoaded(true); return }
+
+        let hIdx = -1
+        for (let i = 0; i < Math.min(aoa.length, 15); i++) {
+          if ((aoa[i] || []).some((c) => norm(c) === '帳號')) { hIdx = i; break }
+        }
+        if (hIdx < 0) {
+          setError('找不到「帳號」欄位，請確認上傳的是報名系統匯出的「申請資料」檔。')
+          setLoaded(true); return
+        }
+
+        const header = aoa[hIdx]
+        const colIdx = {}
+        for (const [xlsKey, col] of Object.entries(APP_XLS_MAP)) {
+          const idx = header.findIndex((h) => norm(h) === norm(xlsKey))
+          if (idx >= 0) colIdx[col] = idx
+        }
 
         let skip = 0
         const parsed = []
-        for (const r of raw) {
+        for (const arr of aoa.slice(hIdx + 1)) {
           const row = {}
-          for (const [xlsKey, col] of Object.entries(APP_XLS_MAP)) {
-            const found = Object.keys(r).find((k) => norm(k) === norm(xlsKey))
-            let val = found ? r[found] : ''
+          for (const [col, idx] of Object.entries(colIdx)) {
+            let val = arr[idx]
             if (col === 'preference_order') val = toInt(val)
             else if (col === 'birth_date')  val = toISODate(val)
-            else val = val === '' ? null : String(val).trim()
+            else val = (val === '' || val == null) ? null : String(val).trim()
             row[col] = val
           }
-          // 過濾：帳號為空 → 視為未完成報名，跳過
           if (!row.account) { skip++; continue }
           row.status = 'pending'
           parsed.push(row)
         }
-        setRows(parsed); setSkipped(skip)
+        setRows(parsed); setSkipped(skip); setLoaded(true)
       } catch (err) {
-        setError('讀取失敗：' + err.message)
+        setError('讀取失敗：' + err.message); setLoaded(true)
       }
     }
     reader.readAsArrayBuffer(file)
@@ -106,6 +122,14 @@ export default function ImportModal({ onImport, onClose }) {
       </div>
 
       {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+      {loaded && rows.length === 0 && !error && (
+        <div style={{ color: '#d97706', fontSize: 13, marginBottom: 12, lineHeight: 1.6 }}>
+          這個檔案沒有任何可匯入的資料（可匯入 <b>0</b> 筆
+          {skipped > 0 && <>、略過 <b>{skipped}</b> 筆（無帳號）</>}）。<br />
+          請確認上傳的是報名系統匯出的 .xls、且「帳號」欄位有值。
+        </div>
+      )}
 
       {rows.length > 0 && (
         <>
