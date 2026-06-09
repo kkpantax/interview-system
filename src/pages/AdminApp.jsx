@@ -9,6 +9,7 @@ import DeptQuotaManager from '../components/DeptQuotaManager'
 import CampusManager from '../components/CampusManager'
 import StudentEditModal from '../components/StudentEditModal'
 import CenterMatchModal from '../components/CenterMatchModal'
+import InterviewDateModal from '../components/InterviewDateModal'
 import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -71,6 +72,7 @@ export default function AdminApp() {
   const [loading, setLoading]     = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showCenterMatch, setShowCenterMatch] = useState(false)
+  const [showDateImport, setShowDateImport] = useState(false)
   const [toast, setToast]         = useState(null)
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
@@ -502,6 +504,7 @@ export default function AdminApp() {
         </Btn>
         <span style={{ fontSize: 12, color: '#7b8794' }}>同帳號的所有志願會一起套用同一個中心；亦可在下方每列直接設定</span>
         <span style={{ flex: 1 }} />
+        <Btn onClick={() => setShowDateImport(true)}>📅 上傳時間表</Btn>
         <Btn style={{ background: '#fff', borderColor: '#c4b5fd', color: '#6d28d9' }}
           onClick={() => setShowCenterMatch(true)}>
           📋 上傳中心名單核對
@@ -627,6 +630,21 @@ export default function AdminApp() {
           groups={groups}
           onApply={handleCenterMatchApply}
           onClose={() => setShowCenterMatch(false)}
+        />
+      )}
+      {showDateImport && (
+        <InterviewDateModal
+          groups={groups}
+          onApply={async (ids, date) => {
+            await setInterviewDate(ids, date)
+          }}
+          onClose={(count) => {
+            setShowDateImport(false)
+            if (count > 0) {
+              showToast(`已成功指派 ${count} 位學生的面試日期`)
+              load()
+            }
+          }}
         />
       )}
       {editGroup && (
