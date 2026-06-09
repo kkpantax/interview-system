@@ -20,33 +20,54 @@ function findCol(headers, keys) {
 // 日期正規化：支援多種格式 → 'YYYY-MM-DD' 或 null
 function normalizeDate(val) {
   if (val == null || val === '') return null
-  // Excel 數字型日期（SheetJS raw:false 已轉字串，但 raw:true 會是數字）
+
+  // JavaScript Date 物件（cellDates: true 時）
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  // Excel 日期序號（數字）
   if (typeof val === 'number') {
-    const d = XLSX.SSF.parse_date_code(val)
-    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`
+    try {
+      const d = XLSX.SSF.parse_date_code(val)
+      if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`
+    } catch(e) {}
     return null
   }
+
   const s = String(val).trim()
-  // 'YYYY-MM-DD ...' or 'YYYY-MM-DD'
+  // 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:mm:ss'
   const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (m1) return `${m1[1]}-${m1[2]}-${m1[3]}`
   // 'YYYY/MM/DD'
   const m2 = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/)
   if (m2) return `${m2[1]}-${String(m2[2]).padStart(2,'0')}-${String(m2[3]).padStart(2,'0')}`
-  // 'YYYY/MMDD' (如 2026/0621)
+  // 'YYYY/MMDD'（如 2026/0621）
   const m3 = s.match(/^(\d{4})\/(\d{2})(\d{2})$/)
   if (m3) return `${m3[1]}-${m3[2]}-${m3[3]}`
+  // 'M/D/YY' 或 'M/D/YYYY'（SheetJS 格式化後的字串，如 6/11/26）
+  const m4 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (m4) {
+    let year = parseInt(m4[3])
+    if (year < 100) year += (year < 50 ? 2000 : 1900)
+    return `${year}-${String(parseInt(m4[1])).padStart(2,'0')}-${String(parseInt(m4[2])).padStart(2,'0')}`
+  }
+
   return null
 }
 
 function parseFile(arrayBuffer) {
-  const wb = XLSX.read(arrayBuffer, { type: 'array', raw: false })
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
   let rows = []
   let parseError = ''
 
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName]
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false })
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true })
 
     // 找表頭列（前15列找最可能的）
     let headerIdx = -1
