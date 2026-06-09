@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, Pill, s } from '../components/UI'
-import ExportBtn from '../components/ExportBtn'
+import ExportBtn, { writeXlsx } from '../components/ExportBtn'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
-import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount } from '../api'
+import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { DECISIONS_STAGE1 } from '../constants'
 
@@ -112,6 +112,33 @@ export default function Stage1ConfirmApp() {
     !q || (stu.account || '').toLowerCase().includes(q) || (stu.name || '').toLowerCase().includes(q),
   )
 
+  // 匯出二階系所面試通知名單（取全部通過一階 + 書審通過者，不受頁面日期限制）
+  const exportNotifyStage2 = async () => {
+    try {
+      const people = await getNotifyStage2()
+      if (!people.length) { showToast('沒有可匯出的二階通知名單', 'warn'); return }
+      const rows = people.map((p) => ({
+        name: p.name, name_english: p.name_english, email: p.email,
+        depts: (p.allDepts || []).map((d) => d.department).filter(Boolean).join('、'),
+        nationality: p.nationality,
+      }))
+      writeXlsx(
+        [
+          { key: 'name', label: '中文姓名' },
+          { key: 'name_english', label: '英文姓名' },
+          { key: 'email', label: 'Email' },
+          { key: 'depts', label: '報考系所' },
+          { key: 'nationality', label: '國籍' },
+        ],
+        rows,
+        '二階系所面試通知.xlsx',
+      )
+      showToast(`已匯出 ${rows.length} 筆二階通知名單`)
+    } catch (e) {
+      showToast('匯出失敗：' + e.message, 'error')
+    }
+  }
+
   const passCount    = students.filter((g) => confirmStateOf(g) === 'pass').length
   const rejectCount  = students.filter((g) => confirmStateOf(g) === 'reject').length
   const pendingCount = students.filter((g) => confirmStateOf(g) === 'pending').length
@@ -172,7 +199,8 @@ export default function Stage1ConfirmApp() {
         <span style={{ fontSize: 12, color: '#aaa' }}>
           應試 {students.length} 位 · 通過 {passCount} · 不通過 {rejectCount} · 待確認 {pendingCount}
         </span>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <Btn onClick={exportNotifyStage2}>⬇ 匯出二階面試通知名單</Btn>
           <ExportBtn columns={exportColumns} rows={exportRows} filename={`實體面試確認名單_${date}.xlsx`}
             label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
         </div>

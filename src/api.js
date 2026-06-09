@@ -492,11 +492,40 @@ export async function getStage4Data() {
     'GET',
   )
   const apps = await callProxy(
-    '/rest/v1/applications?select=account,name,name_english,birth_date,passport_number',
+    '/rest/v1/applications?select=account,name,name_english,birth_date,passport_number,email',
     'GET',
   )
   const appMap = new Map((apps || []).map((a) => [a.account, a]))
   return (s4 || []).map((r) => ({ ...r, appInfo: appMap.get(r.account) || {} }))
+}
+
+// ── 寄信名單（YAMM 郵件合併用；皆含 Email、以「人」為單位）──────────────
+// ② 二階（系所面試）通知：通過一階且書審通過者，一人一列、附報考系所
+export async function getNotifyStage2() {
+  const rows = await callProxy(
+    '/rest/v1/applications?select=account,name,name_english,email,nationality,stage1_passed_date,department,preference_order' +
+      '&account=not.is.null&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc',
+    'GET',
+  )
+  return groupByAccount(rows || [])   // allDepts 內含全部報考系所
+}
+
+// ③ 三階（錄取）通知：final_admissions 為 admitted 者，join applications 取 Email
+export async function getNotifyStage3() {
+  const fa = await callProxy(
+    '/rest/v1/final_admissions?select=account,department,final_status&final_status=eq.admitted',
+    'GET',
+  )
+  const apps = await callProxy('/rest/v1/applications?select=account,name,name_english,email', 'GET')
+  const m = new Map((apps || []).map((a) => [a.account, a]))
+  const seen = new Set(); const out = []
+  for (const r of (fa || [])) {
+    if (seen.has(r.account)) continue
+    seen.add(r.account)
+    const a = m.get(r.account) || {}
+    out.push({ account: r.account, name: a.name, name_english: a.name_english, email: a.email, department: r.department })
+  }
+  return out
 }
 
 // 從 Stage3（final_admissions 的 admitted + waitlisted）同步到 Stage4：

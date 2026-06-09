@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
-import { getStage3Data, getFinalAdmissions, upsertFinalAdmission } from '../api'
+import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3 } from '../api'
 import { DECISIONS } from '../constants'
 import { getTeacher, logoutTeacher } from '../auth'
 
@@ -307,6 +307,27 @@ export default function Stage3App() {
     showToast(`已匯出依中心名單（${centers.length} 個中心）`)
   }
 
+  // 匯出錄取通知寄信名單（admitted，含 Email、一人一列）
+  const exportNotify = async () => {
+    try {
+      const rows = await getNotifyStage3()
+      if (!rows.length) { showToast('目前沒有正取的學生', 'warn'); return }
+      writeXlsx(
+        [
+          { key: 'name', label: '中文姓名' },
+          { key: 'name_english', label: '英文姓名' },
+          { key: 'email', label: 'Email' },
+          { key: 'department', label: '錄取系所' },
+        ],
+        rows,
+        '三階錄取通知.xlsx',
+      )
+      showToast(`已匯出 ${rows.length} 筆錄取通知名單`)
+    } catch (e) {
+      showToast('匯出失敗：' + e.message, 'error')
+    }
+  }
+
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
 
@@ -323,6 +344,7 @@ export default function Stage3App() {
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportAdmitted}>⬇ 匯出正取名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportWaitlisted}>⬇ 匯出備取名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportByCenter}>⬇ 匯出依中心名單</Btn>
+          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportNotify}>⬇ 匯出錄取通知名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#e9d5ff' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={logoutTeacher}>登出</Btn>

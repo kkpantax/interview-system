@@ -184,6 +184,32 @@ export default function Stage4App() {
     showToast(`已匯出 ${out.length} 筆就讀名單`)
   }
 
+  // 匯出就讀確認寄信名單（enrolled，含 Email、一人一列）
+  const exportNotifyEnrolled = () => {
+    const out = data
+      .filter((r) => r.contact_status === 'enrolled')
+      .map((r) => ({
+        name:         r.appInfo?.name ?? '',
+        name_english: r.appInfo?.name_english ?? '',
+        email:        r.appInfo?.email ?? '',
+        department:   r.department ?? '',
+        center:       r.center ?? '',
+      }))
+    if (!out.length) { showToast('目前沒有確認就讀的學生', 'warn'); return }
+    writeXlsx(
+      [
+        { key: 'name', label: '中文姓名' },
+        { key: 'name_english', label: '英文姓名' },
+        { key: 'email', label: 'Email' },
+        { key: 'department', label: '系所' },
+        { key: 'center', label: '中心' },
+      ],
+      out,
+      '四階就讀確認.xlsx',
+    )
+    showToast(`已匯出 ${out.length} 筆就讀確認名單`)
+  }
+
   const doSync = async () => {
     if (busy) return
     if (!window.confirm('將從第三階段（正取 + 備取）同步名單到第四階段。\n已在進行中（候補詢問 / 就讀 / 放棄…）的資料不會被覆蓋。\n確定要同步嗎？')) return
@@ -216,6 +242,7 @@ export default function Stage4App() {
           <Btn style={headerBtn} onClick={() => { window.location.hash = '#/stage3' }}>← 第三階段</Btn>
           <Btn style={headerBtn} disabled={busy} onClick={doSync}>從Stage3同步正取備取名單</Btn>
           <Btn style={headerBtn} onClick={exportEnrolled}>匯出最終就讀名單</Btn>
+          <Btn style={headerBtn} onClick={exportNotifyEnrolled}>⬇ 匯出就讀確認名單</Btn>
           <Btn style={headerBtn} disabled={busy} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#fde7d4' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>
