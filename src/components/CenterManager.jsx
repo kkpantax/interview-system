@@ -25,9 +25,9 @@ export default function CenterManager({ centers = [], usage = {}, showToast, onR
   }
 
   const remove = async (c) => {
-    const n = usage[c.name] || 0
-    const warn = n > 0
-      ? `中心「${c.name}」目前仍有 ${n} 筆志願綁定，刪除後這些學生的中心欄位仍保留文字。確定刪除？`
+    const u = usage[c.name]
+    const warn = u
+      ? `中心「${c.name}」目前仍有 ${u.people} 位學生（${u.prefs} 筆志願）綁定，刪除後這些學生的中心欄位仍保留文字。確定刪除？`
       : `確定刪除中心「${c.name}」？`
     if (!window.confirm(warn)) return
     try {
@@ -76,7 +76,7 @@ export default function CenterManager({ centers = [], usage = {}, showToast, onR
                   <td style={{ ...td, fontWeight: 500 }}>{c.name}</td>
                   <td style={td}>
                     {usage[c.name]
-                      ? <Pill color="#1e40af" bg="#eff6ff">{usage[c.name]} 筆志願</Pill>
+                      ? <Pill color="#1e40af" bg="#eff6ff">{usage[c.name].people} 人 / {usage[c.name].prefs} 志願</Pill>
                       : <span style={{ color: '#ccc' }}>—</span>}
                   </td>
                   <td style={td}>

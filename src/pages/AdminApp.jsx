@@ -252,11 +252,18 @@ export default function AdminApp() {
     }
   }
 
-  // 各中心綁定的志願數（給中心管理頁刪除前提示）
+  // 各中心綁定的人數與志願數（給中心管理頁顯示與刪除前提示）
   const centerUsage = useMemo(() => {
-    const m = {}
-    for (const a of apps) if (a.center) m[a.center] = (m[a.center] || 0) + 1
-    return m
+    const m = {}                       // { center: { people:Set, prefs:int } }
+    for (const a of apps) {
+      if (!a.center) continue
+      const e = (m[a.center] ||= { people: new Set(), prefs: 0 })
+      e.people.add(a.account)
+      e.prefs += 1
+    }
+    const out = {}
+    for (const c in m) out[c] = { people: m[c].people.size, prefs: m[c].prefs }
+    return out
   }, [apps])
 
   // 設定一位考生（同帳號所有志願）的中心，並就地更新本地狀態
