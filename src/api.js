@@ -182,6 +182,28 @@ export async function createApplication(row) {
   return callProxy('/rest/v1/applications', 'POST', row, 'return=representation')
 }
 
+// 依「帳號」批次補上生日／護照（不動其他流程欄位）。
+// updates: [{ account, birth_date?, passport_number? }]，只送出有值的欄位，避免把既有值覆蓋成 null。
+// 同一帳號的所有志願列會一起更新（同一人共用此資料）。需 applications 的 UPDATE RLS 政策。
+export async function updateBirthPassportByAccount(updates, onProgress) {
+  let done = 0, updated = 0
+  for (const u of updates) {
+    if (!u.account) { done++; onProgress?.(done, updates.length); continue }
+    const fields = {}
+    if (u.birth_date != null && u.birth_date !== '') fields.birth_date = u.birth_date
+    if (u.passport_number != null && u.passport_number !== '') fields.passport_number = u.passport_number
+    if (Object.keys(fields).length) {
+      const res = await callProxy(
+        `/rest/v1/applications?account=eq.${encodeURIComponent(u.account)}`,
+        'PATCH', fields, 'return=representation',
+      )
+      if (Array.isArray(res) && res.length) updated++
+    }
+    done++; onProgress?.(done, updates.length)
+  }
+  return { updated, total: updates.length }
+}
+
 // ── Centers（面試中心，由行政人員動態管理）─────────────────────────────────
 export async function getCenters() {
   return callProxy('/rest/v1/centers?select=*&order=sort_order.asc,name.asc', 'GET')

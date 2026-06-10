@@ -10,9 +10,11 @@ import CampusManager from '../components/CampusManager'
 import StudentEditModal from '../components/StudentEditModal'
 import CenterMatchModal from '../components/CenterMatchModal'
 import InterviewDateModal from '../components/InterviewDateModal'
+import PassportBirthImportModal from '../components/PassportBirthImportModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
+import { calcAge } from '../utils'
 import { STATUS } from '../constants'
 
 const localToday = () => {
@@ -73,6 +75,7 @@ export default function AdminApp() {
   const [showImport, setShowImport] = useState(false)
   const [showCenterMatch, setShowCenterMatch] = useState(false)
   const [showDateImport, setShowDateImport] = useState(false)
+  const [showBirthImport, setShowBirthImport] = useState(false)
   const [toast, setToast]         = useState(null)
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
@@ -121,6 +124,12 @@ export default function AdminApp() {
   const handleImport = async (rows, skipped, onProgress) => {
     const { added, updated } = await upsertApplications(rows, onProgress)
     showToast(`匯入完成：新增 ${added}、更新 ${updated}、略過 ${skipped}（無帳號）`)
+    await load()
+  }
+
+  const handleBirthPassportImport = async (rows, onProgress) => {
+    const { updated, total } = await updateBirthPassportByAccount(rows, onProgress)
+    showToast(`生日／護照匯入完成：更新 ${updated} 位（共比對 ${total} 位）`)
     await load()
   }
 
@@ -505,6 +514,10 @@ export default function AdminApp() {
         <span style={{ fontSize: 12, color: '#7b8794' }}>同帳號的所有志願會一起套用同一個中心；亦可在下方每列直接設定</span>
         <span style={{ flex: 1 }} />
         <Btn onClick={() => setShowDateImport(true)}>📅 上傳時間表</Btn>
+        <Btn style={{ background: '#f0fdfa', borderColor: '#99f6e4', color: '#0f766e' }}
+          onClick={() => setShowBirthImport(true)}>
+          🪪 匯入生日／護照
+        </Btn>
         <Btn style={{ background: '#fff', borderColor: '#c4b5fd', color: '#6d28d9' }}
           onClick={() => setShowCenterMatch(true)}>
           📋 上傳中心名單核對
@@ -520,7 +533,7 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '中文姓名', '英文姓名', '護照號碼', '國籍', '中心', '第1志願系所', '志願', '書審', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
+                {['帳號', '中文姓名', '英文姓名', '護照號碼', '生日', '年齡', '國籍', '中心', '第1志願系所', '志願', '書審', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
@@ -540,6 +553,15 @@ export default function AdminApp() {
                       <td style={{ ...td, fontWeight: 500 }}>{g.rep.name}</td>
                       <td style={{ ...td, color: '#777' }}>{g.rep.name_english}</td>
                       <td style={{ ...td, color: '#777' }}>{g.rep.passport_number}</td>
+                      <td style={{ ...td, color: '#777' }}>{g.rep.birth_date || '—'}</td>
+                      {(() => {
+                        const age = calcAge(g.rep.birth_date)
+                        return (
+                          <td style={age != null && age > 22 ? { ...td, color: '#dc2626', fontWeight: 700 } : td}>
+                            {age != null ? `${age}${age > 22 ? ' ⚠' : ''}` : '—'}
+                          </td>
+                        )
+                      })()}
                       <td style={td}>{g.rep.nationality}</td>
                       <td style={td}>
                         <select
@@ -591,7 +613,7 @@ export default function AdminApp() {
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={13} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                        <td colSpan={15} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
                           <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願（取消勾選＝該系書審未通過，第二階段將不會出現）</div>
                           {g.apps.map((a) => (
                             <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
@@ -645,6 +667,12 @@ export default function AdminApp() {
               load()
             }
           }}
+        />
+      )}
+      {showBirthImport && (
+        <PassportBirthImportModal
+          onApply={handleBirthPassportImport}
+          onClose={() => setShowBirthImport(false)}
         />
       )}
       {editGroup && (
