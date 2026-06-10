@@ -322,6 +322,18 @@ export async function saveStage1Score(recordId, payload) {
   )
 }
 
+// 刪除單筆第一階段評分紀錄（行政用：移除誤記／非實際評分者那筆）。需 stage1_records 的 DELETE RLS 政策。
+export async function deleteStage1Record(id) {
+  const res = await callProxy(
+    `/rest/v1/stage1_records?id=eq.${id}`,
+    'DELETE', undefined, 'return=representation',
+  )
+  if (!Array.isArray(res) || !res.length) {
+    throw new Error('刪除失敗：0 筆（請確認 stage1_records 的 DELETE RLS 政策）')
+  }
+  return res
+}
+
 // 標記通過一階（更新單筆 application，需要 UPDATE 的 RLS 政策）
 export async function markStage1Passed(applicationId, date) {
   return callProxy(

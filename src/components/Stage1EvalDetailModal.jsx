@@ -1,4 +1,5 @@
-import { Modal, Pill } from './UI'
+import { useState } from 'react'
+import { Modal, Pill, Btn } from './UI'
 import { SCORE_ITEMS_STAGE1, DECISIONS_STAGE1 } from '../constants'
 
 const MAX = SCORE_ITEMS_STAGE1.length * 5
@@ -6,10 +7,20 @@ const recInfo = (v) => DECISIONS_STAGE1.find((d) => d.v === v) || DECISIONS_STAG
 
 // 唯讀檢視某位學生的第一階段評分（可能有多位老師各一筆）。
 // recs：stage1_records 陣列；student：{ name, name_english, account }
-export default function Stage1EvalDetailModal({ student, recs = [], onClose }) {
+// onDelete（選填）：傳入時每筆顯示「刪除此筆」按鈕（行政確認頁用）；不傳則純唯讀。
+export default function Stage1EvalDetailModal({ student, recs = [], onDelete, onClose }) {
+  const [busyId, setBusyId] = useState(null)
   const scored = [...recs]
     .filter((r) => r && r.scores && Object.keys(r.scores).length > 0)
     .sort((a, b) => String(b.record_date || '').localeCompare(String(a.record_date || '')))
+
+  const handleDelete = async (r) => {
+    if (!onDelete) return
+    const who = r.teacher_name || '（未填老師）'
+    if (!window.confirm(`確定刪除「${who}」於 ${r.record_date || ''} 的這筆評分？\n刪除後平均分會重新計算，此動作無法復原。`)) return
+    setBusyId(r.id)
+    try { await onDelete(r) } finally { setBusyId(null) }
+  }
 
   return (
     <Modal title={`${student?.name || ''} 的實體面試評分`} onClose={onClose} width={560}>
@@ -32,6 +43,15 @@ export default function Stage1EvalDetailModal({ student, recs = [], onClose }) {
               <span style={{ marginLeft: 'auto', fontSize: 13 }}>
                 總分 <b style={{ fontSize: 16 }}>{r.total_score ?? '—'}</b> / {MAX}
               </span>
+              {onDelete && (
+                <Btn
+                  onClick={() => handleDelete(r)}
+                  disabled={busyId === r.id}
+                  style={{ background: '#fee2e2', borderColor: '#fecaca', color: '#b91c1c', padding: '4px 10px', fontSize: 12 }}
+                >
+                  {busyId === r.id ? '刪除中…' : '🗑 刪除此筆'}
+                </Btn>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 16px', fontSize: 13 }}>
               {SCORE_ITEMS_STAGE1.map((it) => (

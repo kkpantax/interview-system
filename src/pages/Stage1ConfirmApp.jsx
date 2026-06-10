@@ -3,7 +3,7 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, Pill, s } from '../components/UI'
 import ExportBtn, { writeXlsx } from '../components/ExportBtn'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
-import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2 } from '../api'
+import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2, deleteStage1Record } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { DECISIONS_STAGE1, SCORE_ITEMS_STAGE1 } from '../constants'
 
@@ -94,6 +94,17 @@ export default function Stage1ConfirmApp() {
     const c = { pass: 0, fail: 0, pending: 0 }
     for (const r of scored) c[r.recommendation] = (c[r.recommendation] || 0) + 1
     return { scored, counts: c }
+  }
+
+  const deleteRec = async (rec) => {
+    try {
+      await deleteStage1Record(rec.id)
+      setViewing((v) => (v ? { ...v, recs: v.recs.filter((r) => r.id !== rec.id) } : v))
+      await load()
+      showToast('已刪除該筆評分，平均分已重新計算')
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
   }
 
   const confirm = async (stu, result) => {
@@ -320,7 +331,7 @@ export default function Stage1ConfirmApp() {
       </Card>
 
       {viewing && (
-        <Stage1EvalDetailModal student={viewing.stu} recs={viewing.recs} onClose={() => setViewing(null)} />
+        <Stage1EvalDetailModal student={viewing.stu} recs={viewing.recs} onDelete={deleteRec} onClose={() => setViewing(null)} />
       )}
     </PageShell>
   )
