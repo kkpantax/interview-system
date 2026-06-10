@@ -5,9 +5,17 @@ import ExportBtn, { writeXlsx } from '../components/ExportBtn'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
 import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
-import { DECISIONS_STAGE1 } from '../constants'
+import { DECISIONS_STAGE1, SCORE_ITEMS_STAGE1 } from '../constants'
 
 const ACCENT = '#0f766e'
+const MAX1 = SCORE_ITEMS_STAGE1.length * 5   // 第一階段滿分（6 項 × 5）
+
+// 老師總分平均（只計已評分者）
+const avgOf = (scored) => {
+  const vals = (scored || []).map((r) => Number(r.total_score)).filter((v) => Number.isFinite(v))
+  if (!vals.length) return null
+  return vals.reduce((a, b) => a + b, 0) / vals.length
+}
 
 const localToday = () => {
   const d = new Date()
@@ -29,6 +37,7 @@ const EXPORT_COLS_AFTER = [
   { key: 'nationality',  label: '國籍' },
   { key: 'center',       label: '中心' },
   { key: 'appeared',     label: '出席' },
+  { key: 'teacher_avg',  label: '老師平均分' },
   { key: 'teacher_recs', label: '老師建議' },
   { key: 'confirm',      label: '確認結果' },
 ]
@@ -43,6 +52,7 @@ export default function Stage1ConfirmApp() {
   const [busyKey, setBusyKey] = useState(null)
   const [viewing, setViewing] = useState(null)   // { stu, recs }
   const [search, setSearch]   = useState('')
+  const [sortBy, setSortBy]   = useState('default')   // default | score_desc | score_asc
   const [toast, setToast]     = useState(null)
 
   // 守衛：只有 admin 能進
@@ -112,6 +122,23 @@ export default function Stage1ConfirmApp() {
     !q || (stu.account || '').toLowerCase().includes(q) || (stu.name || '').toLowerCase().includes(q),
   )
 
+  // 依老師平均分排序（未評分者一律排最後）
+  const sorted = (() => {
+    if (sortBy === 'default') return filtered
+    const dir = sortBy === 'score_desc' ? -1 : 1
+    return [...filtered].sort((a, b) => {
+      const aa = avgOf(recSummary(a.account).scored)
+      const bb = avgOf(recSummary(b.account).scored)
+      if (aa == null && bb == null) return 0
+      if (aa == null) return 1
+      if (bb == null) return -1
+      return (aa - bb) * dir
+    })
+  })()
+  const cycleSort = () =>
+    setSortBy((p) => (p === 'default' ? 'score_desc' : p === 'score_desc' ? 'score_asc' : 'default'))
+  const sortArrow = sortBy === 'score_desc' ? ' ↓' : sortBy === 'score_asc' ? ' ↑' : ' ⇅'
+
   // 匯出二階系所面試通知名單（取全部通過一階 + 書審通過者，不受頁面日期限制）
   const exportNotifyStage2 = async () => {
     try {
@@ -147,6 +174,7 @@ export default function Stage1ConfirmApp() {
   const exportRows = students.map((stu) => {
     const { scored, counts } = recSummary(stu.account)
     const appeared = recsOf(stu.account).some((r) => r.appeared)
+    const avg = avgOf(scored)
     const recsText = ['pass', 'pending', 'fail']
       .filter((k) => counts[k]).map((k) => `${recLabel(k)}×${counts[k]}`).join('、') || (scored.length ? '' : '未評分')
     const st = confirmStateOf(stu)
@@ -156,6 +184,7 @@ export default function Stage1ConfirmApp() {
       nationality: stu.nationality,
       center: stu.center || '',
       appeared: appeared ? '已到' : '未到',
+      teacher_avg: avg != null ? avg.toFixed(1) : '',
       teacher_recs: recsText,
       confirm: st === 'pass' ? '通過' : st === 'reject' ? '不通過' : '待確認',
     }
@@ -211,13 +240,26 @@ export default function Stage1ConfirmApp() {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 920 }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['姓名', '報考志願', '國籍', '中心', '出席', '老師評分', '確認結果'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                {['姓名', '報考志願', '國籍', '中心', '出席', '老師評分', '確認結果'].map((h, i) => (
+                  <th key={i} style={th}>
+                    {h === '老師評分' ? (
+                      <button
+                        onClick={cycleSort}
+                        title="點擊切換排序：高→低 / 低→高 / 預設"
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: sortBy === 'default' ? '#666' : ACCENT, fontWeight: sortBy === 'default' ? 500 : 700 }}
+                      >
+                        老師評分（平均）{sortArrow}
+                      </button>
+                    ) : h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((stu) => {
+              {sorted.map((stu) => {
                 const { scored, counts } = recSummary(stu.account)
                 const appeared = recsOf(stu.account).some((r) => r.appeared)
+                const avg = avgOf(scored)
                 const st = confirmStateOf(stu)
                 return (
                   <tr key={stu.account}>
@@ -237,6 +279,12 @@ export default function Stage1ConfirmApp() {
                     <td style={{ ...td, color: stu.center ? '#1e40af' : '#ccc' }}>{stu.center || '—'}</td>
                     <td style={td}>{appeared ? <span style={{ color: '#15803d' }}>✓ 已到</span> : <span style={{ color: '#bbb' }}>未到</span>}</td>
                     <td style={td}>
+                      {avg != null && (
+                        <div style={{ fontWeight: 700, fontSize: 15, color: ACCENT, marginBottom: 4 }}>
+                          {avg.toFixed(1)}
+                          <span style={{ fontSize: 11, color: '#aaa', fontWeight: 400 }}> ／{MAX1} · {scored.length}位</span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         {scored.length === 0 && <span style={{ fontSize: 12, color: '#bbb' }}>未評分</span>}
                         {['pass', 'pending', 'fail'].map((k) => counts[k] ? (() => {
@@ -261,7 +309,7 @@ export default function Stage1ConfirmApp() {
                   </tr>
                 )
               })}
-              {!filtered.length && (
+              {!sorted.length && (
                 <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '此日期沒有應試學生'}
                 </td></tr>
