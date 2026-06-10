@@ -192,6 +192,17 @@ export default function AdminApp() {
   const groups = useMemo(() => groupByAccount(apps), [apps])
   const groupMap = useMemo(() => new Map(groups.map((g) => [g.key, g])), [groups])
 
+  // 各面試日的人數（以帳號群組＝人為單位；未排期另計）。日期字串為 YYYY-MM-DD，字典序即時間序。
+  const dateCounts = useMemo(() => {
+    const m = {}; let unscheduled = 0
+    for (const g of groups) {
+      if (g.interview_date) m[g.interview_date] = (m[g.interview_date] || 0) + 1
+      else unscheduled++
+    }
+    return { dates: Object.keys(m).sort(), m, unscheduled }
+  }, [groups])
+  const mdOf = (iso) => { const [, mo, d] = iso.split('-'); return `${+mo}/${+d}` }
+
   const filtered = groups.filter((g) => {
     if (deptFilter && !g.apps.some((a) => a.department === deptFilter)) return false
     if (statusFilter && g.status !== statusFilter) return false
@@ -493,6 +504,19 @@ export default function AdminApp() {
         <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 人</span>
       </div>
 
+      {/* 資料匯入／上傳 */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+        <Btn onClick={() => setShowDateImport(true)}>📅 上傳時間表</Btn>
+        <Btn style={{ background: '#f0fdfa', borderColor: '#99f6e4', color: '#0f766e' }}
+          onClick={() => setShowBirthImport(true)}>
+          🪪 匯入生日／護照
+        </Btn>
+        <Btn style={{ background: '#fff', borderColor: '#c4b5fd', color: '#6d28d9' }}
+          onClick={() => setShowCenterMatch(true)}>
+          📋 上傳中心名單核對
+        </Btn>
+      </div>
+
       {/* 指派面試日期 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 8, padding: '10px 12px' }}>
         <span style={{ fontSize: 13, color: '#1e40af', fontWeight: 600 }}>指派面試日期</span>
@@ -507,6 +531,27 @@ export default function AdminApp() {
         <span style={{ fontSize: 12, color: '#7b8794' }}>勾選下方學生後指派，同帳號的所有志願會一起排同一天（一人面一次）</span>
       </div>
 
+      {/* 各日人數總覽（點膠囊可把上方日期設為該日） */}
+      {(dateCounts.dates.length > 0 || dateCounts.unscheduled > 0) && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, fontSize: 12 }}>
+          <span style={{ color: '#6b7280', fontWeight: 600 }}>各日人數</span>
+          {dateCounts.dates.map((iso) => (
+            <button key={iso} onClick={() => setAssignDate(iso)} title="點擊將上方日期設為此日"
+              style={{ cursor: 'pointer', font: 'inherit', borderRadius: 999, padding: '3px 10px',
+                border: '1px solid #dbeafe',
+                background: assignDate === iso ? '#1e40af' : '#eff6ff',
+                color: assignDate === iso ? '#fff' : '#1e40af' }}>
+              {mdOf(iso)} · {dateCounts.m[iso]} 人
+            </button>
+          ))}
+          {dateCounts.unscheduled > 0 && (
+            <span style={{ borderRadius: 999, padding: '3px 10px', border: '1px solid #eee', background: '#fafafa', color: '#999' }}>
+              未排 · {dateCounts.unscheduled} 人
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 批次設定中心 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 8, padding: '10px 12px' }}>
         <span style={{ fontSize: 13, color: '#6d28d9', fontWeight: 600 }}>批次設定中心</span>
@@ -519,16 +564,6 @@ export default function AdminApp() {
           套用到已選 {selected.size} 位
         </Btn>
         <span style={{ fontSize: 12, color: '#7b8794' }}>同帳號的所有志願會一起套用同一個中心；亦可在下方每列直接設定</span>
-        <span style={{ flex: 1 }} />
-        <Btn onClick={() => setShowDateImport(true)}>📅 上傳時間表</Btn>
-        <Btn style={{ background: '#f0fdfa', borderColor: '#99f6e4', color: '#0f766e' }}
-          onClick={() => setShowBirthImport(true)}>
-          🪪 匯入生日／護照
-        </Btn>
-        <Btn style={{ background: '#fff', borderColor: '#c4b5fd', color: '#6d28d9' }}
-          onClick={() => setShowCenterMatch(true)}>
-          📋 上傳中心名單核對
-        </Btn>
       </div>
 
       <Card>
