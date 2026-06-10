@@ -671,6 +671,7 @@ export default function AdminApp() {
       )}
       {showBirthImport && (
         <PassportBirthImportModal
+          groups={groups}
           onApply={handleBirthPassportImport}
           onClose={() => setShowBirthImport(false)}
         />
