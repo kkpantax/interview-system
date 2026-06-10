@@ -5,6 +5,7 @@ import ExportBtn, { writeXlsx } from '../components/ExportBtn'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
 import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2, deleteStage1Record } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
+import { calcAge } from '../utils'
 import { DECISIONS_STAGE1, SCORE_ITEMS_STAGE1 } from '../constants'
 
 const ACCENT = '#0f766e'
@@ -278,6 +279,15 @@ export default function Stage1ConfirmApp() {
                       <div style={{ fontWeight: 500 }}>{stu.name}</div>
                       <div style={{ fontSize: 11, color: '#999' }}>{stu.name_english}</div>
                       <div style={{ fontSize: 11, color: '#bbb' }}>{stu.account}</div>
+                      {(() => {
+                        const age = calcAge(stu.birth_date)
+                        const over = age != null && age > 22
+                        return (stu.gender || age != null) ? (
+                          <div style={{ fontSize: 11, marginTop: 1, color: over ? '#dc2626' : '#888', fontWeight: over ? 700 : 400 }}>
+                            {[stu.gender, age != null ? `${age}歲` : null].filter(Boolean).join('・')}{over ? ' ⚠' : ''}
+                          </div>
+                        ) : null
+                      })()}
                     </td>
                     <td style={{ ...td, color: '#777', maxWidth: 220 }}>
                       {(stu.allDepts || []).map((dep) => (
