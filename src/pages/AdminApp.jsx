@@ -8,6 +8,8 @@ import CenterManager from '../components/CenterManager'
 import DeptQuotaManager from '../components/DeptQuotaManager'
 import CampusManager from '../components/CampusManager'
 import StudentEditModal from '../components/StudentEditModal'
+import ProgressOverview from '../components/ProgressOverview'
+import { ExportMenu } from '../components/ExportMenu'
 import CenterMatchModal from '../components/CenterMatchModal'
 import InterviewDateModal from '../components/InterviewDateModal'
 import PassportBirthImportModal from '../components/PassportBirthImportModal'
@@ -379,7 +381,7 @@ export default function AdminApp() {
     >
       {/* 分頁 */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e8e7e3' }}>
-        {[{ k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'campus', label: '校區設定' }, { k: 'quota', label: '預計錄取人數' }, { k: 'reset', label: '年度重置' }].map((t) => (
+        {[{ k: 'overview', label: '📊 進度總覽' }, { k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'campus', label: '校區設定' }, { k: 'quota', label: '預計錄取人數' }, { k: 'reset', label: '年度重置' }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{
               padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
@@ -392,6 +394,8 @@ export default function AdminApp() {
           </button>
         ))}
       </div>
+
+      {tab === 'overview' && <ProgressOverview groups={groups} />}
 
       {tab === 'teachers' && <TeacherManager depts={depts} showToast={showToast} />}
 
@@ -531,15 +535,15 @@ export default function AdminApp() {
 
       {/* 資料匯入／上傳 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-        <Btn onClick={() => setShowDateImport(true)}>📅 上傳時間表</Btn>
-        <Btn style={{ background: '#f0fdfa', borderColor: '#99f6e4', color: '#0f766e' }}
-          onClick={() => setShowBirthImport(true)}>
-          🪪 匯入生日／護照
-        </Btn>
-        <Btn style={{ background: '#fff', borderColor: '#c4b5fd', color: '#6d28d9' }}
-          onClick={() => setShowCenterMatch(true)}>
-          📋 上傳中心名單核對
-        </Btn>
+        <ExportMenu
+          label="⬆ 匯入"
+          btnStyle={{ background: 'white', border: '1px solid #ddd', color: '#1a1a18', fontSize: 13, padding: '6px 12px' }}
+          items={[
+            { label: '📅 上傳時間表', onClick: () => setShowDateImport(true) },
+            { label: '🪪 匯入生日／護照', onClick: () => setShowBirthImport(true) },
+            { label: '📋 上傳中心名單核對', onClick: () => setShowCenterMatch(true) },
+          ]}
+        />
       </div>
 
       {/* 指派面試日期 */}

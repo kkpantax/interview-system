@@ -438,6 +438,23 @@ export async function getStage2DeptSummary() {
   return depts.map((d) => map.get(d))
 }
 
+// 進度總覽用：進二階的「人」之中，已被任一系評過分的人數（以 account 去重）
+export async function getStage2Progress() {
+  const rows = await callProxy(
+    '/rest/v1/applications?select=account,evaluations(id)&stage1_passed_date=not.is.null&paper_passed=is.true',
+    'GET',
+  )
+  const m = new Map()
+  for (const r of (rows || [])) {
+    if (!r.account) continue
+    const prev = m.get(r.account) || false
+    m.set(r.account, prev || (r.evaluations || []).length > 0)
+  }
+  let evaluated = 0
+  for (const v of m.values()) if (v) evaluated++
+  return { total: m.size, evaluated, waiting: m.size - evaluated }
+}
+
 // 某系某日的評分明細（含學生資料），供下載查核 Excel 使用
 export async function getStage2EvalsByDate(dept, date) {
   return callProxy(
