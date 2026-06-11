@@ -5,6 +5,7 @@ import Stage1List from '../components/Stage1List'
 import Stage1ScoreForm from '../components/Stage1ScoreForm'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
 import ExportBtn from '../components/ExportBtn'
+import MailComposer from '../components/MailComposer'
 import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 
@@ -36,6 +37,8 @@ export default function Stage1App() {
   const [viewing, setViewing]   = useState(null)  // 查看評分中的學生 { account, ... }
   const [search, setSearch]     = useState('')
   const [toast, setToast]       = useState(null)
+  const [showMail, setShowMail] = useState(false)
+  const isAdmin = teacher?.role === 'admin' || teacher?.role === 'superadmin'
 
   const myId = teacher?.id
   // 目前登入老師對該帳號的那筆評分紀錄（每位老師只看/改自己的）
@@ -185,7 +188,8 @@ export default function Stage1App() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位 · 建議通過 {passCount} 位</span>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {isAdmin && <button onClick={() => setShowMail(true)} style={{ ...s.btn }}>✉ 寄送一階通知</button>}
           <ExportBtn
             columns={[
               { key: 'name', label: '中文姓名' },
@@ -222,6 +226,10 @@ export default function Stage1App() {
       )}
       {viewing && (
         <Stage1EvalDetailModal student={viewing} recs={records[viewing.account] || []} onClose={() => setViewing(null)} />
+      )}
+      {showMail && (
+        <MailComposer stage="1" kind="s1_invite" recipients={students}
+          onClose={() => setShowMail(false)} onToast={showToast} />
       )}
     </PageShell>
   )

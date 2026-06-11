@@ -331,3 +331,24 @@ export async function upsertFinalAdmission(row)  // 更新最終錄取狀態
 - 新增 `exportByCenter()`：蒐集 `admitted` + `waitlisted`，按 `center` 分組（組間空行），
   中心為第一欄；欄位 `center, department, account, name, name_english, status_label`。
 - 檔名「第三階段錄取名單_依中心.xlsx」，右上角加「⬇ 匯出依中心名單」按鈕。
+
+---
+
+## 面試通知寄信功能
+
+面試通知信由系統建立草稿、人工確認後批次送出，入口分兩處：
+
+- **第一階段**：`Stage1App.jsx`，限 `admin` / `superadmin`（右上工具列「✉ 寄送一階通知」）。
+- **第二階段**：`Stage1ConfirmApp.jsx`（實體面試確認名單頁）「✉ 寄送二階通知」，
+  名單取 `getNotifyStage2()`（全部通過一階 + 書審通過者）。
+
+兩處共用 `src/components/MailComposer.jsx`。範本在 `src/mailTemplates.js`，
+共 9 份：S1 實體／線上 × 三語、S2 線上 × 三語；語言依 `pickLang(nationality)` 自動判斷
+（越南→VI、印尼→ID、其餘→EN），可逐列改；第一階段可逐列切實體／線上。
+範本外語段的程式名稱用 `{{申請項目EN}}`、中文段用 `{{申請項目}}`。
+
+流程：先「① 建立草稿到公務信箱」→ 透過 `api/draftmail.js`（Edge Function，
+帶 `DRAFT_SERVICE_URL` / `DRAFT_SERVICE_TOKEN` 環境變數）轉呼叫公務信箱 `shihchien_ifp`
+的 Apps Script，在草稿夾建立草稿，可在 Gmail 逐封檢查／微調 →「② 送出本批」一次寄出。
+寄送狀態記在 `mail_log` 表（以 `account` + `kind` 識別，`kind` 為 `s1_invite` / `s2_invite`）。
+`src/api.js` 對應 function：`createDrafts` / `sendDraftBatch` / `logMail` / `getMailLog`。

@@ -3,6 +3,7 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, Pill, s } from '../components/UI'
 import ExportBtn, { writeXlsx } from '../components/ExportBtn'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
+import MailComposer from '../components/MailComposer'
 import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2, deleteStage1Record } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
@@ -55,6 +56,8 @@ export default function Stage1ConfirmApp() {
   const [search, setSearch]   = useState('')
   const [sortBy, setSortBy]   = useState('default')   // default | score_desc | score_asc
   const [toast, setToast]     = useState(null)
+  const [showMail, setShowMail] = useState(false)
+  const [mailRecipients, setMailRecipients] = useState([])
 
   // 守衛：只有 admin 能進
   useEffect(() => {
@@ -178,6 +181,18 @@ export default function Stage1ConfirmApp() {
     }
   }
 
+  // 開啟「寄送二階通知」面板（取全部通過一階 + 書審通過者）
+  const openMail = async () => {
+    try {
+      const people = await getNotifyStage2()
+      if (!people.length) { showToast('沒有可寄送的二階名單', 'warn'); return }
+      setMailRecipients(people)
+      setShowMail(true)
+    } catch (e) {
+      showToast('載入名單失敗：' + e.message, 'error')
+    }
+  }
+
   const passCount    = students.filter((g) => confirmStateOf(g) === 'pass').length
   const rejectCount  = students.filter((g) => confirmStateOf(g) === 'reject').length
   const pendingCount = students.filter((g) => confirmStateOf(g) === 'pending').length
@@ -241,6 +256,7 @@ export default function Stage1ConfirmApp() {
           應試 {students.length} 位 · 通過 {passCount} · 不通過 {rejectCount} · 待確認 {pendingCount}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <Btn variant="primary" onClick={openMail}>✉ 寄送二階通知</Btn>
           <Btn onClick={exportNotifyStage2}>⬇ 匯出二階面試通知名單</Btn>
           <ExportBtn columns={exportColumns} rows={exportRows} filename={`實體面試確認名單_${date}.xlsx`}
             label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
@@ -342,6 +358,10 @@ export default function Stage1ConfirmApp() {
 
       {viewing && (
         <Stage1EvalDetailModal student={viewing.stu} recs={viewing.recs} onDelete={deleteRec} onClose={() => setViewing(null)} />
+      )}
+      {showMail && (
+        <MailComposer stage="2" kind="s2_invite" recipients={mailRecipients}
+          onClose={() => setShowMail(false)} onToast={showToast} />
       )}
     </PageShell>
   )

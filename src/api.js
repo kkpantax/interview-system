@@ -685,3 +685,48 @@ export async function clearAllData(username, password) {
   if (!res.ok) throw new Error(data.error || '清空失敗')
   return data
 }
+
+// ── 追加到 src/api.js 末端 ──────────────────────────────────────────────────
+// 面試通知信：草稿服務 + 寄送記錄
+
+async function callDraftMail(action, payload) {
+  const res = await fetch('/api/draftmail', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) throw new Error(data.error || '草稿服務請求失敗')
+  return data
+}
+
+// 在公務信箱草稿夾建立草稿。messages: [{ to, subject, body }]
+export async function createDrafts(messages) {
+  return callDraftMail('create_drafts', { messages })
+}
+
+// 送出本批草稿（draftIds 來自 createDrafts 的回傳）
+export async function sendDraftBatch(draftIds) {
+  return callDraftMail('send_batch', { draftIds })
+}
+
+// 寄送記錄（mail_log）：kind 例 's1_invite' / 's2_invite'；status 'draft' / 'sent'
+export async function logMail(rows) {
+  if (!rows || !rows.length) return null
+  return callProxy(
+    '/rest/v1/mail_log?on_conflict=account,kind',
+    'POST',
+    rows,
+    'resolution=merge-duplicates,return=representation',
+  )
+}
+
+export async function getMailLog(kind) {
+  const rows = await callProxy(
+    `/rest/v1/mail_log?select=account,kind,status,sent_at&kind=eq.${encodeURIComponent(kind)}`,
+    'GET',
+  )
+  return Object.fromEntries((rows || []).map((r) => [r.account, r]))
+}
