@@ -122,7 +122,7 @@ export default function ProgressOverview({ groups }) {
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gap: 12, marginTop: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         <DayBarChart title="第一階段實體面試各日人數" data={s1Dates} theme="blue" />
         {s2Dates && <DayBarChart title="第二階段面試各日人數" data={s2Dates} theme="green" />}
       </div>

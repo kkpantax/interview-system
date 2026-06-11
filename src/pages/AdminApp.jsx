@@ -577,12 +577,12 @@ export default function AdminApp() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <span>{`${filtered.length} / ${groups.length} 人`}</span>
             <ExportMenu
-              label="⬆ 匯入"
+              label="⬆ 批次匯入"
               btnStyle={{ background: 'white', border: '1px solid #ddd', color: '#1a1a18', fontSize: 12.5, padding: '5px 11px' }}
               items={[
-                { label: '📅 上傳時間表', onClick: () => setShowDateImport(true) },
-                { label: '🪪 匯入生日／護照', onClick: () => setShowBirthImport(true) },
-                { label: '📋 上傳中心名單核對', onClick: () => setShowCenterMatch(true) },
+                { label: '📅 上傳第一階段面試時間表', onClick: () => setShowDateImport(true) },
+                { label: '🪪 上傳學生生日／護照號碼', onClick: () => setShowBirthImport(true) },
+                { label: '📋 上傳中心名單', onClick: () => setShowCenterMatch(true) },
               ]}
             />
           </span>
