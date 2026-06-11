@@ -438,6 +438,30 @@ export async function getStage2DeptSummary() {
   return depts.map((d) => map.get(d))
 }
 
+// 二階各日人數：進二階者依 stage2_date 統計（以 account 去重；全志願皆未排者計入 unscheduled）
+export async function getStage2DateCounts() {
+  const rows = await callProxy(
+    '/rest/v1/applications?select=account,stage2_date&stage1_passed_date=not.is.null&paper_passed=is.true',
+    'GET',
+  )
+  const byDate = new Map()           // iso → Set(account)
+  const dated = new Set()            // 已有任一志願排日的帳號
+  const all = new Set()
+  for (const r of (rows || [])) {
+    if (!r.account) continue
+    all.add(r.account)
+    if (r.stage2_date) {
+      dated.add(r.account)
+      if (!byDate.has(r.stage2_date)) byDate.set(r.stage2_date, new Set())
+      byDate.get(r.stage2_date).add(r.account)
+    }
+  }
+  const dates = [...byDate.keys()].sort()
+  const m = {}
+  for (const d of dates) m[d] = byDate.get(d).size
+  return { dates, m, unscheduled: all.size - dated.size }
+}
+
 // 進度總覽用：進二階的「人」之中，已被任一系評過分的人數（以 account 去重）
 export async function getStage2Progress() {
   const rows = await callProxy(

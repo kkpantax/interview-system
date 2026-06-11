@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHead } from './UI'
-import { getStage2Progress, getFinalAdmissions, getStage4Data } from '../api'
+import { getStage2Progress, getFinalAdmissions, getStage4Data, getStage2DateCounts } from '../api'
+import DayBarChart from './DayBarChart'
 
 // 行政後台「進度總覽」：招生漏斗，以「人」為單位。
 // 一、四欄位由 AdminApp 已載入的 groups 計算；二、三、四階段資料於切到本分頁時即時撈取。
@@ -8,15 +9,17 @@ export default function ProgressOverview({ groups }) {
   const [s2, setS2]   = useState(null)
   const [s3, setS3]   = useState(null)
   const [s4, setS4]   = useState(null)
+  const [s2Dates, setS2Dates] = useState(null)
   const [err, setErr] = useState('')
 
   useEffect(() => {
     let dead = false
     ;(async () => {
       try {
-        const [p2, fa, st4] = await Promise.all([getStage2Progress(), getFinalAdmissions(), getStage4Data()])
+        const [p2, fa, st4, d2] = await Promise.all([getStage2Progress(), getFinalAdmissions(), getStage4Data(), getStage2DateCounts()])
         if (dead) return
         setS2(p2)
+        setS2Dates(d2)
 
         // 三階：以人去重 — 任一系正取即「正取」；僅備取（且無任何正取）算「備取」
         const adm = new Set(), wl = new Set()
@@ -37,6 +40,16 @@ export default function ProgressOverview({ groups }) {
   }, [])
 
   const paperAll = groups.filter((g) => g.apps.every((a) => a.paper_passed !== false)).length
+
+  // 一階各日人數由 groups 計算
+  const s1Dates = (() => {
+    const m = {}; let unscheduled = 0
+    for (const g of groups) {
+      if (g.interview_date) m[g.interview_date] = (m[g.interview_date] || 0) + 1
+      else unscheduled++
+    }
+    return { dates: Object.keys(m).sort(), m, unscheduled }
+  })()
 
   const steps = [
     { label: '報名人數', value: groups.length, sub: '不重複帳號', hash: '#/stats', color: '#0f766e' },
@@ -108,6 +121,11 @@ export default function ProgressOverview({ groups }) {
           「備取」為僅備取且無任何正取者；「確認就讀」為第四階段聯繫狀態為「就讀」者。百分比為占報名人數比例。
         </div>
       </Card>
+
+      <div style={{ display: 'grid', gap: 12, marginTop: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+        <DayBarChart title="第一階段實體面試各日人數" data={s1Dates} theme="blue" />
+        {s2Dates && <DayBarChart title="第二階段面試各日人數" data={s2Dates} theme="green" />}
+      </div>
     </div>
   )
 }

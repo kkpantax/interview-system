@@ -4,8 +4,9 @@ import { Card, CardHead, Btn, s } from '../components/UI'
 import {
   getStage2Roster, getStage2Unscheduled, setStage2Date,
   getCheckins, upsertCheckin, deleteCheckin,
-  getStage2NoShows, getCheckinsBefore,
+  getStage2NoShows, getCheckinsBefore, getStage2DateCounts,
 } from '../api'
+import DayBarChart from '../components/DayBarChart'
 import { getTeacher, logoutTeacher } from '../auth'
 import { todayISO } from '../utils'
 
@@ -108,6 +109,12 @@ export default function CheckinApp() {
   const [picked, setPicked]   = useState({})        // 未排程勾選 { [account]: true }
   const [assignDate, setAssignDate] = useState(todayISO)
   const [toast, setToast]     = useState(null)
+  const [dateCounts, setDateCounts] = useState(null)   // 二階各日人數統計
+
+  const loadDateCounts = async () => {
+    try { setDateCounts(await getStage2DateCounts()) } catch { /* 統計失敗不影響主功能 */ }
+  }
+  useEffect(() => { loadDateCounts() }, [])
 
   // 守衛：只有 admin / superadmin 能進
   useEffect(() => {
@@ -328,6 +335,17 @@ export default function CheckinApp() {
 
       {tab === 'track' ? (
         <>
+          {/* 第二階段面試各日人數 */}
+          <DayBarChart
+            title="第二階段面試各日人數"
+            data={dateCounts}
+            activeDate={date}
+            onPick={setDate}
+            theme="green"
+            hint="點選日期可切換下方報到名單"
+            style={{ marginBottom: 14 }}
+          />
+
           {/* 工具列 */}
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: '#555' }}>面試日期</span>
