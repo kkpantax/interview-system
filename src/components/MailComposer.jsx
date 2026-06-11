@@ -23,7 +23,7 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
     programEn: 'International Foundation Program (1+4)',
     date: '', time: '', location: '', meetLink: '',
     replyBy: '', contactPerson: '', contactEmail: '',
-    unitName: '國際暨兩岸事務處',
+    unitName: '國際事務處',
     batchMode: '線上',
     tz: 'TW',
   })
