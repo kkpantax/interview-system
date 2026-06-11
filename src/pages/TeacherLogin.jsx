@@ -14,14 +14,15 @@ export default function TeacherLogin({ stage }) {
   const isStage4  = stage === 'stage4' || stage === '4'
   const isConfirm1 = stage === 'confirm1'
   const isStats   = stage === 'stats'
-  const needAdmin = isAdmin || isStage4 || isConfirm1 || isStats   // 皆需 admin 角色
+  const isCheckin2 = stage === 'checkin2'
+  const needAdmin = isAdmin || isStage4 || isConfirm1 || isStats || isCheckin2   // 皆需 admin 角色
 
   const stageLabel  = needAdmin ? '行政人員' : stage === '2' ? '第二階段' : '第一階段'
   const accent      = needAdmin ? '#1a1a18' : stage === '2' ? '#15803d' : '#1e40af'
   const accentBg    = needAdmin ? '#ecebe6' : stage === '2' ? '#f0fdf4' : '#eff6ff'
-  const targetHash  = isStats ? '#/stats' : isStage4 ? '#/stage4' : isConfirm1 ? '#/confirm1' : isAdmin ? '#/admin' : stage === '2' ? '#/stage2' : '#/stage1'
+  const targetHash  = isCheckin2 ? '#/checkin2' : isStats ? '#/stats' : isStage4 ? '#/stage4' : isConfirm1 ? '#/confirm1' : isAdmin ? '#/admin' : stage === '2' ? '#/stage2' : '#/stage1'
   const stageRole   = needAdmin ? 'admin'   : stage === '2' ? 'stage2'   : 'stage1'
-  const headerLabel = isStats ? '報名統計登入' : isStage4 ? '第四階段確認登入' : isConfirm1 ? '實體面試確認登入' : isAdmin ? '行政人員登入' : `${stageLabel}老師登入`
+  const headerLabel = isCheckin2 ? '二階報到管理登入' : isStats ? '報名統計登入' : isStage4 ? '第四階段確認登入' : isConfirm1 ? '實體面試確認登入' : isAdmin ? '行政人員登入' : `${stageLabel}老師登入`
 
   // 已登入且角色符合 → 直接跳轉，不顯示登入表單
   useEffect(() => {

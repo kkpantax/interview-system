@@ -21,14 +21,33 @@ const latestEval = (evs) =>
   (evs || []).reduce((latest, e) =>
     !latest || String(e.eval_date || '') >= String(latest.eval_date || '') ? e : latest, null)
 
+// 報到狀態小膠囊（依本系 checkinMap[account] 顯示）
+function CheckinPill({ info }) {
+  if (info === undefined) return <span style={{ color: '#ccc' }}>—</span>   // 未傳 checkinMap
+  let st = { bg: '#f3f4f6', color: '#9ca3af', text: '⚪ 未報到' }
+  if (info) {
+    if (info.deptStatus === 'sent') st = { bg: '#dbeafe', color: '#1e40af', text: '🔵 前往面試中' }
+    else if (info.deptStatus === 'done') st = { bg: '#dcfce7', color: '#15803d', text: '✅ 已完成' }
+    else if (info.arrived) st = { bg: '#ecfdf5', color: '#15803d', text: '🟢 已報到' }
+  }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 6,
+      fontSize: 12, fontWeight: info?.deptStatus === 'sent' ? 700 : 600,
+      background: st.bg, color: st.color,
+    }}>{st.text}</span>
+  )
+}
+
 // 第二階段名單（presentational）
 // showEvalSummary=true：已評分區，顯示最新建議 badge、已評次數，按鈕為「再次評分」
-export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false }) {
+// checkinMap：account → { arrived, deptStatus }（待評分區才用，不傳則顯示「—」）
+export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false, checkinMap }) {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const headers = showEvalSummary
     ? ['中文姓名', '英文姓名', '帳號', '志願', '評分結果', '']
-    : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '一階通過日', '']
+    : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '報到', '一階通過日', '']
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -63,6 +82,7 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
                     <td style={td}><PrefPill order={stu.preference_order} /></td>
                     <td style={td}>{stu.nationality}</td>
                     <td style={td}>{stu.gender}</td>
+                    <td style={td}><CheckinPill info={checkinMap ? (checkinMap[stu.account] || null) : undefined} /></td>
                     <td style={{ ...td, color: '#15803d' }}>{stu.stage1_passed_date || '—'}</td>
                   </>
                 )}

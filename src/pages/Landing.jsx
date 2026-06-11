@@ -9,6 +9,7 @@ const INTL_ENTRIES = [
   { key: 'admin',  hash: '#/login?stage=admin', icon: '⚙', title: '書審通過名單',     desc: '上傳名單、查看總覽、帳號管理、匯出最終名單', bg: '#f5f4f0', fg: '#1a1a18' },
   { key: 'stage1', hash: '#/login?stage=1',      icon: '①', title: '實體面試名單', desc: '每日簽到確認、填中心、產出當日名單',          bg: '#eff6ff', fg: '#1e40af' },
   { key: 'confirm1', hash: '#/login?stage=confirm1', icon: '✓', title: '實體面試確認名單', desc: '確認實體面試結果、產出進二階名單、下載定稿名單', bg: '#ecfeff', fg: '#0f766e' },
+  { key: 'checkin2', hash: '#/login?stage=checkin2', icon: '②', title: '二階面試報到', desc: '線上面試報到、派送各系會議室、進度追蹤', bg: '#f0fdf4', fg: '#15803d' },
   { key: 'stage3', hash: '#/stage3',             icon: '③', title: '放榜會議名單', desc: '彙整兩階段結果、確認正備取（管理員）',        bg: '#faf5ff', fg: '#7e22ce' },
   { key: 'stage4', hash: '#/login?stage=stage4', icon: '④', title: '確認就學名單', desc: '繳費就讀確認、候補遞補管理（管理員）',        bg: '#fff7ed', fg: '#c2410c' },
   { key: 'stats',  hash: '#/login?stage=stats',  icon: '📊', title: '報名統計儀表板', desc: '報名人數、國籍分布、各系志願統計，可匯出報表', bg: '#f0fdfa', fg: '#0f766e' },

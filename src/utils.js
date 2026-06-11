@@ -17,6 +17,12 @@ export const finInfo = (v) => FINAL_RESULTS.find((d) => d.v === v) || FINAL_RESU
 
 export const todayStr = () => new Date().toLocaleDateString('zh-TW')
 
+// 今日的 ISO 日期字串（YYYY-MM-DD，取本地時區），供 input[type=date] 預設值與當日查詢用。
+export const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export const mergeEval = (found) =>
   found ? { ...emptyEval(), ...found } : emptyEval()
 

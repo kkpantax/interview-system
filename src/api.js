@@ -447,6 +447,66 @@ export async function getStage2EvalsByDate(dept, date) {
   )
 }
 
+// ── Stage 2 報到管理（線上面試：主會議室總報到 + 各系會議室進度）──────────────
+// 某日二階面試名單：已過一階 + 書審通過 + stage2_date = date，附 evaluations 摘要
+// （該志願是否已評分，用來把膠囊鎖定為「已完成」）。
+export async function getStage2Roster(date) {
+  return callProxy(
+    '/rest/v1/applications?select=account,name,name_english,nationality,gender,department,preference_order,stage2_date,evaluations(id,eval_date)' +
+      `&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=eq.${date}&order=name.asc`,
+    'GET',
+  )
+}
+
+// 尚未排定二階面試日者（同條件但 stage2_date 為 null）。
+export async function getStage2Unscheduled() {
+  return callProxy(
+    '/rest/v1/applications?select=account,name,name_english,nationality,gender,department,preference_order,stage2_date' +
+      '&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=is.null&order=name.asc',
+    'GET',
+  )
+}
+
+// 批次指派／清除二階面試日（依帳號，同帳號所有志願列一起設定）。每 50 個帳號一批。
+// date 傳 '' / null 表示清除（取消排程）。需 applications 的 UPDATE RLS 政策。
+export async function setStage2Date(accounts, date) {
+  const list = [...new Set((accounts || []).filter(Boolean))]
+  if (!list.length) return
+  const BATCH = 50
+  for (let i = 0; i < list.length; i += BATCH) {
+    const inList = list.slice(i, i + BATCH).map((a) => encodeURIComponent(a)).join(',')
+    await callProxy(
+      `/rest/v1/applications?account=in.(${inList})`,
+      'PATCH',
+      { stage2_date: date || null },
+      'return=minimal',
+    )
+  }
+}
+
+// 某日所有報到／進度紀錄（department='' 為主會議室總報到，department=系名 為該系進度）。
+export async function getCheckins(date) {
+  return callProxy(`/rest/v1/stage2_checkins?checkin_date=eq.${date}&select=*`, 'GET')
+}
+
+// upsert 一筆報到／進度（on_conflict account,checkin_date,department，merge-duplicates）。
+export async function upsertCheckin({ account, checkin_date, department, status }) {
+  return callProxy(
+    '/rest/v1/stage2_checkins?on_conflict=account,checkin_date,department',
+    'POST',
+    { account, checkin_date, department: department || '', status, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates,return=representation',
+  )
+}
+
+// 刪除一筆報到／進度（department 為 '' 時即主會議室那筆）。
+export async function deleteCheckin(account, date, department) {
+  return callProxy(
+    `/rest/v1/stage2_checkins?account=eq.${encodeURIComponent(account)}&checkin_date=eq.${date}&department=eq.${encodeURIComponent(department || '')}`,
+    'DELETE', undefined, 'return=minimal',
+  )
+}
+
 // ── Admin 匯出最終名單 ──────────────────────────────────────────────────────
 // recommendation = admit 的評分，連同 applications 一起帶出
 export async function getFinalList() {
@@ -660,14 +720,15 @@ export async function updateStage4Status(id, fields) {
 // ── 年度重置（行政）────────────────────────────────────────────────────────
 // 一次撈五張表全部資料，給「匯出年度備份」做成多工作表 Excel。
 export async function exportAllData() {
-  const [apps, s1, s2, s3, s4] = await Promise.all([
+  const [apps, s1, s2, s3, s4, chk] = await Promise.all([
     callProxy('/rest/v1/applications?select=*', 'GET'),
     callProxy('/rest/v1/stage1_records?select=*', 'GET'),
     callProxy('/rest/v1/evaluations?select=*', 'GET'),
     callProxy('/rest/v1/final_admissions?select=*', 'GET'),
     callProxy('/rest/v1/stage4_confirmations?select=*', 'GET'),
+    callProxy('/rest/v1/stage2_checkins?select=*', 'GET'),
   ])
-  return { apps, s1, s2, s3, s4 }
+  return { apps, s1, s2, s3, s4, chk }
 }
 
 // 清空本年度所有學生相關資料（中心名單與老師帳號不動）。

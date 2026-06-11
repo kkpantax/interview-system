@@ -154,11 +154,12 @@ export default function AdminApp() {
   // 年度備份：五張表各一個工作表，做成單一 Excel
   const exportBackup = async () => {
     try {
-      const { apps: a, s1, s2, s3, s4 } = await exportAllData()
+      const { apps: a, s1, s2, s3, s4, chk } = await exportAllData()
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(a || []),  '學生名單')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s1 || []), '第一階段評分')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s2 || []), '第二階段評分')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chk || []), '二階報到紀錄')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s3 || []), '第三階段錄取')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s4 || []), '第四階段確認')
       XLSX.writeFile(wb, `年度備份_${new Date().getFullYear()}.xlsx`)
@@ -394,8 +395,8 @@ export default function AdminApp() {
             <CardHead left="匯出年度備份" />
             <div style={{ padding: 18 }}>
               <p style={{ fontSize: 13, color: '#555', margin: '0 0 14px', lineHeight: 1.7 }}>
-                請先匯出今年度完整資料備份，再執行清空。備份檔為單一 Excel，內含五個工作表：
-                學生名單、第一階段評分、第二階段評分、第三階段錄取、第四階段確認。
+                請先匯出今年度完整資料備份，再執行清空。備份檔為單一 Excel，內含六個工作表：
+                學生名單、第一階段評分、第二階段評分、二階報到紀錄、第三階段錄取、第四階段確認。
               </p>
               <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={exportBackup}>
                 ⬇ 匯出年度備份 Excel

@@ -13,6 +13,7 @@ const TABLES = [
   { name: 'stage4_confirmations', key: 'id' },
   { name: 'final_admissions',     key: 'id' },
   { name: 'evaluations',          key: 'id' },
+  { name: 'stage2_checkins',      key: 'account' },
   { name: 'stage1_records',       key: 'id' },
   { name: 'applications',         key: 'id' },
   { name: 'department_quota',     key: 'department' },

@@ -4,6 +4,7 @@ import AdminApp from './pages/AdminApp'
 import Stage1App from './pages/Stage1App'
 import Stage1ConfirmApp from './pages/Stage1ConfirmApp'
 import Stage2App from './pages/Stage2App'
+import CheckinApp from './pages/CheckinApp'
 import Stage3App from './pages/Stage3App'
 import Stage4App from './pages/Stage4App'
 import StatsApp from './pages/StatsApp'
@@ -34,6 +35,7 @@ export default function App() {
   if (path === '/stage1') return <Stage1App />
   if (path === '/confirm1') return <Stage1ConfirmApp />
   if (path === '/stage2') return <Stage2App dept={query.dept || ''} />
+  if (path === '/checkin2') return <CheckinApp />
   if (path === '/stage3') return <Stage3App />
   if (path === '/stage4') return <Stage4App />
   if (path === '/stats')  return <StatsApp />

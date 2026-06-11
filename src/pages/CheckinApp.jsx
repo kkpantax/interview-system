@@ -1,0 +1,448 @@
+import { useState, useEffect, useCallback } from 'react'
+import { PageShell } from '../components/PageShell'
+import { Card, CardHead, Btn, s } from '../components/UI'
+import {
+  getStage2Roster, getStage2Unscheduled, setStage2Date,
+  getCheckins, upsertCheckin, deleteCheckin,
+} from '../api'
+import { getTeacher, logoutTeacher } from '../auth'
+import { todayISO } from '../utils'
+
+const ACCENT = '#15803d'
+
+// 把 roster（一列＝一志願）依帳號合併成一位學生，附各志願的 evaluations。
+function groupRoster(rows) {
+  const map = {}
+  for (const r of (rows || [])) {
+    if (!r.account) continue
+    if (!map[r.account]) {
+      map[r.account] = {
+        account: r.account, name: r.name, name_english: r.name_english,
+        nationality: r.nationality, gender: r.gender, stage2_date: r.stage2_date, depts: [],
+      }
+    }
+    map[r.account].depts.push({
+      department: r.department,
+      preference_order: r.preference_order,
+      evaluations: r.evaluations || [],
+    })
+  }
+  return Object.values(map)
+    .map((g) => {
+      g.depts.sort((a, b) => (a.preference_order ?? 99) - (b.preference_order ?? 99))
+      return g
+    })
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+}
+
+// checkins 列 → { [account]: { main, byDept:{ [dept]: row } } }
+function buildCheckinMap(rows) {
+  const m = {}
+  for (const r of (rows || [])) {
+    if (!m[r.account]) m[r.account] = { main: null, byDept: {} }
+    if (!r.department) m[r.account].main = r
+    else m[r.account].byDept[r.department] = r
+  }
+  return m
+}
+
+// 取某帳號某志願的「有效狀態」：已評分 → done；否則看 checkins（sent/done），無列為 waiting。
+const effStatus = (cmap, account, dept) => {
+  if ((dept.evaluations || []).length > 0) return 'done'
+  return cmap[account]?.byDept?.[dept.department]?.status || 'waiting'
+}
+
+// 取 updated_at 的本地 HH:MM
+const hhmm = (ts) => {
+  if (!ts) return ''
+  try {
+    return new Date(ts).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })
+  } catch { return '' }
+}
+
+// 各志願膠囊外觀
+const PILL_STYLE = {
+  waiting: { bg: '#f3f4f6', color: '#9ca3af', border: '#e5e7eb', icon: '⚪', label: '待面試' },
+  sent:    { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd', icon: '🔵', label: '面試中' },
+  done:    { bg: '#dcfce7', color: '#15803d', border: '#86efac', icon: '✅', label: '已完成' },
+}
+
+export default function CheckinApp() {
+  const teacher = getTeacher()
+  const [tab, setTab]         = useState('track')   // track | schedule
+  const [date, setDate]       = useState(todayISO)
+  const [roster, setRoster]   = useState([])        // grouped students
+  const [cmap, setCmap]       = useState({})        // checkin map
+  const [unsched, setUnsched] = useState([])        // 未排程（依帳號去重）
+  const [loading, setLoading] = useState(false)
+  const [busy, setBusy]       = useState(false)
+  const [search, setSearch]   = useState('')
+  const [onlyNotArrived, setOnlyNotArrived] = useState(false)
+  const [onlyUndone, setOnlyUndone]         = useState(false)
+  const [picked, setPicked]   = useState({})        // 未排程勾選 { [account]: true }
+  const [assignDate, setAssignDate] = useState(todayISO)
+  const [toast, setToast]     = useState(null)
+
+  // 守衛：只有 admin / superadmin 能進
+  useEffect(() => {
+    if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) {
+      window.location.hash = '#/login?stage=checkin2'
+    }
+  }, [teacher])
+
+  const showToast = useCallback((msg, type = 'ok') => {
+    setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
+  }, [])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [rosterRows, checkinRows] = await Promise.all([getStage2Roster(date), getCheckins(date)])
+      setRoster(groupRoster(rosterRows))
+      setCmap(buildCheckinMap(checkinRows))
+    } catch (e) {
+      showToast('載入失敗：' + e.message, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [date, showToast])
+
+  const loadUnscheduled = useCallback(async () => {
+    try {
+      const rows = await getStage2Unscheduled()
+      const map = {}
+      for (const r of (rows || [])) {
+        if (!r.account) continue
+        if (!map[r.account]) map[r.account] = { ...r, depts: [] }
+        map[r.account].depts.push({ department: r.department, preference_order: r.preference_order })
+      }
+      const people = Object.values(map).map((g) => {
+        g.depts.sort((a, b) => (a.preference_order ?? 99) - (b.preference_order ?? 99))
+        return g
+      })
+      setUnsched(people)
+    } catch (e) {
+      showToast('載入未排程名單失敗：' + e.message, 'error')
+    }
+  }, [showToast])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => { if (tab === 'schedule') loadUnscheduled() }, [tab, loadUnscheduled])
+
+  // ── 報到 / 進度動作 ──────────────────────────────────────────────────────
+  const isArrived = (account) => !!cmap[account]?.main
+
+  const reportArrive = async (account) => {
+    setBusy(true)
+    try {
+      await upsertCheckin({ account, checkin_date: date, department: '', status: 'arrived' })
+      await load()
+    } catch (e) { showToast('報到失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+  const cancelArrive = async (account) => {
+    setBusy(true)
+    try {
+      await deleteCheckin(account, date, '')
+      await load()
+    } catch (e) { showToast('取消失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // 膠囊循環：待面試 → sent → done → 刪除（回到待面試）
+  const cyclePill = async (account, dept) => {
+    if (!isArrived(account)) return
+    if ((dept.evaluations || []).length > 0) return   // 已評分鎖定
+    const cur = cmap[account]?.byDept?.[dept.department]?.status
+    setBusy(true)
+    try {
+      if (!cur) await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'sent' })
+      else if (cur === 'sent') await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'done' })
+      else if (cur === 'done') await deleteCheckin(account, date, dept.department)
+      else await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'sent' })
+      await load()
+    } catch (e) { showToast('更新失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // 改期（單人）
+  const reschedule = async (account, currentName) => {
+    const next = window.prompt(`輸入「${currentName}」的新面試日期（YYYY-MM-DD），留空可取消排程：`, date)
+    if (next === null) return
+    setBusy(true)
+    try {
+      await setStage2Date([account], next.trim())
+      showToast(next.trim() ? `已改期至 ${next.trim()}` : '已取消排程')
+      await load()
+    } catch (e) { showToast('改期失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // 指派面試日（未排程勾選者）
+  const assignPicked = async () => {
+    const accounts = Object.keys(picked).filter((a) => picked[a])
+    if (!accounts.length) { showToast('請先勾選學生', 'warn'); return }
+    if (!assignDate) { showToast('請選擇面試日期', 'warn'); return }
+    setBusy(true)
+    try {
+      await setStage2Date(accounts, assignDate)
+      showToast(`已指派 ${accounts.length} 位至 ${assignDate}`)
+      setPicked({})
+      await loadUnscheduled()
+      await load()
+    } catch (e) { showToast('指派失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // ── 衍生計算 ─────────────────────────────────────────────────────────────
+  const allDone = (stu) => stu.depts.every((d) => effStatus(cmap, stu.account, d) === 'done')
+
+  const total = roster.length
+  const arrivedCount = roster.filter((stu) => isArrived(stu.account)).length
+  const notArrivedCount = total - arrivedCount
+  const doneCount = roster.filter((stu) => allDone(stu)).length
+
+  // 各系即時狀態
+  const deptStats = (() => {
+    const m = {}
+    for (const stu of roster) {
+      for (const d of stu.depts) {
+        if (!m[d.department]) m[d.department] = { sent: 0, done: 0, waiting: 0 }
+        m[d.department][effStatus(cmap, stu.account, d)]++
+      }
+    }
+    return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]))
+  })()
+
+  // 篩選
+  const q = search.trim().toLowerCase()
+  const filtered = roster.filter((stu) => {
+    if (q && !(
+      (stu.name || '').toLowerCase().includes(q) ||
+      (stu.name_english || '').toLowerCase().includes(q) ||
+      (stu.account || '').toLowerCase().includes(q)
+    )) return false
+    if (onlyNotArrived && isArrived(stu.account)) return false
+    if (onlyUndone && allDone(stu)) return false
+    return true
+  })
+
+  if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) return null
+
+  const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
+  const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13, verticalAlign: 'middle' }
+
+  const tabBtn = (key, label) => (
+    <button onClick={() => setTab(key)} style={{
+      ...s.btn,
+      background: tab === key ? ACCENT : 'white',
+      color: tab === key ? '#fff' : '#555',
+      borderColor: tab === key ? ACCENT : '#ddd',
+      fontWeight: tab === key ? 600 : 400,
+    }}>{label}</button>
+  )
+
+  return (
+    <PageShell
+      title="實踐大學" subtitle="二階面試報到管理" accent={ACCENT} toast={toast} intlBack
+      right={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {loading && <span style={{ fontSize: 12, color: '#d1fae5' }}>載入中…</span>}
+          <span style={{ fontSize: 12, color: '#d1fae5' }}>{teacher.display_name || teacher.username}</span>
+          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#dcfce7' }} onClick={logoutTeacher}>登出</Btn>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {tabBtn('track', '📋 報到追蹤')}
+        {tabBtn('schedule', '📅 未排程名單')}
+      </div>
+
+      {tab === 'track' ? (
+        <>
+          {/* 工具列 */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#555' }}>面試日期</span>
+            <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={date} onChange={(e) => setDate(e.target.value)} />
+            <Btn onClick={load}>🔄 重新整理</Btn>
+            <input style={{ ...s.input, width: 200, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>
+              <input type="checkbox" checked={onlyNotArrived} onChange={(e) => setOnlyNotArrived(e.target.checked)} /> 只看未報到
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>
+              <input type="checkbox" checked={onlyUndone} onChange={(e) => setOnlyUndone(e.target.checked)} /> 只看未完成
+            </label>
+          </div>
+
+          {/* 統計卡 */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            {[
+              { label: '應到人數', n: total,          bg: '#f1f5f9', color: '#475569' },
+              { label: '已報到',   n: arrivedCount,    bg: '#dcfce7', color: '#15803d' },
+              { label: '未報到',   n: notArrivedCount, bg: '#fee2e2', color: '#dc2626' },
+              { label: '全部完成', n: doneCount,       bg: '#ecfdf5', color: '#047857' },
+            ].map((c) => (
+              <div key={c.label} style={{ flex: '1 1 130px', minWidth: 110, background: c.bg, color: c.color, borderRadius: 10, padding: '12px 16px' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</div>
+                <div style={{ fontSize: 12, marginTop: 2 }}>{c.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 各系即時狀態 */}
+          {deptStats.length > 0 && (
+            <Card style={{ marginBottom: 16 }}>
+              <CardHead left="各系即時狀態" right="面試中／已完成／待面試" />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '12px 16px' }}>
+                {deptStats.map(([dep, c]) => (
+                  <div key={dep} style={{ border: '1px solid #e8e7e3', borderRadius: 10, padding: '8px 12px', minWidth: 150 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{dep}</div>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+                      <span style={{ color: '#1e40af' }}>🔵 {c.sent}</span>
+                      <span style={{ color: '#15803d' }}>✅ {c.done}</span>
+                      <span style={{ color: '#9ca3af' }}>⚪ {c.waiting}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* 主表格 */}
+          <Card>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+                <thead>
+                  <tr style={{ background: '#faf9f6' }}>
+                    {['姓名', '國籍', '報到', '系所進度', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((stu) => {
+                    const arrived = isArrived(stu.account)
+                    const rowDone = allDone(stu)
+                    const main = cmap[stu.account]?.main
+                    return (
+                      <tr key={stu.account} style={rowDone ? { background: '#f0fdf4' } : undefined}>
+                        <td style={td}>
+                          <div style={{ fontWeight: 500 }}>{stu.name}</div>
+                          <div style={{ fontSize: 11, color: '#999' }}>{stu.name_english}</div>
+                          <div style={{ fontSize: 11, color: '#bbb' }}>{stu.account}</div>
+                        </td>
+                        <td style={td}>{stu.nationality}</td>
+                        <td style={td}>
+                          {arrived ? (
+                            <div>
+                              <span style={{ display: 'inline-block', background: '#dcfce7', color: '#15803d', borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 600 }}>
+                                已報到 {hhmm(main?.updated_at)}
+                              </span>
+                              <button onClick={() => cancelArrive(stu.account)} disabled={busy}
+                                style={{ display: 'block', marginTop: 4, background: 'none', border: 'none', color: '#aaa', fontSize: 11, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit', padding: 0 }}>
+                                取消
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => reportArrive(stu.account)} disabled={busy}
+                              style={{ ...s.btn, ...s.btnSm, background: '#15803d', color: '#fff', borderColor: '#15803d' }}>
+                              ✅ 報到
+                            </button>
+                          )}
+                        </td>
+                        <td style={td}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {stu.depts.map((d) => {
+                              const locked = (d.evaluations || []).length > 0
+                              const st = effStatus(cmap, stu.account, d)
+                              const ps = PILL_STYLE[st]
+                              const clickable = arrived && !locked
+                              return (
+                                <button key={d.department} onClick={() => cyclePill(stu.account, d)} disabled={!clickable || busy}
+                                  title={locked ? '已評分，鎖定為已完成' : !arrived ? '請先完成總報到' : '點擊切換：待面試→面試中→已完成'}
+                                  style={{
+                                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                    border: `1px solid ${ps.border}`, borderRadius: 8, padding: '4px 9px',
+                                    background: ps.bg, color: ps.color, fontFamily: 'inherit',
+                                    cursor: clickable ? 'pointer' : 'default',
+                                    opacity: arrived ? 1 : 0.45,
+                                  }}>
+                                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                                    {ps.icon} {d.department}{locked ? '（已評分）' : ''}
+                                  </span>
+                                  <span style={{ fontSize: 10, opacity: 0.8 }}>第{d.preference_order ?? '?'}志願 · {ps.label}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </td>
+                        <td style={td}>
+                          <button onClick={() => reschedule(stu.account, stu.name)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>改期</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {!filtered.length && (
+                    <tr><td colSpan={5} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                      {loading ? '載入中…' : '此日期沒有排定二階面試的學生'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      ) : (
+        // ── 未排程名單 ──────────────────────────────────────────────────────
+        <>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#555' }}>指派面試日</span>
+            <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={assignDate} onChange={(e) => setAssignDate(e.target.value)} />
+            <Btn variant="primary" onClick={assignPicked} disabled={busy}>指派面試日（已勾選 {Object.values(picked).filter(Boolean).length} 位）</Btn>
+            <Btn onClick={loadUnscheduled}>🔄 重新整理</Btn>
+            <span style={{ fontSize: 12, color: '#aaa' }}>共 {unsched.length} 位尚未排程</span>
+          </div>
+          <Card>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                <thead>
+                  <tr style={{ background: '#faf9f6' }}>
+                    <th style={{ ...th, width: 40 }}>
+                      <input type="checkbox"
+                        checked={unsched.length > 0 && unsched.every((p) => picked[p.account])}
+                        onChange={(e) => {
+                          const next = {}
+                          if (e.target.checked) for (const p of unsched) next[p.account] = true
+                          setPicked(next)
+                        }} />
+                    </th>
+                    {['姓名', '國籍', '報考志願'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {unsched.map((p) => (
+                    <tr key={p.account}>
+                      <td style={td}>
+                        <input type="checkbox" checked={!!picked[p.account]}
+                          onChange={(e) => setPicked((prev) => ({ ...prev, [p.account]: e.target.checked }))} />
+                      </td>
+                      <td style={td}>
+                        <div style={{ fontWeight: 500 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: '#999' }}>{p.name_english}</div>
+                        <div style={{ fontSize: 11, color: '#bbb' }}>{p.account}</div>
+                      </td>
+                      <td style={td}>{p.nationality}</td>
+                      <td style={{ ...td, color: '#777' }}>
+                        {(p.depts || []).map((d) => (
+                          <div key={d.department} style={{ fontSize: 12 }}>
+                            <span style={{ color: '#bbb' }}>{d.preference_order ?? '?'}.</span> {d.department}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                  {!unsched.length && (
+                    <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>沒有未排程的學生</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+    </PageShell>
+  )
+}

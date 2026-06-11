@@ -9,6 +9,7 @@ import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
+  getCheckins,
 } from '../api'
 
 const localToday = () => {
@@ -247,6 +248,7 @@ function Stage2Scoring({ dept }) {
   const [students, setStudents]   = useState([])
   const [stats, setStats]         = useState(EMPTY_STATS)
   const [quota, setQuota]         = useState(null)
+  const [checkinMap, setCheckinMap] = useState({})   // account → { arrived, deptStatus }
   const [search, setSearch]       = useState('')
   const [active, setActive]       = useState(null)
   const [viewing, setViewing]     = useState(null)
@@ -262,10 +264,20 @@ function Stage2Scoring({ dept }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, st, quotas] = await Promise.all([getStage2List(dept), getStage2Stats(dept), getDepartmentQuotas()])
+      const [list, st, quotas, checkins] = await Promise.all([
+        getStage2List(dept), getStage2Stats(dept), getDepartmentQuotas(), getCheckins(localToday()),
+      ])
       setStudents(list || [])
       setStats(st || EMPTY_STATS)
       setQuota(quotas?.[dept] ?? null)
+      // 報到狀態 map：account → { arrived: 有主會議室總報到列, deptStatus: 本系那列的 status }
+      const cm = {}
+      for (const r of (checkins || [])) {
+        if (!cm[r.account]) cm[r.account] = { arrived: false, deptStatus: null }
+        if (!r.department) cm[r.account].arrived = true
+        else if (r.department === dept) cm[r.account].deptStatus = r.status
+      }
+      setCheckinMap(cm)
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -395,6 +407,7 @@ function Stage2Scoring({ dept }) {
             {dept}
           </span>
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>評分：{evaluator.name} · {evaluator.date}</span>
+          {!active && <button onClick={load} style={ghostBtn}>🔄 更新報到狀態</button>}
           {!active && <button onClick={downloadToday} style={ghostBtn}>下載今日評分</button>}
           {!active && <button onClick={openFinish} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>完成今日評分</button>}
           <button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>
@@ -420,7 +433,7 @@ function Stage2Scoring({ dept }) {
 
           <Card style={{ marginBottom: 16 }}>
             <CardHead left={`${dept} · 待評分`} right={`${unscored.length} 位`} />
-            <Stage2List students={unscored} onOpen={setActive} loading={loading} />
+            <Stage2List students={unscored} onOpen={setActive} loading={loading} checkinMap={checkinMap} />
           </Card>
 
           <Card>
