@@ -372,6 +372,14 @@ export default function AdminApp() {
           {loading && <span style={{ fontSize: 12, color: '#aaa' }}>載入中…</span>}
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={() => { window.location.hash = '#/intl' }}>← 國際事務處</Btn>
           <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>＋ 上傳名單</Btn>
+          <ExportMenu
+            label="⬆ 匯入"
+            items={[
+              { label: '📅 上傳時間表', onClick: () => setShowDateImport(true) },
+              { label: '🪪 匯入生日／護照', onClick: () => setShowBirthImport(true) },
+              { label: '📋 上傳中心名單核對', onClick: () => setShowCenterMatch(true) },
+            ]}
+          />
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={exportFinal}>⬇ 匯出最終名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#999' }}>{teacher.display_name || teacher.username}</span>
@@ -533,17 +541,18 @@ export default function AdminApp() {
         <span style={{ fontSize: 12, color: '#aaa', alignSelf: 'center' }}>共 {filtered.length} 人</span>
       </div>
 
-      {/* 資料匯入／上傳 */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-        <ExportMenu
-          label="⬆ 匯入"
-          btnStyle={{ background: 'white', border: '1px solid #ddd', color: '#1a1a18', fontSize: 13, padding: '6px 12px' }}
-          items={[
-            { label: '📅 上傳時間表', onClick: () => setShowDateImport(true) },
-            { label: '🪪 匯入生日／護照', onClick: () => setShowBirthImport(true) },
-            { label: '📋 上傳中心名單核對', onClick: () => setShowCenterMatch(true) },
-          ]}
-        />
+      {/* 批次設定中心 */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 8, padding: '10px 12px' }}>
+        <span style={{ fontSize: 13, color: '#6d28d9', fontWeight: 600 }}>批次設定中心</span>
+        <select style={s.sel} value={batchCenter} onChange={(e) => setBatchCenter(e.target.value)}>
+          <option value="">選擇中心…</option>
+          {centers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+        </select>
+        <Btn style={{ background: '#ede9fe', borderColor: '#c4b5fd', color: '#6d28d9' }}
+          onClick={handleBatchCenter} disabled={!selected.size || !batchCenter}>
+          套用到已選 {selected.size} 位
+        </Btn>
+        <span style={{ fontSize: 12, color: '#7b8794' }}>同帳號的所有志願會一起套用同一個中心；亦可在下方每列直接設定</span>
       </div>
 
       {/* 指派面試日期 */}
@@ -560,40 +569,46 @@ export default function AdminApp() {
         <span style={{ fontSize: 12, color: '#7b8794' }}>勾選下方學生後指派，同帳號的所有志願會一起排同一天（一人面一次）</span>
       </div>
 
-      {/* 各日人數總覽（點膠囊可把上方日期設為該日） */}
-      {(dateCounts.dates.length > 0 || dateCounts.unscheduled > 0) && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, fontSize: 12 }}>
-          <span style={{ color: '#6b7280', fontWeight: 600 }}>各日人數</span>
-          {dateCounts.dates.map((iso) => (
-            <button key={iso} onClick={() => setAssignDate(iso)} title="點擊將上方日期設為此日"
-              style={{ cursor: 'pointer', font: 'inherit', borderRadius: 999, padding: '3px 10px',
-                border: '1px solid #dbeafe',
-                background: assignDate === iso ? '#1e40af' : '#eff6ff',
-                color: assignDate === iso ? '#fff' : '#1e40af' }}>
-              {mdOf(iso)} · {dateCounts.m[iso]} 人
-            </button>
-          ))}
-          {dateCounts.unscheduled > 0 && (
-            <span style={{ borderRadius: 999, padding: '3px 10px', border: '1px solid #eee', background: '#fafafa', color: '#999' }}>
-              未排 · {dateCounts.unscheduled} 人
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 批次設定中心 */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 8, padding: '10px 12px' }}>
-        <span style={{ fontSize: 13, color: '#6d28d9', fontWeight: 600 }}>批次設定中心</span>
-        <select style={s.sel} value={batchCenter} onChange={(e) => setBatchCenter(e.target.value)}>
-          <option value="">選擇中心…</option>
-          {centers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-        </select>
-        <Btn style={{ background: '#ede9fe', borderColor: '#c4b5fd', color: '#6d28d9' }}
-          onClick={handleBatchCenter} disabled={!selected.size || !batchCenter}>
-          套用到已選 {selected.size} 位
-        </Btn>
-        <span style={{ fontSize: 12, color: '#7b8794' }}>同帳號的所有志願會一起套用同一個中心；亦可在下方每列直接設定</span>
-      </div>
+      {/* 各日人數總覽（長條圖；點日期可把上方指派日期設為該日） */}
+      {(dateCounts.dates.length > 0 || dateCounts.unscheduled > 0) && (() => {
+        const maxC = Math.max(1, ...dateCounts.dates.map((d) => dateCounts.m[d]))
+        return (
+          <div style={{ background: '#f8faff', border: '1px solid #dbeafe', borderRadius: 8, padding: '10px 12px 8px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 4 }}>
+              <span style={{ color: '#1e40af', fontWeight: 600 }}>各日人數</span>
+              <span style={{ color: '#94a3b8' }}>
+                點選日期可設為上方指派日期
+                {dateCounts.unscheduled > 0 && ` · 未排 ${dateCounts.unscheduled} 人`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, overflowX: 'auto', paddingTop: 4 }}>
+              {dateCounts.dates.map((iso) => {
+                const c = dateCounts.m[iso]
+                const active = assignDate === iso
+                const h = 6 + Math.round(36 * (c / maxC))
+                return (
+                  <button key={iso} onClick={() => setAssignDate(iso)} title={`${iso} · ${c} 人（點擊設為指派日期）`}
+                    style={{
+                      flex: '1 1 0', minWidth: 44, maxWidth: 76,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>
+                    <span style={{ fontSize: 11, fontWeight: active ? 700 : 500, color: active ? '#1e40af' : '#64748b' }}>{c}</span>
+                    <div style={{
+                      width: '100%', height: h, borderRadius: '4px 4px 0 0',
+                      background: active ? '#1e40af' : '#bfdbfe',
+                      transition: 'background .12s',
+                    }} />
+                    <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? '#1e40af' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {mdOf(iso)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       <Card>
         <CardHead left="學生總覽" right={`${filtered.length} / ${groups.length} 人`} />
