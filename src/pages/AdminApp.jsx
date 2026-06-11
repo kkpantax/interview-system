@@ -363,15 +363,13 @@ export default function AdminApp() {
     <PageShell
       title="實踐大學"
       subtitle="行政人員"
+      stageKey="admin"
       toast={toast}
       right={
         <>
           {loading && <span style={{ fontSize: 12, color: '#aaa' }}>載入中…</span>}
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={() => { window.location.hash = '#/intl' }}>← 國際事務處</Btn>
           <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>＋ 上傳名單</Btn>
-          <Btn style={{ background: 'none', borderColor: '#1d4ed8', color: '#bfdbfe' }} onClick={() => { window.location.hash = '#/stage1' }}>① 實體面試名單</Btn>
-          <Btn style={{ background: 'none', borderColor: '#7e22ce', color: '#e9d5ff' }} onClick={() => { window.location.hash = '#/stage3' }}>③ 第三階段錄取</Btn>
-          <Btn style={{ background: 'none', borderColor: '#7c2d12', color: '#fed7aa' }} onClick={() => { window.location.hash = '#/stage4' }}>④ 第四階段確認 →</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={exportFinal}>⬇ 匯出最終名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#999' }}>{teacher.display_name || teacher.username}</span>

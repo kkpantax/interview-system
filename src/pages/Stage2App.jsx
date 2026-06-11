@@ -101,7 +101,7 @@ function DeptPicker() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第二階段 · 選擇科系" accent="#14532d"
+      title="實踐大學" subtitle="第二階段 · 選擇科系" accent="#14532d" stageKey="stage2"
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setShowGuide(true)} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>📖 操作說明</button>

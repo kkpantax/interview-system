@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
+import { ExportMenu } from '../components/ExportMenu'
 import { getStage4Data, syncStage4FromStage3, updateStage4Status } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 
@@ -234,15 +235,15 @@ export default function Stage4App() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第四階段 · 就讀確認 / 候補遞補" accent={ACCENT} toast={toast} intlBack
+      title="實踐大學" subtitle="第四階段 · 就讀確認 / 候補遞補" accent={ACCENT} toast={toast} intlBack stageKey="stage4"
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#fde7d4' }}>載入中…</span>}
-          <Btn style={headerBtn} onClick={() => { window.location.hash = '#/admin' }}>← 行政後台</Btn>
-          <Btn style={headerBtn} onClick={() => { window.location.hash = '#/stage3' }}>← 第三階段</Btn>
           <Btn style={headerBtn} disabled={busy} onClick={doSync}>從Stage3同步正取備取名單</Btn>
-          <Btn style={headerBtn} onClick={exportEnrolled}>匯出最終就讀名單</Btn>
-          <Btn style={headerBtn} onClick={exportNotifyEnrolled}>⬇ 匯出就讀確認名單</Btn>
+          <ExportMenu items={[
+            { label: '⬇ 匯出最終就讀名單', onClick: exportEnrolled },
+            { label: '⬇ 匯出就讀確認名單', onClick: exportNotifyEnrolled },
+          ]} />
           <Btn style={headerBtn} disabled={busy} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#fde7d4' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>

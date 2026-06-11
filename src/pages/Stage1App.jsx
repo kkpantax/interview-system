@@ -151,7 +151,7 @@ export default function Stage1App() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第一階段 · 簽到評分" accent="#1e3a8a" toast={toast} intlBack
+      title="實踐大學" subtitle="第一階段 · 簽到評分" accent="#1e3a8a" toast={toast} intlBack stageKey="stage1"
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {loading && <span style={{ fontSize: 12, color: '#cbd5e1' }}>載入中…</span>}

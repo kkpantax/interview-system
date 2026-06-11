@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
+import { ExportMenu } from '../components/ExportMenu'
 import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3 } from '../api'
 import { DECISIONS } from '../constants'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -335,16 +336,16 @@ export default function Stage3App() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="第三階段 · 最終錄取" accent="#581c87" toast={toast} intlBack
+      title="實踐大學" subtitle="第三階段 · 最終錄取" accent="#581c87" toast={toast} intlBack stageKey="stage3"
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#e9d5ff' }}>載入中…</span>}
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={() => { window.location.hash = '#/admin' }}>← 行政後台</Btn>
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={() => { window.location.hash = '#/stage4' }}>第四階段確認 →</Btn>
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportAdmitted}>⬇ 匯出正取名單</Btn>
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportWaitlisted}>⬇ 匯出備取名單</Btn>
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportByCenter}>⬇ 匯出依中心名單</Btn>
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={exportNotify}>⬇ 匯出錄取通知名單</Btn>
+          <ExportMenu items={[
+            { label: '⬇ 匯出正取名單', onClick: exportAdmitted },
+            { label: '⬇ 匯出備取名單', onClick: exportWaitlisted },
+            { label: '⬇ 匯出依中心名單', onClick: exportByCenter },
+            { label: '⬇ 匯出錄取通知名單', onClick: exportNotify },
+          ]} />
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#e9d5ff' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={logoutTeacher}>登出</Btn>

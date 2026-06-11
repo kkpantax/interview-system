@@ -235,12 +235,11 @@ export default function Stage1ConfirmApp() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="實體面試確認名單" accent={ACCENT} toast={toast} intlBack
+      title="實踐大學" subtitle="實體面試確認名單" accent={ACCENT} toast={toast} intlBack stageKey="confirm1"
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#cbd5e1' }}>載入中…</span>}
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>{teacher.display_name || teacher.username}</span>
-          <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#ccfbf1' }} onClick={() => { window.location.hash = '#/stage1' }}>← 實體面試評分</Btn>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#ccfbf1' }} onClick={logoutTeacher}>登出</Btn>
         </div>
       }

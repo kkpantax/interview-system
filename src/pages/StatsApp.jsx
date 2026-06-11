@@ -211,6 +211,7 @@ export default function StatsApp() {
       subtitle={loading ? '載入中…' : `${stats.totalPeople} 人報名・${stats.totalApps} 筆志願`}
       accent={ACCENT}
       intlBack
+      stageKey="stats"
       right={<Btn variant="primary" onClick={downloadReport} disabled={loading || !apps.length}>⬇ 下載完整統計報表</Btn>}
     >
       {err && (
