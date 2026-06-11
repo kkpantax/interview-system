@@ -10,6 +10,18 @@ const TZ = {
   ID: { zh: '印尼時間 GMT+7', EN: 'Indonesia Time, GMT+7', VI: 'Giờ Indonesia, GMT+7', ID: 'Waktu Indonesia (WIB), GMT+7' },
 }
 
+// 各時區對 UTC 的時差（小時），用來把輸入時間換算到另一時區
+const OFFSET = { TW: 8, VN: 7, ID: 7 }
+// 將字串中的 HH:MM 依時差平移（限 24 小時制；找不到 HH:MM 則原樣回傳）
+const shiftTime = (str, fromTz, toTz) => {
+  const diff = (OFFSET[toTz] ?? 8) - (OFFSET[fromTz] ?? 8)
+  if (!diff) return String(str || '')
+  return String(str || '').replace(/(\d{1,2}):(\d{2})/g, (_, h, mm) => {
+    const hr = (((parseInt(h, 10) + diff) % 24) + 24) % 24
+    return String(hr).padStart(2, '0') + ':' + mm
+  })
+}
+
 // kind: 's1_invite' | 's2_invite' | 's1_reject'
 export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const isStage1Invite = kind === 's1_invite'
@@ -26,6 +38,7 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
     unitName: '國際事務處',
     batchMode: '線上',
     tz: 'TW',
+    dual: true,
   })
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -49,15 +62,30 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(null)
 
-  const dataFor = (r) => ({
-    中文姓名: r.name, 英文姓名: r.name_english || r.name,
-    申請項目: form.programZh, 申請項目EN: form.programEn,
-    面試日期: form.date, 面試時間: r.interview_time || form.time,
-    時區中: TZ[form.tz]?.zh || '', 時區外: TZ[form.tz]?.[r.lang] || TZ[form.tz]?.EN || '',
-    面試地點: form.location, 會議連結: form.meetLink,
-    回覆期限: form.replyBy, 承辦人: form.contactPerson,
-    聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
-  })
+  const dataFor = (r) => {
+    const base = form.tz
+    const t = r.interview_time || form.time
+    const zhSeg = (code) => `${shiftTime(t, base, code)}（${TZ[code].zh}）`
+    const fxSeg = (code) => `${shiftTime(t, base, code)} (${TZ[code][r.lang] || TZ[code].EN})`
+    let 顯示中, 顯示外
+    if (form.dual) {
+      const local = r.lang === 'VI' ? 'VN' : r.lang === 'ID' ? 'ID' : null
+      const extra = local && local !== 'TW'
+      顯示中 = zhSeg('TW') + (extra ? `　／　${zhSeg(local)}` : '')
+      顯示外 = fxSeg('TW') + (extra ? ` / ${fxSeg(local)}` : '')
+    } else {
+      顯示中 = zhSeg(base); 顯示外 = fxSeg(base)
+    }
+    return {
+      中文姓名: r.name, 英文姓名: r.name_english || r.name,
+      申請項目: form.programZh, 申請項目EN: form.programEn,
+      面試日期: form.date,
+      面試時間顯示中: 顯示中, 面試時間顯示外: 顯示外,
+      面試地點: form.location, 會議連結: form.meetLink,
+      回覆期限: form.replyBy, 承辦人: form.contactPerson,
+      聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
+    }
+  }
   const msgFor = (r) => buildMessage({ kind, mode: isStage1Invite ? r.mode : '線上', lang: r.lang, data: dataFor(r) })
 
   const selected = rows.filter((r) => r.include)
@@ -133,12 +161,20 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
         {needInterview && <div><label style={lbl}>面試時間（沒帶各人時段時的預設）</label>{inp('time', '14:00–14:30')}</div>}
         {needInterview && <div><label style={lbl}>回覆期限</label>{inp('replyBy', '2026/07/10')}</div>}
         {needInterview && (
-          <div><label style={lbl}>時區（信中標示）</label>
+          <div><label style={lbl}>面試時間填的是哪個時區</label>
             <select style={{ ...s.sel, width: '100%' }} value={form.tz} onChange={(e) => setF('tz', e.target.value)}>
               <option value="TW">台灣時間 GMT+8</option>
               <option value="VN">越南時間 GMT+7</option>
               <option value="ID">印尼時間 GMT+7</option>
             </select>
+          </div>
+        )}
+        {needInterview && (
+          <div><label style={lbl}>時間並列</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, height: 38 }}>
+              <input type="checkbox" checked={form.dual} onChange={(e) => setF('dual', e.target.checked)} />
+              並列台灣時間＋考生當地時間
+            </label>
           </div>
         )}
         {isStage1Invite && (
