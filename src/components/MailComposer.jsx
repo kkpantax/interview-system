@@ -129,21 +129,28 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
   }
 
   const doSend = async () => {
-    const ids = Object.values(created)
-    if (!ids.length) { onToast?.('尚未建立草稿', 'warn'); return }
-    if (!window.confirm(`確定送出這批 ${ids.length} 封草稿嗎？寄件人為公務信箱。`)) return
+    const entries = Object.entries(created)   // [[account, draftId], ...]
+    if (!entries.length) { onToast?.('尚未建立草稿', 'warn'); return }
+    if (!window.confirm(`確定送出這批 ${entries.length} 封草稿嗎？寄件人為公務信箱（會自動分批送出）。`)) return
+    const CHUNK = 8   // 每批送出封數，避免一次太多導致逾時
     setBusy(true)
+    let sent = 0
     try {
-      const res = await sendDraftBatch(ids)
-      const nowIso = new Date().toISOString()
-      await logMail(Object.keys(created).map((account) => ({ account, kind, status: 'sent', sent_at: nowIso })))
-      const sm = { ...sentMap }
-      Object.keys(created).forEach((a) => { sm[a] = { account: a, kind, status: 'sent', sent_at: nowIso } })
-      setSentMap(sm)
-      setCreated({})
-      onToast?.(`已送出 ${res.sent} 封`)
+      for (let i = 0; i < entries.length; i += CHUNK) {
+        const part = entries.slice(i, i + CHUNK)
+        const ids = part.map(([, id]) => id)
+        const accounts = part.map(([a]) => a)
+        const res = await sendDraftBatch(ids)
+        const nowIso = new Date().toISOString()
+        await logMail(accounts.map((account) => ({ account, kind, status: 'sent', sent_at: nowIso })))
+        setSentMap((sm) => { const n = { ...sm }; accounts.forEach((a) => { n[a] = { account: a, kind, status: 'sent', sent_at: nowIso } }); return n })
+        setCreated((c) => { const n = { ...c }; accounts.forEach((a) => delete n[a]); return n })
+        sent += (res.sent ?? ids.length)
+        onToast?.(`已送出 ${sent} / ${entries.length} 封…`)
+      }
+      onToast?.(`完成：已送出 ${sent} 封`)
     } catch (e) {
-      onToast?.('送出失敗：' + e.message, 'error')
+      onToast?.(`送出中斷（已成功 ${sent} 封）：${e.message}。剩餘草稿仍在公務信箱草稿匣，可再按一次「送出本批」續送。`, 'error')
     } finally { setBusy(false) }
   }
 
