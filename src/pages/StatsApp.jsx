@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Card, CardHead, Btn, Pill } from '../components/UI'
-import { getAllApplications, getDepartmentQuotas, getDepartmentCampuses } from '../api'
+import { getAllApplications, getDepartmentQuotas, getDepartmentCampuses, getFunnelStats, getYearlyStats } from '../api'
 import { resolveCampus, CAMPUS_OPTIONS } from '../constants'
 import { getTeacher } from '../auth'
 
@@ -77,6 +77,8 @@ export default function StatsApp() {
   const [apps, setApps] = useState([])
   const [quotas, setQuotas] = useState({})
   const [campusMap, setCampusMap] = useState({})
+  const [funnel, setFunnel] = useState(null)     // 本年度即時漏斗
+  const [yearly, setYearly] = useState([])       // 歷年快照（year desc）
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
 
@@ -91,14 +93,18 @@ export default function StatsApp() {
   useEffect(() => {
     (async () => {
       try {
-        const [a, q, c] = await Promise.all([
+        const [a, q, c, f, y] = await Promise.all([
           getAllApplications(),
           getDepartmentQuotas().catch(() => ({})),
           getDepartmentCampuses().catch(() => ({})),
+          getFunnelStats().catch(() => null),
+          getYearlyStats().catch(() => []),
         ])
         setApps(a || [])
         setQuotas(q || {})
         setCampusMap(c || {})
+        setFunnel(f)
+        setYearly(y || [])
       } catch (e) {
         setErr(e?.message || '載入失敗')
       } finally {
@@ -129,6 +135,24 @@ export default function StatsApp() {
     return na - nb
   }), [stats.prefStats])
 
+  // 招生漏斗五階段（轉換率相對上一階；最終錄取卡內另列備取）
+  const funnelSteps = useMemo(() => {
+    if (!funnel) return []
+    const steps = [
+      { label: '報名人數', n: funnel.applicants, color: '#0f766e' },
+      { label: '一階報到', n: funnel.stage1_attended, color: '#1e40af' },
+      { label: '二階報到', n: funnel.stage2_attended, color: '#15803d' },
+      { label: '最終錄取', n: funnel.admitted, sub: `備取 ${funnel.waitlisted}`, color: '#7e22ce' },
+      { label: '確定就讀', n: funnel.enrolled, color: '#c2410c' },
+    ]
+    return steps.map((st, i) => ({
+      ...st,
+      rate: i > 0 && steps[i - 1].n > 0 ? (st.n / steps[i - 1].n * 100).toFixed(1) + '%' : null,
+    }))
+  }, [funnel])
+
+  const thisYear = new Date().getFullYear()
+
   const downloadReport = () => {
     const wb = XLSX.utils.book_new()
 
@@ -155,6 +179,15 @@ export default function StatsApp() {
     const natAoa = [['國籍', '人數', '占比']]
     for (const [n, c] of natSorted) natAoa.push([n, c, stats.totalPeople ? (c / stats.totalPeople * 100).toFixed(1) + '%' : ''])
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(natAoa), '國籍分布')
+
+    const funnelAoa = [['年份', '報名人數', '一階報到', '二階報到', '最終錄取', '備取', '確定就讀']]
+    if (funnel) {
+      funnelAoa.push([`${thisYear}（進行中）`, funnel.applicants, funnel.stage1_attended, funnel.stage2_attended, funnel.admitted, funnel.waitlisted, funnel.enrolled])
+    }
+    for (const y of yearly) {
+      funnelAoa.push([y.year, y.applicants, y.stage1_attended, y.stage2_attended, y.admitted, y.waitlisted, y.enrolled])
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(funnelAoa), '招生漏斗與歷年')
 
     const detailCols = [
       ['account', '帳號'], ['name', '中文姓名'], ['name_english', '英文姓名'],
@@ -196,6 +229,73 @@ export default function StatsApp() {
             <StatBox label="報名系所數" value={stats.deptCount} color="#7e22ce" />
             <StatBox label="國籍數" value={stats.natCount} color="#c2410c" />
           </div>
+
+          {funnelSteps.length > 0 && (
+            <Card style={{ marginBottom: 20 }}>
+              <CardHead left="招生漏斗（本年度）" right="各階段不重複帳號人數，% 為相對上一階轉換率" />
+              <div style={{ display: 'flex', gap: 0, alignItems: 'stretch', padding: '16px 18px', overflowX: 'auto' }}>
+                {funnelSteps.map((st, i) => (
+                  <div key={st.label} style={{ display: 'flex', alignItems: 'center', flex: '1 1 0', minWidth: 130 }}>
+                    {i > 0 && <div style={{ color: '#ccc', fontSize: 18, padding: '0 8px' }}>→</div>}
+                    <div style={{ flex: 1, background: '#faf9f6', border: '1px solid #e8e7e3', borderRadius: 10, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>{st.label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 700, color: st.color, lineHeight: 1.1 }}>{st.n}</div>
+                      <div style={{ fontSize: 11, marginTop: 4, minHeight: 14 }}>
+                        {st.rate && <span style={{ color: '#0f766e', fontWeight: 600 }}>{st.rate}</span>}
+                        {st.sub && <span style={{ color: '#7e22ce', marginLeft: st.rate ? 8 : 0 }}>{st.sub}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <Card style={{ marginBottom: 20 }}>
+            <CardHead left="歷年統計" right="年度清空時自動寫入快照" />
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>年份</th>
+                    <th style={thNum}>報名人數</th>
+                    <th style={thNum}>一階報到</th>
+                    <th style={thNum}>二階報到</th>
+                    <th style={thNum}>最終錄取</th>
+                    <th style={thNum}>備取</th>
+                    <th style={thNum}>確定就讀</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {funnel && (
+                    <tr style={{ background: '#fefce8' }}>
+                      <td style={{ ...td, fontWeight: 700 }}>{thisYear}（進行中）</td>
+                      <td style={tdNum}>{funnel.applicants}</td>
+                      <td style={tdNum}>{funnel.stage1_attended}</td>
+                      <td style={tdNum}>{funnel.stage2_attended}</td>
+                      <td style={tdNum}>{funnel.admitted}</td>
+                      <td style={tdNum}>{funnel.waitlisted}</td>
+                      <td style={tdNum}>{funnel.enrolled}</td>
+                    </tr>
+                  )}
+                  {yearly.map((y) => (
+                    <tr key={y.year}>
+                      <td style={td}>{y.year}</td>
+                      <td style={tdNum}>{y.applicants}</td>
+                      <td style={tdNum}>{y.stage1_attended}</td>
+                      <td style={tdNum}>{y.stage2_attended}</td>
+                      <td style={tdNum}>{y.admitted}</td>
+                      <td style={tdNum}>{y.waitlisted}</td>
+                      <td style={tdNum}>{y.enrolled}</td>
+                    </tr>
+                  ))}
+                  {!yearly.length && !funnel && (
+                    <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>尚無歷年資料</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
 
           <Card style={{ marginBottom: 20 }}>
             <CardHead left="各系報名統計" right="第一志願人數由多到少" />

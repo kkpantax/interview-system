@@ -12,7 +12,7 @@ import CenterMatchModal from '../components/CenterMatchModal'
 import InterviewDateModal from '../components/InterviewDateModal'
 import PassportBirthImportModal from '../components/PassportBirthImportModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount, saveYearlySnapshot } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
 import { STATUS } from '../constants'
@@ -94,6 +94,7 @@ export default function AdminApp() {
   const [confirmText, setConfirmText] = useState('')      // 年度重置：清空確認字串
   const [clearPassword, setClearPassword] = useState('')  // 年度重置：行政密碼（再次驗證）
   const [clearing, setClearing]   = useState(false)       // 年度重置：清空進行中
+  const [snapshotYear, setSnapshotYear] = useState(new Date().getFullYear())  // 年度重置：快照寫入年份
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -167,17 +168,32 @@ export default function AdminApp() {
     } catch (e) { showToast('匯出失敗：' + e.message, 'error') }
   }
 
-  // 年度重置：清空五張學生相關資料表。
+  // 年度重置：清空學生相關資料表。
   // 需輸入「確認清空」+ 再次輸入行政密碼，由 /api/reset 在伺服器端驗證後用 service key 刪除。
+  // 刪除「之前」先以現有資料計算招生漏斗六數字、寫入 yearly_stats 快照（去重邏輯同 getFunnelStats）；
+  // 快照寫入失敗則中止，不執行清空。
   const handleClear = async () => {
     if (confirmText !== '確認清空' || !clearPassword) return
-    if (!window.confirm('最後確認：即將清空所有學生資料，此操作無法復原。確定繼續？')) return
+    const year = Number(snapshotYear) || new Date().getFullYear()
+    if (!window.confirm(`最後確認：即將寫入 ${year} 年度統計快照，並清空所有學生資料，此操作無法復原。確定繼續？`)) return
     setClearing(true)
     try {
+      const { apps: a, s1, s3, s4, chk } = await exportAllData()
+      const uniq = (rows, pred = () => true) =>
+        new Set((rows || []).filter(pred).map((r) => r.account).filter(Boolean)).size
+      await saveYearlySnapshot({
+        year,
+        applicants: uniq(a),
+        stage1_attended: uniq(s1),
+        stage2_attended: uniq(chk, (r) => !r.department && r.status === 'arrived'),
+        admitted: uniq(s3, (r) => r.final_status === 'admitted'),
+        waitlisted: uniq(s3, (r) => r.final_status === 'waitlisted'),
+        enrolled: uniq(s4, (r) => r.contact_status === 'enrolled'),
+      })
       await clearAllData(teacher.username, clearPassword)
       setConfirmText('')
       setClearPassword('')
-      showToast('已成功清空本年度所有學生資料')
+      showToast(`已寫入 ${year} 年度統計快照，並清空本年度所有學生資料`)
       await load()
     } catch (e) {
       showToast('清空失敗：' + e.message, 'error')
@@ -410,10 +426,20 @@ export default function AdminApp() {
               ⚠ 危險操作：清空本年度所有學生資料
             </div>
             <p style={{ fontSize: 12.5, color: '#dc2626', margin: '0 0 18px', lineHeight: 1.8 }}>
-              此操作將清空以下資料表：學生名單、第一階段評分、第二階段評分、第三階段錄取、第四階段確認、各系預計錄取名額、各系所屬校區設定。
-              中心名單與老師帳號不受影響。此操作無法復原，請務必先完成上方備份。
+              此操作將清空以下資料表：學生名單、第一階段評分、第二階段評分、二階報到紀錄、第三階段錄取、第四階段確認、各系預計錄取名額、各系所屬校區設定。
+              中心名單、老師帳號與歷年統計不受影響。此操作無法復原，請務必先完成上方備份。
+              清空前會先以現有資料計算招生漏斗六項數字，寫入下方年份的歷年統計快照（可在統計儀表板查看），快照寫入成功後才執行清空。
               清空在伺服器端執行，需再次輸入您的行政密碼確認身分。
             </p>
+            <label style={{ display: 'block', fontSize: 13, color: '#991b1b', fontWeight: 600, marginBottom: 6 }}>
+              統計快照寫入年份
+            </label>
+            <input
+              type="number"
+              value={snapshotYear}
+              onChange={(e) => setSnapshotYear(e.target.value)}
+              style={{ ...s.input, maxWidth: 120, marginBottom: 12, borderColor: '#fca5a5', outlineColor: '#ef4444' }}
+            />
             <label style={{ display: 'block', fontSize: 13, color: '#991b1b', fontWeight: 600, marginBottom: 6 }}>
               請輸入「確認清空」以啟用清空按鈕
             </label>

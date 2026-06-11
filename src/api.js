@@ -452,7 +452,7 @@ export async function getStage2EvalsByDate(dept, date) {
 // （該志願是否已評分，用來把膠囊鎖定為「已完成」）。
 export async function getStage2Roster(date) {
   return callProxy(
-    '/rest/v1/applications?select=account,name,name_english,nationality,gender,department,preference_order,stage2_date,evaluations(id,eval_date)' +
+    '/rest/v1/applications?select=account,name,name_english,nationality,gender,passport_number,center,department,preference_order,stage2_date,evaluations(id,eval_date)' +
       `&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=eq.${date}&order=name.asc`,
     'GET',
   )
@@ -461,10 +461,24 @@ export async function getStage2Roster(date) {
 // 尚未排定二階面試日者（同條件但 stage2_date 為 null）。
 export async function getStage2Unscheduled() {
   return callProxy(
-    '/rest/v1/applications?select=account,name,name_english,nationality,gender,department,preference_order,stage2_date' +
+    '/rest/v1/applications?select=account,name,name_english,nationality,gender,passport_number,center,department,preference_order,stage2_date' +
       '&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=is.null&order=name.asc',
     'GET',
   )
+}
+
+// 漏網之魚：面試日已過（stage2_date < today）的學生，前端再比對報到／評分判斷是否未完成。
+export async function getStage2NoShows(today) {
+  return callProxy(
+    '/rest/v1/applications?select=account,name,name_english,nationality,gender,passport_number,center,department,preference_order,stage2_date,evaluations(id,eval_date)' +
+      `&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=not.is.null&stage2_date=lt.${today}&order=stage2_date.asc,name.asc`,
+    'GET',
+  )
+}
+
+// 今日以前的所有報到／進度紀錄（資料量小，全帶回前端比對）。
+export async function getCheckinsBefore(today) {
+  return callProxy(`/rest/v1/stage2_checkins?checkin_date=lt.${today}&select=*`, 'GET')
 }
 
 // 批次指派／清除二階面試日（依帳號，同帳號所有志願列一起設定）。每 50 個帳號一批。
@@ -504,6 +518,42 @@ export async function deleteCheckin(account, date, department) {
   return callProxy(
     `/rest/v1/stage2_checkins?account=eq.${encodeURIComponent(account)}&checkin_date=eq.${date}&department=eq.${encodeURIComponent(department || '')}`,
     'DELETE', undefined, 'return=minimal',
+  )
+}
+
+// ── 招生漏斗與歷年統計 ──────────────────────────────────────────────────────
+// 本年度即時漏斗：各階段「不重複帳號」人數。
+//   二階報到以 stage2_checkins 主會議室列（department=''、status='arrived'）計；
+//   最終錄取／備取看 final_admissions.final_status；確定就讀看 stage4 contact_status。
+export async function getFunnelStats() {
+  const [apps, s1, s2chk, fa, s4] = await Promise.all([
+    callProxy('/rest/v1/applications?select=account', 'GET'),
+    callProxy('/rest/v1/stage1_records?select=account', 'GET'),
+    callProxy('/rest/v1/stage2_checkins?select=account&department=eq.&status=eq.arrived', 'GET'),
+    callProxy('/rest/v1/final_admissions?select=account,final_status', 'GET'),
+    callProxy('/rest/v1/stage4_confirmations?select=account,contact_status', 'GET'),
+  ])
+  const uniq = (rows) => new Set((rows || []).map((r) => r.account).filter(Boolean)).size
+  return {
+    applicants: uniq(apps),
+    stage1_attended: uniq(s1),
+    stage2_attended: uniq(s2chk),
+    admitted: uniq((fa || []).filter((r) => r.final_status === 'admitted')),
+    waitlisted: uniq((fa || []).filter((r) => r.final_status === 'waitlisted')),
+    enrolled: uniq((s4 || []).filter((r) => r.contact_status === 'enrolled')),
+  }
+}
+
+// 歷年快照（年度清空前寫入 yearly_stats）。
+export async function getYearlyStats() {
+  return callProxy('/rest/v1/yearly_stats?select=*&order=year.desc', 'GET')
+}
+
+export async function saveYearlySnapshot(row) {
+  return callProxy(
+    '/rest/v1/yearly_stats?on_conflict=year',
+    'POST', row,
+    'resolution=merge-duplicates,return=representation',
   )
 }
 

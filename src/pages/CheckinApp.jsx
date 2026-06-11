@@ -4,6 +4,7 @@ import { Card, CardHead, Btn, s } from '../components/UI'
 import {
   getStage2Roster, getStage2Unscheduled, setStage2Date,
   getCheckins, upsertCheckin, deleteCheckin,
+  getStage2NoShows, getCheckinsBefore,
 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { todayISO } from '../utils'
@@ -18,7 +19,9 @@ function groupRoster(rows) {
     if (!map[r.account]) {
       map[r.account] = {
         account: r.account, name: r.name, name_english: r.name_english,
-        nationality: r.nationality, gender: r.gender, stage2_date: r.stage2_date, depts: [],
+        nationality: r.nationality, gender: r.gender,
+        passport_number: r.passport_number, center: r.center,
+        stage2_date: r.stage2_date, depts: [],
       }
     }
     map[r.account].depts.push({
@@ -67,13 +70,36 @@ const PILL_STYLE = {
   done:    { bg: '#dcfce7', color: '#15803d', border: '#86efac', icon: '✅', label: '已完成' },
 }
 
+// 漏網之魚：面試日已過者，依「原面試日當天」的報到／進度紀錄分類。
+// 回傳 [{ ...student, arrived, kind: 'absent'|'incomplete', statuses: [{...dept, st}] }]，
+// 所有系所皆完成者不列入。
+function buildNoShows(rosterRows, checkinRows) {
+  const ck = {}
+  for (const r of (checkinRows || [])) ck[`${r.account}|${r.checkin_date}|${r.department || ''}`] = r
+  const out = []
+  for (const stu of groupRoster(rosterRows)) {
+    const d = stu.stage2_date
+    const arrived = ck[`${stu.account}|${d}|`]?.status === 'arrived'
+    const stOf = (dept) => {
+      if ((dept.evaluations || []).length > 0) return 'done'
+      return ck[`${stu.account}|${d}|${dept.department}`]?.status || 'waiting'
+    }
+    const statuses = stu.depts.map((x) => ({ ...x, st: stOf(x) }))
+    if (statuses.every((x) => x.st === 'done')) continue
+    out.push({ ...stu, arrived, statuses, kind: arrived ? 'incomplete' : 'absent' })
+  }
+  return out
+}
+
 export default function CheckinApp() {
   const teacher = getTeacher()
-  const [tab, setTab]         = useState('track')   // track | schedule
+  const [tab, setTab]         = useState('track')   // track | noshow | schedule
   const [date, setDate]       = useState(todayISO)
   const [roster, setRoster]   = useState([])        // grouped students
   const [cmap, setCmap]       = useState({})        // checkin map
   const [unsched, setUnsched] = useState([])        // 未排程（依帳號去重）
+  const [noshows, setNoshows] = useState([])        // 漏網之魚（面試日已過未完成）
+  const [nsDates, setNsDates] = useState({})        // 漏網之魚改期日期 { [account]: 'YYYY-MM-DD' }
   const [loading, setLoading] = useState(false)
   const [busy, setBusy]       = useState(false)
   const [search, setSearch]   = useState('')
@@ -126,8 +152,19 @@ export default function CheckinApp() {
     }
   }, [showToast])
 
+  const loadNoShows = useCallback(async () => {
+    try {
+      const today = todayISO()
+      const [rows, ckRows] = await Promise.all([getStage2NoShows(today), getCheckinsBefore(today)])
+      setNoshows(buildNoShows(rows, ckRows))
+    } catch (e) {
+      showToast('載入漏網之魚名單失敗：' + e.message, 'error')
+    }
+  }, [showToast])
+
   useEffect(() => { load() }, [load])
-  useEffect(() => { if (tab === 'schedule') loadUnscheduled() }, [tab, loadUnscheduled])
+  // 漏網之魚與未排程的人數徽章在任何分頁都常駐顯示，故一進頁就載入
+  useEffect(() => { loadUnscheduled(); loadNoShows() }, [loadUnscheduled, loadNoShows])
 
   // ── 報到 / 進度動作 ──────────────────────────────────────────────────────
   const isArrived = (account) => !!cmap[account]?.main
@@ -174,6 +211,28 @@ export default function CheckinApp() {
     } catch (e) { showToast('改期失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
+  // 漏網之魚：改期（單人，列內 input date 指定新日期）
+  const nsReschedule = async (account) => {
+    const next = (nsDates[account] || '').trim()
+    if (!next) { showToast('請先選擇新面試日期', 'warn'); return }
+    setBusy(true)
+    try {
+      await setStage2Date([account], next)
+      showToast(`已改期至 ${next}`)
+      await Promise.all([loadNoShows(), load()])
+    } catch (e) { showToast('改期失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // 漏網之魚：移回未排程（stage2_date 設為 null）
+  const nsUnschedule = async (account) => {
+    setBusy(true)
+    try {
+      await setStage2Date([account], null)
+      showToast('已移回未排程')
+      await Promise.all([loadNoShows(), loadUnscheduled()])
+    } catch (e) { showToast('更新失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
   // 指派面試日（未排程勾選者）
   const assignPicked = async () => {
     const accounts = Object.keys(picked).filter((a) => picked[a])
@@ -215,7 +274,8 @@ export default function CheckinApp() {
     if (q && !(
       (stu.name || '').toLowerCase().includes(q) ||
       (stu.name_english || '').toLowerCase().includes(q) ||
-      (stu.account || '').toLowerCase().includes(q)
+      (stu.account || '').toLowerCase().includes(q) ||
+      (stu.passport_number || '').toLowerCase().includes(q)
     )) return false
     if (onlyNotArrived && isArrived(stu.account)) return false
     if (onlyUndone && allDone(stu)) return false
@@ -227,14 +287,26 @@ export default function CheckinApp() {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13, verticalAlign: 'middle' }
 
-  const tabBtn = (key, label) => (
+  // 分頁籤；badge 為常駐人數徽章，alert=true 且 n>0 時紅底凸顯
+  const tabBtn = (key, label, badge, alert = false) => (
     <button onClick={() => setTab(key)} style={{
       ...s.btn,
+      display: 'inline-flex', alignItems: 'center', gap: 6,
       background: tab === key ? ACCENT : 'white',
       color: tab === key ? '#fff' : '#555',
       borderColor: tab === key ? ACCENT : '#ddd',
       fontWeight: tab === key ? 600 : 400,
-    }}>{label}</button>
+    }}>
+      {label}
+      {badge != null && (
+        <span style={{
+          display: 'inline-block', minWidth: 18, padding: '1px 6px', borderRadius: 9,
+          fontSize: 11, fontWeight: 700, textAlign: 'center',
+          background: alert && badge > 0 ? '#dc2626' : (tab === key ? '#ffffff33' : '#f1f5f9'),
+          color: alert && badge > 0 ? '#fff' : (tab === key ? '#fff' : '#64748b'),
+        }}>{badge}</span>
+      )}
+    </button>
   )
 
   return (
@@ -250,7 +322,8 @@ export default function CheckinApp() {
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {tabBtn('track', '📋 報到追蹤')}
-        {tabBtn('schedule', '📅 未排程名單')}
+        {tabBtn('noshow', '⚠ 漏網之魚', noshows.length, true)}
+        {tabBtn('schedule', '📅 未排程', unsched.length)}
       </div>
 
       {tab === 'track' ? (
@@ -260,7 +333,7 @@ export default function CheckinApp() {
             <span style={{ fontSize: 13, color: '#555' }}>面試日期</span>
             <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={date} onChange={(e) => setDate(e.target.value)} />
             <Btn onClick={load}>🔄 重新整理</Btn>
-            <input style={{ ...s.input, width: 200, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input style={{ ...s.input, width: 220, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號 / 護照" value={search} onChange={(e) => setSearch(e.target.value)} />
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>
               <input type="checkbox" checked={onlyNotArrived} onChange={(e) => setOnlyNotArrived(e.target.checked)} /> 只看未報到
             </label>
@@ -306,10 +379,10 @@ export default function CheckinApp() {
           {/* 主表格 */}
           <Card>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1060 }}>
                 <thead>
                   <tr style={{ background: '#faf9f6' }}>
-                    {['姓名', '國籍', '報到', '系所進度', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                    {['姓名', '性別', '護照號碼', '中心', '國籍', '報到', '系所進度', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -324,6 +397,9 @@ export default function CheckinApp() {
                           <div style={{ fontSize: 11, color: '#999' }}>{stu.name_english}</div>
                           <div style={{ fontSize: 11, color: '#bbb' }}>{stu.account}</div>
                         </td>
+                        <td style={td}>{stu.gender || '—'}</td>
+                        <td style={{ ...td, fontSize: 12, color: '#777' }}>{stu.passport_number || '—'}</td>
+                        <td style={td}>{stu.center || '—'}</td>
                         <td style={td}>{stu.nationality}</td>
                         <td style={td}>
                           {arrived ? (
@@ -376,8 +452,80 @@ export default function CheckinApp() {
                     )
                   })}
                   {!filtered.length && (
-                    <tr><td colSpan={5} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                    <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                       {loading ? '載入中…' : '此日期沒有排定二階面試的學生'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      ) : tab === 'noshow' ? (
+        // ── 漏網之魚（面試日已過但未完成）──────────────────────────────────
+        <>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 14px', lineHeight: 1.6 }}>
+              以下學生面試日已過但未完成報到／面試，請改期或移回未排程，避免遺漏。
+            </span>
+            <Btn onClick={loadNoShows}>🔄 重新整理</Btn>
+          </div>
+          <Card>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
+                <thead>
+                  <tr style={{ background: '#faf9f6' }}>
+                    {['姓名', '英文姓名', '帳號', '性別', '護照', '中心', '原面試日', '狀態', '各系進度', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {noshows.map((stu) => (
+                    <tr key={stu.account}>
+                      <td style={{ ...td, fontWeight: 500 }}>{stu.name}</td>
+                      <td style={{ ...td, color: '#777' }}>{stu.name_english}</td>
+                      <td style={{ ...td, color: '#999', fontSize: 12 }}>{stu.account}</td>
+                      <td style={td}>{stu.gender || '—'}</td>
+                      <td style={{ ...td, fontSize: 12, color: '#777' }}>{stu.passport_number || '—'}</td>
+                      <td style={td}>{stu.center || '—'}</td>
+                      <td style={{ ...td, color: '#dc2626', fontWeight: 600 }}>{stu.stage2_date}</td>
+                      <td style={td}>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                          background: stu.kind === 'absent' ? '#fee2e2' : '#fef3c7',
+                          color: stu.kind === 'absent' ? '#dc2626' : '#b45309',
+                        }}>{stu.kind === 'absent' ? '缺席未報到' : '報到但未完成'}</span>
+                      </td>
+                      <td style={td}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {stu.statuses.map((d) => {
+                            const ps = PILL_STYLE[d.st]
+                            return (
+                              <span key={d.department} style={{
+                                display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start',
+                                border: `1px solid ${ps.border}`, borderRadius: 8, padding: '4px 9px',
+                                background: ps.bg, color: ps.color,
+                              }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{ps.icon} {d.department}</span>
+                                <span style={{ fontSize: 10, opacity: 0.8 }}>第{d.preference_order ?? '?'}志願 · {ps.label}</span>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </td>
+                      <td style={td}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <input type="date" value={nsDates[stu.account] || ''}
+                            onChange={(e) => setNsDates((prev) => ({ ...prev, [stu.account]: e.target.value }))}
+                            style={{ ...s.input, width: 140, marginBottom: 0, padding: '5px 8px', fontSize: 12 }} />
+                          <Btn variant="primary" disabled={busy} onClick={() => nsReschedule(stu.account)}>改期</Btn>
+                          <Btn disabled={busy} onClick={() => nsUnschedule(stu.account)}>移回未排程</Btn>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!noshows.length && (
+                    <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                      🎉 沒有漏網之魚，所有已過面試日的學生皆完成
                     </td></tr>
                   )}
                 </tbody>
@@ -397,7 +545,7 @@ export default function CheckinApp() {
           </div>
           <Card>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 960 }}>
                 <thead>
                   <tr style={{ background: '#faf9f6' }}>
                     <th style={{ ...th, width: 40 }}>
@@ -409,7 +557,7 @@ export default function CheckinApp() {
                           setPicked(next)
                         }} />
                     </th>
-                    {['姓名', '國籍', '報考志願'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                    {['姓名', '性別', '護照號碼', '中心', '國籍', '報考志願'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -424,6 +572,9 @@ export default function CheckinApp() {
                         <div style={{ fontSize: 11, color: '#999' }}>{p.name_english}</div>
                         <div style={{ fontSize: 11, color: '#bbb' }}>{p.account}</div>
                       </td>
+                      <td style={td}>{p.gender || '—'}</td>
+                      <td style={{ ...td, fontSize: 12, color: '#777' }}>{p.passport_number || '—'}</td>
+                      <td style={td}>{p.center || '—'}</td>
                       <td style={td}>{p.nationality}</td>
                       <td style={{ ...td, color: '#777' }}>
                         {(p.depts || []).map((d) => (
@@ -435,7 +586,7 @@ export default function CheckinApp() {
                     </tr>
                   ))}
                   {!unsched.length && (
-                    <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>沒有未排程的學生</td></tr>
+                    <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>沒有未排程的學生</td></tr>
                   )}
                 </tbody>
               </table>

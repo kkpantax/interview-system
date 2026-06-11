@@ -9,6 +9,7 @@ const SUPABASE_URL = 'https://lveekehjxkfvigwfwgvn.supabase.co'
 // 刪除順序：先下游（參照 applications 者）後上游，避免 FK 衝突。
 // PostgREST 的 DELETE 必須帶過濾條件，故每張表用「該表一定存在的欄位」當條件：
 // 多數表有 id；department_quota / department_campus 以 department 為主鍵、無 id 欄位。
+// 注意：yearly_stats（歷年招生統計快照）與 centers / teachers 為永久保留，絕對不可加入此清單。
 const TABLES = [
   { name: 'stage4_confirmations', key: 'id' },
   { name: 'final_admissions',     key: 'id' },
