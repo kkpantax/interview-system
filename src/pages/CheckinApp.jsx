@@ -311,7 +311,7 @@ export default function CheckinApp() {
 
   return (
     <PageShell
-      title="實踐大學" subtitle="二階面試報到管理" accent={ACCENT} toast={toast} intlBack
+      title="實踐大學" subtitle="二階面試報到管理" accent={ACCENT} toast={toast} intlBack stageKey="checkin2"
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#d1fae5' }}>載入中…</span>}
