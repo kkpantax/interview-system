@@ -3,10 +3,20 @@ import { Modal, Btn, s } from './UI'
 import { buildMessage, pickLang } from '../mailTemplates'
 import { createDrafts, sendDraftBatch, logMail, getMailLog } from '../api'
 
-// stage: '1' | '2'；kind: 's1_invite' | 's2_invite'
-export default function MailComposer({ stage, kind, recipients, onClose, onToast }) {
-  const isStage1 = String(stage) === '1'
-  const title = isStage1 ? '寄送第一階段面試通知' : '寄送第二階段面試通知'
+// 時區標示（依收件者語言給對應字串）
+const TZ = {
+  TW: { zh: '台灣時間 GMT+8', EN: 'Taiwan Time, GMT+8', VI: 'Giờ Đài Loan, GMT+8', ID: 'Waktu Taiwan, GMT+8' },
+  VN: { zh: '越南時間 GMT+7', EN: 'Vietnam Time, GMT+7', VI: 'Giờ Việt Nam, GMT+7', ID: 'Waktu Vietnam, GMT+7' },
+  ID: { zh: '印尼時間 GMT+7', EN: 'Indonesia Time, GMT+7', VI: 'Giờ Indonesia, GMT+7', ID: 'Waktu Indonesia (WIB), GMT+7' },
+}
+
+// kind: 's1_invite' | 's2_invite' | 's1_reject'
+export default function MailComposer({ kind, recipients, onClose, onToast }) {
+  const isStage1Invite = kind === 's1_invite'
+  const isReject = kind === 's1_reject'
+  const needInterview = !isReject
+  const title = isReject ? '寄送第一階段未通過通知'
+    : isStage1Invite ? '寄送第一階段面試通知' : '寄送第二階段面試通知'
 
   const [form, setForm] = useState({
     programZh: '國際專修部(1+4)',
@@ -15,6 +25,7 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
     replyBy: '', contactPerson: '', contactEmail: '',
     unitName: '國際暨兩岸事務處',
     batchMode: '線上',
+    tz: 'TW',
   })
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -42,18 +53,20 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
     中文姓名: r.name, 英文姓名: r.name_english || r.name,
     申請項目: form.programZh, 申請項目EN: form.programEn,
     面試日期: form.date, 面試時間: r.interview_time || form.time,
+    時區中: TZ[form.tz]?.zh || '', 時區外: TZ[form.tz]?.[r.lang] || TZ[form.tz]?.EN || '',
     面試地點: form.location, 會議連結: form.meetLink,
     回覆期限: form.replyBy, 承辦人: form.contactPerson,
     聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
   })
-  const msgFor = (r) => buildMessage({ stage, mode: isStage1 ? r.mode : '線上', lang: r.lang, data: dataFor(r) })
+  const msgFor = (r) => buildMessage({ kind, mode: isStage1Invite ? r.mode : '線上', lang: r.lang, data: dataFor(r) })
 
   const selected = rows.filter((r) => r.include)
 
   const validate = () => {
     if (!selected.length) return '沒有勾選任何學生'
+    if (isReject) return null
     if (!form.date.trim()) return '請填面試日期'
-    if (isStage1) {
+    if (isStage1Invite) {
       if (selected.some((r) => r.mode === '實體') && !form.location.trim()) return '有實體面試，請填面試地點'
       if (selected.some((r) => r.mode === '線上') && !form.meetLink.trim()) return '有線上面試，請填會議連結'
     } else if (!form.meetLink.trim()) return '請填會議連結'
@@ -104,20 +117,31 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
   const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 3 }
   const th = { padding: '7px 8px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
   const td = { padding: '6px 8px', borderBottom: '1px solid #f5f4f0', fontSize: 12, verticalAlign: 'middle' }
+  const inp = (k, ph) => <input style={{ ...s.input, marginBottom: 0 }} value={form[k]} onChange={(e) => setF(k, e.target.value)} placeholder={ph} />
   const statusOf = (account) => {
     if (sentMap[account]?.status === 'sent') return <span style={{ color: '#15803d' }}>已寄送</span>
     if (created[account]) return <span style={{ color: '#b45309' }}>草稿已建</span>
     return <span style={{ color: '#ccc' }}>—</span>
   }
+  const colCount = isStage1Invite ? 8 : 7
 
   return (
     <Modal title={title} onClose={onClose} width={1040}>
       {/* 共用欄位 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 14px', marginBottom: 14 }}>
-        <div><label style={lbl}>面試日期</label><input style={{ ...s.input, marginBottom: 0 }} value={form.date} onChange={(e) => setF('date', e.target.value)} placeholder="2026/07/15" /></div>
-        <div><label style={lbl}>面試時間（沒帶各人時段時的預設）</label><input style={{ ...s.input, marginBottom: 0 }} value={form.time} onChange={(e) => setF('time', e.target.value)} placeholder="14:00–14:30" /></div>
-        <div><label style={lbl}>回覆期限</label><input style={{ ...s.input, marginBottom: 0 }} value={form.replyBy} onChange={(e) => setF('replyBy', e.target.value)} placeholder="2026/07/10" /></div>
-        {isStage1 && (
+        {needInterview && <div><label style={lbl}>面試日期</label>{inp('date', '2026/07/15')}</div>}
+        {needInterview && <div><label style={lbl}>面試時間（沒帶各人時段時的預設）</label>{inp('time', '14:00–14:30')}</div>}
+        {needInterview && <div><label style={lbl}>回覆期限</label>{inp('replyBy', '2026/07/10')}</div>}
+        {needInterview && (
+          <div><label style={lbl}>時區（信中標示）</label>
+            <select style={{ ...s.sel, width: '100%' }} value={form.tz} onChange={(e) => setF('tz', e.target.value)}>
+              <option value="TW">台灣時間 GMT+8</option>
+              <option value="VN">越南時間 GMT+7</option>
+              <option value="ID">印尼時間 GMT+7</option>
+            </select>
+          </div>
+        )}
+        {isStage1Invite && (
           <div>
             <label style={lbl}>批次面試方式（可逐列改）</label>
             <select style={{ ...s.sel, width: '100%' }} value={form.batchMode} onChange={(e) => applyBatchMode(e.target.value)}>
@@ -126,15 +150,13 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
             </select>
           </div>
         )}
-        {isStage1 && (
-          <div><label style={lbl}>面試地點（實體用）</label><input style={{ ...s.input, marginBottom: 0 }} value={form.location} onChange={(e) => setF('location', e.target.value)} placeholder="台北市…行政大樓3F" /></div>
-        )}
-        <div><label style={lbl}>會議連結（線上用）</label><input style={{ ...s.input, marginBottom: 0 }} value={form.meetLink} onChange={(e) => setF('meetLink', e.target.value)} placeholder="https://meet.google.com/…" /></div>
-        <div><label style={lbl}>承辦人</label><input style={{ ...s.input, marginBottom: 0 }} value={form.contactPerson} onChange={(e) => setF('contactPerson', e.target.value)} /></div>
-        <div><label style={lbl}>聯絡信箱</label><input style={{ ...s.input, marginBottom: 0 }} value={form.contactEmail} onChange={(e) => setF('contactEmail', e.target.value)} /></div>
-        <div><label style={lbl}>單位名稱</label><input style={{ ...s.input, marginBottom: 0 }} value={form.unitName} onChange={(e) => setF('unitName', e.target.value)} /></div>
-        <div><label style={lbl}>申請項目（中文）</label><input style={{ ...s.input, marginBottom: 0 }} value={form.programZh} onChange={(e) => setF('programZh', e.target.value)} /></div>
-        <div><label style={lbl}>申請項目（英文）</label><input style={{ ...s.input, marginBottom: 0 }} value={form.programEn} onChange={(e) => setF('programEn', e.target.value)} /></div>
+        {isStage1Invite && <div><label style={lbl}>面試地點（實體用）</label>{inp('location', '台北市…行政大樓3F')}</div>}
+        {needInterview && <div><label style={lbl}>會議連結（線上用）</label>{inp('meetLink', 'https://meet.google.com/…')}</div>}
+        <div><label style={lbl}>承辦人</label>{inp('contactPerson')}</div>
+        <div><label style={lbl}>聯絡信箱</label>{inp('contactEmail')}</div>
+        <div><label style={lbl}>單位名稱</label>{inp('unitName')}</div>
+        <div><label style={lbl}>申請項目（中文）</label>{inp('programZh')}</div>
+        <div><label style={lbl}>申請項目（英文）</label>{inp('programEn')}</div>
       </div>
 
       {/* 名單 */}
@@ -145,7 +167,7 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
               <th style={th}><input type="checkbox" checked={selected.length === rows.length && rows.length > 0}
                 onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, include: e.target.checked })))} /></th>
               <th style={th}>姓名</th><th style={th}>Email</th><th style={th}>國籍</th><th style={th}>語言</th>
-              {isStage1 && <th style={th}>方式</th>}
+              {isStage1Invite && <th style={th}>方式</th>}
               <th style={th}>狀態</th><th style={th}></th>
             </tr>
           </thead>
@@ -161,7 +183,7 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
                     <option value="EN">中英</option><option value="VI">中越</option><option value="ID">中印尼</option>
                   </select>
                 </td>
-                {isStage1 && (
+                {isStage1Invite && (
                   <td style={td}>
                     <select style={{ ...s.sel, padding: '3px 6px' }} value={r.mode} onChange={(e) => setRow(r.account, { mode: e.target.value })}>
                       <option value="線上">線上</option><option value="實體">實體</option>
@@ -172,7 +194,7 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
                 <td style={td}><button style={{ ...s.btn, ...s.btnSm }} onClick={() => setPreview(r)}>預覽</button></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={isStage1 ? 8 : 7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
+            {!rows.length && <tr><td colSpan={colCount} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
           </tbody>
         </table>
       </div>
@@ -187,7 +209,7 @@ export default function MailComposer({ stage, kind, recipients, onClose, onToast
       </div>
       <div style={{ fontSize: 11, color: '#aaa', marginTop: 8, lineHeight: 1.6 }}>
         流程：先「建立草稿」→ 草稿會進公務信箱草稿夾，可在 Gmail 逐封檢查／微調 → 回來按「送出本批」一次寄出。
-        語言依國籍自動帶、可逐列改；第一階段可逐列切實體／線上。
+        語言依國籍自動帶、可逐列改{isStage1Invite ? '；第一階段可逐列切實體／線上。' : '。'}
       </div>
 
       {/* 預覽 */}

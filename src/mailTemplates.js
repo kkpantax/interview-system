@@ -53,7 +53,7 @@ export const TEMPLATES = {
 Thank you for applying to "{{申請項目EN}}" at Shih Chien University. Following an initial review, we are pleased to invite you to the first-round interview, which will be held in person on campus.
 
 • Date: {{面試日期}}
-• Time: {{面試時間}} (Taiwan Time, GMT+8)
+• Time: {{面試時間}} ({{時區外}})
 • Format: In-person interview
 • Venue: {{面試地點}}
 
@@ -74,7 +74,7 @@ Best regards,
 感謝您報名本校「{{申請項目}}」。經初步審查，誠摯邀請您參加第一階段面試，本次採實體到校方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：實體面試
 ▸ 面試地點：{{面試地點}}
 
@@ -94,7 +94,7 @@ Best regards,
 Cảm ơn bạn đã đăng ký chương trình "{{申請項目EN}}" tại Đại học Thực Tiễn (Shih Chien University). Sau khi xét duyệt sơ bộ, chúng tôi trân trọng mời bạn tham gia vòng phỏng vấn thứ nhất, được tổ chức trực tiếp tại trường.
 
 • Ngày phỏng vấn: {{面試日期}}
-• Thời gian: {{面試時間}} (Giờ Đài Loan, GMT+8)
+• Thời gian: {{面試時間}} ({{時區外}})
 • Hình thức: Phỏng vấn trực tiếp
 • Địa điểm: {{面試地點}}
 
@@ -115,7 +115,7 @@ Trân trọng,
 感謝您報名本校「{{申請項目}}」。經初步審查，誠摯邀請您參加第一階段面試，本次採實體到校方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：實體面試
 ▸ 面試地點：{{面試地點}}
 
@@ -135,7 +135,7 @@ Trân trọng,
 Terima kasih telah mendaftar program "{{申請項目EN}}" di Shih Chien University. Setelah peninjauan awal, dengan senang hati kami mengundang Anda untuk mengikuti wawancara tahap pertama yang akan diadakan secara langsung di kampus.
 
 • Tanggal: {{面試日期}}
-• Waktu: {{面試時間}} (Waktu Taiwan, GMT+8)
+• Waktu: {{面試時間}} ({{時區外}})
 • Metode: Wawancara langsung
 • Lokasi: {{面試地點}}
 
@@ -156,7 +156,7 @@ Hormat kami,
 感謝您報名本校「{{申請項目}}」。經初步審查，誠摯邀請您參加第一階段面試，本次採實體到校方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：實體面試
 ▸ 面試地點：{{面試地點}}
 
@@ -177,7 +177,7 @@ Hormat kami,
 Thank you for applying to "{{申請項目EN}}" at Shih Chien University. Following an initial review, we are pleased to invite you to the first-round interview, which will be held online.
 
 • Date: {{面試日期}}
-• Time: {{面試時間}} (Taiwan Time, GMT+8)
+• Time: {{面試時間}} ({{時區外}})
 • Format: Online video — Google Meet
 • Meeting link: {{會議連結}}
 
@@ -198,7 +198,7 @@ Best regards,
 感謝您報名本校「{{申請項目}}」。經初步審查，誠摯邀請您參加第一階段面試，本次採線上視訊方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：線上視訊 Google Meet
 ▸ 會議連結：{{會議連結}}
 
@@ -218,7 +218,7 @@ Best regards,
 Cảm ơn bạn đã đăng ký chương trình "{{申請項目EN}}" tại Đại học Thực Tiễn (Shih Chien University). Sau khi xét duyệt sơ bộ, chúng tôi trân trọng mời bạn tham gia vòng phỏng vấn thứ nhất, được tổ chức theo hình thức trực tuyến.
 
 • Ngày phỏng vấn: {{面試日期}}
-• Thời gian: {{面試時間}} (Giờ Đài Loan, GMT+8)
+• Thời gian: {{面試時間}} ({{時區外}})
 • Hình thức: Trực tuyến qua Google Meet
 • Liên kết cuộc họp: {{會議連結}}
 
@@ -239,7 +239,7 @@ Trân trọng,
 感謝您報名本校「{{申請項目}}」。經初步審查，誠摯邀請您參加第一階段面試，本次採線上視訊方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：線上視訊 Google Meet
 ▸ 會議連結：{{會議連結}}
 
@@ -259,7 +259,7 @@ Trân trọng,
 Terima kasih telah mendaftar program "{{申請項目EN}}" di Shih Chien University. Setelah peninjauan awal, dengan senang hati kami mengundang Anda untuk mengikuti wawancara tahap pertama yang akan diadakan secara daring.
 
 • Tanggal: {{面試日期}}
-• Waktu: {{面試時間}} (Waktu Taiwan, GMT+8)
+• Waktu: {{面試時間}} ({{時區外}})
 • Metode: Video daring — Google Meet
 • Tautan rapat: {{會議連結}}
 
@@ -280,7 +280,7 @@ Hormat kami,
 感謝您報名本校「{{申請項目}}」。經初步審查，誠摯邀請您參加第一階段面試，本次採線上視訊方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：線上視訊 Google Meet
 ▸ 會議連結：{{會議連結}}
 
@@ -301,7 +301,7 @@ Hormat kami,
 Congratulations on passing the first-round interview for "{{申請項目EN}}" at Shih Chien University! We are pleased to invite you to the second-round interview, which will be held online.
 
 • Date: {{面試日期}}
-• Time: {{面試時間}} (Taiwan Time, GMT+8)
+• Time: {{面試時間}} ({{時區外}})
 • Format: Online video — Google Meet
 • Meeting link: {{會議連結}}
 
@@ -322,7 +322,7 @@ Best regards,
 恭喜您通過本校「{{申請項目}}」第一階段面試！誠摯邀請您參加第二階段面試，本階段採線上視訊方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：線上視訊 Google Meet
 ▸ 會議連結：{{會議連結}}
 
@@ -342,7 +342,7 @@ Best regards,
 Chúc mừng bạn đã vượt qua vòng phỏng vấn thứ nhất của chương trình "{{申請項目EN}}" tại Đại học Thực Tiễn (Shih Chien University)! Chúng tôi trân trọng mời bạn tham gia vòng phỏng vấn thứ hai, được tổ chức theo hình thức trực tuyến.
 
 • Ngày phỏng vấn: {{面試日期}}
-• Thời gian: {{面試時間}} (Giờ Đài Loan, GMT+8)
+• Thời gian: {{面試時間}} ({{時區外}})
 • Hình thức: Trực tuyến qua Google Meet
 • Liên kết cuộc họp: {{會議連結}}
 
@@ -363,7 +363,7 @@ Trân trọng,
 恭喜您通過本校「{{申請項目}}」第一階段面試！誠摯邀請您參加第二階段面試，本階段採線上視訊方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：線上視訊 Google Meet
 ▸ 會議連結：{{會議連結}}
 
@@ -383,7 +383,7 @@ Trân trọng,
 Selamat! Anda telah lulus wawancara tahap pertama untuk program "{{申請項目EN}}" di Shih Chien University. Dengan senang hati kami mengundang Anda untuk mengikuti wawancara tahap kedua yang akan diadakan secara daring.
 
 • Tanggal: {{面試日期}}
-• Waktu: {{面試時間}} (Waktu Taiwan, GMT+8)
+• Waktu: {{面試時間}} ({{時區外}})
 • Metode: Video daring — Google Meet
 • Tautan rapat: {{會議連結}}
 
@@ -404,7 +404,7 @@ Hormat kami,
 恭喜您通過本校「{{申請項目}}」第一階段面試！誠摯邀請您參加第二階段面試，本階段採線上視訊方式進行，相關資訊如下：
 
 ▸ 面試日期：{{面試日期}}
-▸ 面試時間：{{面試時間}}（台灣時間 GMT+8）
+▸ 面試時間：{{面試時間}}（{{時區中}}）
 ▸ 面試方式：線上視訊 Google Meet
 ▸ 會議連結：{{會議連結}}
 
