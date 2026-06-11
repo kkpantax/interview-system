@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Card, CardHead, s } from './UI'
+import { Card, CardHead } from './UI'
 import { getStage2Progress, getFinalAdmissions, getStage4Data } from '../api'
 
 // 行政後台「進度總覽」：招生漏斗，以「人」為單位。
@@ -39,16 +39,16 @@ export default function ProgressOverview({ groups }) {
   const paperAll = groups.filter((g) => g.apps.every((a) => a.paper_passed !== false)).length
 
   const steps = [
-    { label: '報名人數', value: groups.length, sub: '不重複帳號', hash: '#/stats' },
-    { label: '書審全過', value: paperAll, sub: `未全過 ${groups.length - paperAll} 人` },
-    { label: '已排面試', value: groups.filter((g) => g.interview_date).length, sub: '已指派面試日', hash: '#/stage1' },
-    { label: '一階通過', value: groups.filter((g) => g.status === 'stage1_passed').length, sub: '實體面試確認', hash: '#/confirm1' },
-    { label: '二階已評', value: s2 ? s2.evaluated : null, sub: s2 ? `進二階 ${s2.total} · 待評 ${s2.waiting}` : '載入中…', hash: '#/stage2' },
-    { label: '放榜正取', value: s3 ? s3.admitted : null, sub: s3 ? `備取 ${s3.waitlisted} 人` : '載入中…', hash: '#/stage3' },
-    { label: '確認就讀', value: s4 ? s4.enrolled : null, sub: s4 ? `第四階段名單 ${s4.total} 人` : '載入中…', hash: '#/stage4' },
+    { label: '報名人數', value: groups.length, sub: '不重複帳號', hash: '#/stats', color: '#0f766e' },
+    { label: '書審全過', value: paperAll, sub: `未全過 ${groups.length - paperAll} 人`, color: '#475569' },
+    { label: '已排面試', value: groups.filter((g) => g.interview_date).length, sub: '已指派面試日', hash: '#/stage1', color: '#1e40af' },
+    { label: '一階通過', value: groups.filter((g) => g.status === 'stage1_passed').length, sub: '實體面試確認', hash: '#/confirm1', color: '#0d9488' },
+    { label: '二階已評', value: s2 ? s2.evaluated : null, sub: s2 ? `進二階 ${s2.total} · 待評 ${s2.waiting}` : '載入中…', hash: '#/stage2', color: '#15803d' },
+    { label: '放榜正取', value: s3 ? s3.admitted : null, sub: s3 ? `備取 ${s3.waitlisted} 人` : '載入中…', hash: '#/stage3', color: '#7e22ce' },
+    { label: '確認就讀', value: s4 ? s4.enrolled : null, sub: s4 ? `第四階段名單 ${s4.total} 人` : '載入中…', hash: '#/stage4', color: '#9a3412' },
   ]
 
-  const pct = (v) => (groups.length && v != null ? `${Math.round((v / groups.length) * 100)}%` : '')
+  const pctNum = (v) => (groups.length && v != null ? Math.round((v / groups.length) * 100) : null)
 
   return (
     <div>
@@ -60,30 +60,48 @@ export default function ProgressOverview({ groups }) {
 
       <Card>
         <CardHead left="招生流程進度" right="以人為單位 · 點卡片直達該階段" />
-        <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, padding: 18, flexWrap: 'wrap' }}>
-          {steps.map((st, i) => (
-            <div key={st.label} style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={{
+          display: 'grid', gap: 10, padding: 18,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))',
+        }}>
+          {steps.map((st, i) => {
+            const p = pctNum(st.value)
+            return (
               <button
+                key={st.label}
                 onClick={() => { if (st.hash) window.location.hash = st.hash }}
+                onMouseEnter={(e) => { if (st.hash) { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.08)'; e.currentTarget.style.transform = 'translateY(-2px)' } }}
+                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none' }}
                 style={{
-                  ...s.card, padding: '14px 18px', minWidth: 132, textAlign: 'left',
-                  cursor: st.hash ? 'pointer' : 'default', fontFamily: 'inherit',
-                  border: '1px solid #e8e7e3', background: 'white',
+                  position: 'relative', textAlign: 'left', fontFamily: 'inherit',
+                  background: 'white', border: '1px solid #e8e7e3', borderRadius: 10,
+                  borderTop: `3px solid ${st.color}`,
+                  padding: '12px 14px 14px',
+                  cursor: st.hash ? 'pointer' : 'default',
+                  transition: 'box-shadow .15s, transform .15s',
+                  display: 'flex', flexDirection: 'column', gap: 4,
                 }}
               >
-                <div style={{ fontSize: 12, color: '#888' }}>{st.label}</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: '#1a1a18', lineHeight: 1.3 }}>
-                  {st.value == null ? '…' : st.value}
-                  <span style={{ fontSize: 12, fontWeight: 400, color: '#bbb', marginLeft: 6 }}>{pct(st.value)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: 'white', background: st.color,
+                    borderRadius: 999, width: 16, height: 16, display: 'inline-flex',
+                    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>{i + 1}</span>
+                  <span style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>{st.label}</span>
                 </div>
-                <div style={{ fontSize: 11.5, color: '#999', marginTop: 2 }}>{st.sub}</div>
-                {st.hash && <div style={{ fontSize: 11, color: '#2563eb', marginTop: 6 }}>前往 →</div>}
+                <div style={{ fontSize: 28, fontWeight: 700, color: st.color, lineHeight: 1.2 }}>
+                  {st.value == null ? '…' : st.value}
+                  {p != null && <span style={{ fontSize: 12, fontWeight: 400, color: '#bbb', marginLeft: 6 }}>{p}%</span>}
+                </div>
+                <div style={{ height: 4, borderRadius: 999, background: '#f0efeb', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${p ?? 0}%`, background: st.color, borderRadius: 999, transition: 'width .4s' }} />
+                </div>
+                <div style={{ fontSize: 11.5, color: '#999', marginTop: 2, flex: 1 }}>{st.sub}</div>
+                {st.hash && <div style={{ fontSize: 11, color: st.color, fontWeight: 600 }}>前往 →</div>}
               </button>
-              {i < steps.length - 1 && (
-                <span style={{ margin: '0 8px', color: '#ccc', fontSize: 18 }}>→</span>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
         <div style={{ padding: '0 18px 16px', fontSize: 12, color: '#aaa', lineHeight: 1.7 }}>
           說明：「二階已評」指該生至少一個志願系所已完成評分；「放榜正取」以人去重（同一人多系正取仍計 1 人）、
