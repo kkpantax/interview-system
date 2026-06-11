@@ -350,5 +350,11 @@ export async function upsertFinalAdmission(row)  // 更新最終錄取狀態
 流程：先「① 建立草稿到公務信箱」→ 透過 `api/draftmail.js`（Edge Function，
 帶 `DRAFT_SERVICE_URL` / `DRAFT_SERVICE_TOKEN` 環境變數）轉呼叫公務信箱 `shihchien_ifp`
 的 Apps Script，在草稿夾建立草稿，可在 Gmail 逐封檢查／微調 →「② 送出本批」一次寄出。
-寄送狀態記在 `mail_log` 表（以 `account` + `kind` 識別，`kind` 為 `s1_invite` / `s2_invite`）。
+寄送狀態記在 `mail_log` 表（以 `account` + `kind` 識別）。
 `src/api.js` 對應 function：`createDrafts` / `sendDraftBatch` / `logMail` / `getMailLog`。
+
+`MailComposer` 改為依 `kind`（`s1_invite` / `s2_invite` / `s1_reject`）決定範本與欄位，
+不再以 `stage` prop 驅動（`buildMessage` / `templateKey` 新增 `kind` 參數）。
+`Stage1ConfirmApp` 的「二階邀請（通過者）」與「未通過通知」改用**當前日期已載入的 `students`
+依 `confirmStateOf` 篩選**（通過→`s2_invite`、不通過→`s1_reject`），不再撈全部通過者。
+新增 `S1_REJECT` 三語範本（落榜通知；中文段一律用「本校」）。

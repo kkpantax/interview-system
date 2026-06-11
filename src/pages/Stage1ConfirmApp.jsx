@@ -58,6 +58,7 @@ export default function Stage1ConfirmApp() {
   const [toast, setToast]     = useState(null)
   const [showMail, setShowMail] = useState(false)
   const [mailRecipients, setMailRecipients] = useState([])
+  const [mailKind, setMailKind] = useState('s2_invite')
 
   // 守衛：只有 admin 能進
   useEffect(() => {
@@ -181,16 +182,17 @@ export default function Stage1ConfirmApp() {
     }
   }
 
-  // 開啟「寄送二階通知」面板（取全部通過一階 + 書審通過者）
-  const openMail = async () => {
-    try {
-      const people = await getNotifyStage2()
-      if (!people.length) { showToast('沒有可寄送的二階名單', 'warn'); return }
-      setMailRecipients(people)
-      setShowMail(true)
-    } catch (e) {
-      showToast('載入名單失敗：' + e.message, 'error')
+  // 開啟寄信面板：用畫面當前日期已載入的名單，依確認狀態篩選（不再撈全部通過者）
+  const openMail = (kind) => {
+    const want = kind === 's1_reject' ? 'reject' : 'pass'
+    const people = students.filter((stu) => confirmStateOf(stu) === want)
+    if (!people.length) {
+      showToast(want === 'pass' ? '本日名單無「通過」者' : '本日名單無「未通過」者', 'warn')
+      return
     }
+    setMailKind(kind)
+    setMailRecipients(people)
+    setShowMail(true)
   }
 
   const passCount    = students.filter((g) => confirmStateOf(g) === 'pass').length
@@ -256,7 +258,8 @@ export default function Stage1ConfirmApp() {
           應試 {students.length} 位 · 通過 {passCount} · 不通過 {rejectCount} · 待確認 {pendingCount}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Btn variant="primary" onClick={openMail}>✉ 寄送二階通知</Btn>
+          <Btn variant="primary" onClick={() => openMail('s2_invite')}>✉ 二階邀請（通過者）</Btn>
+          <Btn onClick={() => openMail('s1_reject')}>✉ 未通過通知</Btn>
           <Btn onClick={exportNotifyStage2}>⬇ 匯出二階面試通知名單</Btn>
           <ExportBtn columns={exportColumns} rows={exportRows} filename={`實體面試確認名單_${date}.xlsx`}
             label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
@@ -360,7 +363,7 @@ export default function Stage1ConfirmApp() {
         <Stage1EvalDetailModal student={viewing.stu} recs={viewing.recs} onDelete={deleteRec} onClose={() => setViewing(null)} />
       )}
       {showMail && (
-        <MailComposer stage="2" kind="s2_invite" recipients={mailRecipients}
+        <MailComposer kind={mailKind} recipients={mailRecipients}
           onClose={() => setShowMail(false)} onToast={showToast} />
       )}
     </PageShell>

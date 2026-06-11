@@ -11,10 +11,11 @@ export function pickLang(nationality) {
 }
 
 // 階段 + 方式 + 語言 → 範本代碼
-export function templateKey({ stage, mode, lang }) {
+export function templateKey({ kind, stage, mode, lang }) {
   const L = String(lang || 'EN').toUpperCase()
-  if (String(stage) === '1') return `S1_${mode === '實體' ? 'OFFLINE' : 'ONLINE'}_${L}`
-  return `S2_ONLINE_${L}`
+  if (kind === 's1_reject') return `S1_REJECT_${L}`
+  if (kind === 's2_invite' || String(stage) === '2') return `S2_ONLINE_${L}`
+  return `S1_${mode === '實體' ? 'OFFLINE' : 'ONLINE'}_${L}`
 }
 
 // 帶入欄位（{{欄位}} → 值）
@@ -27,8 +28,8 @@ export function fillTemplate(text, data) {
 }
 
 // 取出已合併好的 { subject, body }
-export function buildMessage({ stage, mode, lang, data }) {
-  const tpl = TEMPLATES[templateKey({ stage, mode, lang })]
+export function buildMessage({ kind, stage, mode, lang, data }) {
+  const tpl = TEMPLATES[templateKey({ kind, stage, mode, lang })]
   if (!tpl) return null
   return { subject: fillTemplate(tpl.subject, data), body: fillTemplate(tpl.body, data) }
 }
@@ -40,6 +41,7 @@ const SUBJ = {
   S2_EN: '【Shih Chien University】Second-Round Interview Notification 第二階段面試通知 — {{中文姓名}}',
   S2_VI: '【Shih Chien University】Thông báo phỏng vấn vòng 2 第二階段面試通知 — {{中文姓名}}',
   S2_ID: '【Shih Chien University】Pemberitahuan Wawancara Tahap 2 第二階段面試通知 — {{中文姓名}}',
+  S1_REJECT: '【Shih Chien University】Interview Result Notification 第一階段面試結果通知 — {{中文姓名}}',
 }
 
 export const TEMPLATES = {
@@ -412,6 +414,81 @@ Hormat kami,
 3. 確認網路、視訊與麥克風設備正常
 
 請於 {{回覆期限}} 前回覆本信確認出席。如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S1_REJECT_EN: { subject: SUBJ.S1_REJECT, body:
+`Dear {{英文姓名}},
+
+Thank you for participating in the first-round interview for "{{申請項目EN}}" at Shih Chien University. After careful review, we regret to inform you that you have not been selected to advance to the next stage of the admissions process.
+
+We sincerely appreciate your interest and the effort you put into your application, and we wish you every success in the future.
+
+Should you have any questions, please contact {{承辦人}} at {{聯絡信箱}}.
+
+Best regards,
+{{單位名稱}}, Shih Chien University
+
+────────────────────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+感謝您參加本校「{{申請項目}}」第一階段面試。經審慎評估，很遺憾通知您，您此次未能進入下一階段甄選。
+
+感謝您對本校的興趣與用心準備，謹祝您未來一切順利、鵬程萬里。
+
+如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S1_REJECT_VI: { subject: SUBJ.S1_REJECT, body:
+`Kính gửi bạn {{英文姓名}},
+
+Cảm ơn bạn đã tham gia vòng phỏng vấn thứ nhất cho chương trình "{{申請項目EN}}" tại Đại học Thực Tiễn (Shih Chien University). Sau khi xem xét kỹ lưỡng, chúng tôi rất tiếc phải thông báo rằng bạn chưa được chọn vào vòng tuyển chọn tiếp theo.
+
+Chúng tôi trân trọng cảm ơn sự quan tâm và nỗ lực của bạn, và kính chúc bạn mọi điều tốt đẹp trong tương lai.
+
+Nếu có thắc mắc, xin liên hệ {{承辦人}} qua email {{聯絡信箱}}.
+
+Trân trọng,
+{{單位名稱}}, Đại học Thực Tiễn
+
+────────────────────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+感謝您參加本校「{{申請項目}}」第一階段面試。經審慎評估，很遺憾通知您，您此次未能進入下一階段甄選。
+
+感謝您對本校的興趣與用心準備，謹祝您未來一切順利、鵬程萬里。
+
+如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S1_REJECT_ID: { subject: SUBJ.S1_REJECT, body:
+`Kepada Yth. {{英文姓名}},
+
+Terima kasih telah mengikuti wawancara tahap pertama untuk program "{{申請項目EN}}" di Shih Chien University. Setelah peninjauan yang saksama, dengan menyesal kami sampaikan bahwa Anda belum terpilih untuk melaju ke tahap seleksi berikutnya.
+
+Kami sangat menghargai minat dan usaha Anda, dan kami mendoakan kesuksesan Anda di masa mendatang.
+
+Jika ada pertanyaan, silakan hubungi {{承辦人}} melalui {{聯絡信箱}}.
+
+Hormat kami,
+{{單位名稱}}, Shih Chien University
+
+────────────────────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+感謝您參加本校「{{申請項目}}」第一階段面試。經審慎評估，很遺憾通知您，您此次未能進入下一階段甄選。
+
+感謝您對本校的興趣與用心準備，謹祝您未來一切順利、鵬程萬里。
+
+如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
 
 順頌　時祺
 實踐大學 {{單位名稱}}` },
