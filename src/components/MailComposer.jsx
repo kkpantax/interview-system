@@ -23,6 +23,8 @@ const shiftTime = (str, fromTz, toTz) => {
 }
 
 // kind: 's1_invite' | 's2_invite' | 's1_reject'
+const PHONE_LABEL = { EN: 'Local contact number', VI: 'Số điện thoại liên hệ', ID: 'Nomor kontak lokal' }
+
 export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const isStage1Invite = kind === 's1_invite'
   const isReject = kind === 's1_reject'
@@ -39,6 +41,7 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
     batchMode: '線上',
     tz: 'TW',
     dual: true,
+    phone: '',
   })
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -84,6 +87,8 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
       面試地點: form.location, 會議連結: form.meetLink,
       回覆期限: form.replyBy, 承辦人: form.contactPerson,
       聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
+      聯絡電話中: form.phone ? `，當地聯絡電話 ${form.phone}` : '',
+      聯絡電話外: form.phone ? ` (${PHONE_LABEL[r.lang] || PHONE_LABEL.EN}: ${form.phone})` : '',
     }
   }
   const msgFor = (r) => buildMessage({ kind, mode: isStage1Invite ? r.mode : '線上', lang: r.lang, data: dataFor(r) })
@@ -187,6 +192,7 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
           </div>
         )}
         {isStage1Invite && <div><label style={lbl}>面試地點（實體用）</label>{inp('location', '台北市…行政大樓3F')}</div>}
+        {isStage1Invite && <div><label style={lbl}>當地聯絡電話（選填）</label>{inp('phone', '+84 90 123 4567')}</div>}
         {needInterview && <div><label style={lbl}>會議連結（線上用）</label>{inp('meetLink', 'https://meet.google.com/…')}</div>}
         <div><label style={lbl}>承辦人</label>{inp('contactPerson')}</div>
         <div><label style={lbl}>聯絡信箱</label>{inp('contactEmail')}</div>
