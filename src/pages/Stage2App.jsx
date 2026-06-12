@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Card, CardHead, Btn, Modal, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
@@ -300,6 +300,25 @@ function Stage2Scoring({ dept }) {
     } catch { /* ignore */ }
   }, [dept])
 
+  // 報到狀態每 30 秒自動更新：行政端按報到後，老師端不必手動按更新。
+  // interval closure 讀 ref 鏡像，避免吃到舊的 active（評分表開啟時暫停輪詢）。
+  const activeRef = useRef(active)
+  useEffect(() => { activeRef.current = active }, [active])
+  useEffect(() => {
+    if (!evaluator) return
+    const id = setInterval(() => {
+      if (document.hidden || activeRef.current) return
+      refreshCheckins()
+    }, 30000)
+    // 從背景回到前景時立即刷新一次，不等下一輪
+    const onVisible = () => { if (!document.hidden && !activeRef.current) refreshCheckins() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [evaluator, refreshCheckins])
+
   // 標記「面試中」：寫入本系 status='sent'，行政報到頁同步顯示🔵面試中
   const markInterview = async (stu) => {
     if (!checkinMap[stu.account]?.arrived) {
@@ -456,6 +475,7 @@ function Stage2Scoring({ dept }) {
           </span>
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>評分：{evaluator.name} · {evaluator.date}</span>
           {!active && <button onClick={load} style={ghostBtn}>🔄 更新報到狀態</button>}
+          {!active && <span style={{ fontSize: 11, color: '#a7c4ad' }}>報到狀態每 30 秒自動更新</span>}
           {!active && <button onClick={downloadToday} style={ghostBtn}>下載今日評分</button>}
           {!active && <button onClick={openFinish} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>完成今日評分</button>}
           <button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>
