@@ -9,7 +9,7 @@ import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation, deleteEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
-  getAllCheckins, upsertCheckin, deleteCheckin,
+  getAllCheckins, upsertCheckin, deleteCheckin, resetStage2CheckinDept,
 } from '../api'
 import { getTeacher } from '../auth'
 
@@ -299,10 +299,16 @@ function Stage2Scoring({ dept }) {
   const deleteEval = async (e) => {
     try {
       await deleteEvaluation(e.id)
+      // 若刪後該生本系已無任何評分，連動清掉本系派遣狀態（stage2_checkins），
+      // 報到頁該志願回到「⚪ 待面試」可重新派出；保留主會議室報到列不動。
+      const remain = (viewing?.evaluations || []).filter((x) => x.id !== e.id).length
+      if (remain === 0 && viewing?.account) {
+        try { await resetStage2CheckinDept(viewing.account, dept) } catch { /* 派遣列可能本就不存在 */ }
+      }
       // 同步移除彈窗內該筆，再重撈名單/統計（評分歸零的學生會回到待評分）
       setViewing((v) => (v ? { ...v, evaluations: (v.evaluations || []).filter((x) => x.id !== e.id) } : v))
       await load()
-      showToast('已刪除該筆評分，該生可重新評分')
+      showToast(remain === 0 ? '已刪除評分並重設派遣狀態，該生回到待評分／待面試' : '已刪除該筆評分，該生可重新評分')
     } catch (e2) {
       showToast('刪除失敗：' + e2.message, 'error')
     }

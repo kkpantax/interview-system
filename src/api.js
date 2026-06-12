@@ -611,6 +611,15 @@ export async function upsertCheckin({ account, checkin_date, department, status 
   )
 }
 
+// 重設某學生在某系的派遣狀態：刪除該系所有 stage2_checkins 列（不分日期、不動主會議室 department='' 那筆）。
+// 供超管刪除評分後連動使用，學生回到「待面試」可重新派出。0 筆也視為成功。
+export async function resetStage2CheckinDept(account, department) {
+  return callProxy(
+    `/rest/v1/stage2_checkins?account=eq.${encodeURIComponent(account)}&department=eq.${encodeURIComponent(department)}`,
+    'DELETE', undefined, 'return=minimal',
+  )
+}
+
 // 刪除一筆報到／進度（department 為 '' 時即主會議室那筆）。
 export async function deleteCheckin(account, date, department) {
   return callProxy(
