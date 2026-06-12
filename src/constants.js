@@ -146,6 +146,25 @@ export const deptShort = (dept = '') => {
   return (dept.replace(/學系\(專\)$/, '') || dept).slice(0, 8)
 }
 
+// 系所名稱多語對照（vi 越南文 / id 印尼文 / en 英文），供派遣通知訊息使用。
+// 關鍵字 includes 比對、長關鍵字在前（與 DEPT_SHORT 同規則），容忍 (專) 等後綴。
+export const DEPT_I18N = [
+  ['資訊科技與管理', { vi: 'Công nghệ Thông tin và Quản lý',                          id: 'Jurusan Teknologi Informasi dan Manajemen',              en: 'Department of Information Technology and Management' }],
+  ['資訊科技與通訊', { vi: 'Công nghệ Thông tin và Truyền thông',                     id: 'Jurusan Teknologi Informasi dan Komunikasi',             en: 'Department of Information Technology and Communication' }],
+  ['資訊管理',       { vi: 'Quản lý Thông tin',                                       id: 'Jurusan Manajemen Informasi',                            en: 'Department of Information Management' }],
+  ['餐飲管理',       { vi: 'Quản lý Nhà hàng – Khách sạn',                            id: 'Jurusan Manajemen Makanan dan Minuman',                  en: 'Department of Food and Beverage Management' }],
+  ['食品營養',       { vi: 'Khoa học Thực phẩm, Dinh dưỡng và Công nghệ Sinh học',    id: 'Jurusan Ilmu Pangan, Gizi, dan Bioteknologi Nutrasetikal', en: 'Department of Food Science, Nutrition, and Nutraceutical Biotechnology' }],
+  ['家庭研究',       { vi: 'Nghiên cứu Gia đình và Phát triển Trẻ em',                id: 'Jurusan Studi Keluarga dan Perkembangan Anak',           en: 'Department of Family Studies and Child Development' }],
+  ['社會工作',       { vi: 'Công tác Xã hội',                                         id: 'Jurusan Pekerjaan Sosial',                               en: 'Department of Social Work' }],
+  ['建築設計',       { vi: 'Kiến trúc',                                               id: 'Jurusan Arsitektur',                                     en: 'Department of Architecture' }],
+  ['休閒產業',       { vi: 'Quản lý Dịch vụ và Giải trí',                             id: 'Jurusan Manajemen Industri Rekreasi',                    en: 'Department of Recreation Industry Management' }],
+]
+// 取得系所外語名稱；查無對照時退回原中文系名
+export const deptI18n = (dept = '', lang = 'en') => {
+  for (const [k, v] of DEPT_I18N) if (dept.includes(k)) return v[lang] || dept
+  return dept
+}
+
 // 後台「校區設定」可選的校區（同時也是選系頁的分組順序來源）
 export const CAMPUS_OPTIONS = ['台北校區', '高雄校區', '其他']
 

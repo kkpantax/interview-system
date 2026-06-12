@@ -8,7 +8,7 @@ import {
   getStage1RecordsByAccounts, getDepartmentCampuses, getInfoLinks,
 } from '../api'
 import { writeXlsxMulti } from '../components/ExportBtn'
-import { DECISIONS_STAGE1, CAMPUS_OPTIONS, resolveCampus, deptShort } from '../constants'
+import { DECISIONS_STAGE1, CAMPUS_OPTIONS, resolveCampus, deptShort, deptI18n } from '../constants'
 import DayBarChart from '../components/DayBarChart'
 import CheckinGuideModal from '../components/CheckinGuideModal'
 import InfoLinksModal from '../components/InfoLinksModal'
@@ -90,12 +90,14 @@ const msgLangOf = (stu) => {
 const MSG_LANG_LABEL = { vi: '越南文', id: '印尼文', en: '英文' }
 const meetMsgOf = (stu, dept, url) => {
   const name = (stu?.name_english || stu?.name || '').trim()
+  const lang = msgLangOf(stu)
+  const deptFor = deptI18n(dept, lang)   // 外語段落用對應語言的系名（查無對照退回中文）
   const foreign = {
-    vi: `${name ? `Chào bạn ${name}, ` : ''}tiếp theo vui lòng vào đường link Google Meet dưới đây để tham gia phỏng vấn vòng 2 của khoa「${dept}」:\n${url}`,
-    id: `${name ? `Halo ${name}, ` : ''}selanjutnya silakan masuk ke tautan Google Meet berikut untuk mengikuti wawancara tahap 2 jurusan「${dept}」:\n${url}`,
-    en: `${name ? `Hi ${name}, ` : ''}please join the Google Meet link below for your stage-2 interview with「${dept}」:\n${url}`,
+    vi: `${name ? `Chào bạn ${name}, ` : ''}tiếp theo vui lòng vào đường link Google Meet dưới đây để tham gia phỏng vấn vòng 2 của khoa「${deptFor}」:\n${url}`,
+    id: `${name ? `Halo ${name}, ` : ''}selanjutnya silakan masuk ke tautan Google Meet berikut untuk mengikuti wawancara tahap 2「${deptFor}」:\n${url}`,
+    en: `${name ? `Hi ${name}, ` : ''}please join the Google Meet link below for your stage-2 interview with the「${deptFor}」:\n${url}`,
   }
-  return foreign[msgLangOf(stu)]
+  return foreign[lang]
 }
 // 同步複製（在點擊手勢內呼叫，避免 Safari 擋非手勢的剪貼簿操作）；失敗退回 textarea+execCommand
 const copyText = (text) => {
