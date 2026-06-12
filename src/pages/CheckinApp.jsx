@@ -5,7 +5,10 @@ import {
   getStage2Roster, getStage2Unscheduled, setStage2Date,
   getCheckins, upsertCheckin, deleteCheckin,
   getStage2NoShows, getCheckinsBefore, getStage2DateCounts,
+  getStage1RecordsByAccounts, getDepartmentCampuses,
 } from '../api'
+import { writeXlsxMulti } from '../components/ExportBtn'
+import { DECISIONS_STAGE1, CAMPUS_OPTIONS, resolveCampus, deptShort } from '../constants'
 import DayBarChart from '../components/DayBarChart'
 import CheckinGuideModal from '../components/CheckinGuideModal'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -279,6 +282,96 @@ export default function CheckinApp() {
     } catch (e) { showToast('指派失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
+  // ── 下載當日名單（多分頁：總表 + 各系分頁，含一階出席／平均分／建議）──────
+  const recLabel1 = (v) => DECISIONS_STAGE1.find((d) => d.v === v)?.label || ''
+  const exportDayList = async () => {
+    if (!roster.length) { showToast('本日無面試名單', 'warn'); return }
+    setBusy(true)
+    try {
+      const accounts = roster.map((stu) => stu.account)
+      const [s1rows, campusOv] = await Promise.all([
+        getStage1RecordsByAccounts(accounts),
+        getDepartmentCampuses().catch(() => ({})),
+      ])
+      // 一階紀錄依帳號彙整：出席 / 已評分者平均 / 建議統計
+      const s1 = {}
+      for (const r of (s1rows || [])) {
+        if (!s1[r.account]) s1[r.account] = { appeared: false, scores: [], counts: {} }
+        const g = s1[r.account]
+        if (r.appeared) g.appeared = true
+        const scored = r.scores && Object.keys(r.scores).length > 0
+        if (scored) {
+          const v = Number(r.total_score)
+          if (Number.isFinite(v)) g.scores.push(v)
+          if (r.recommendation) g.counts[r.recommendation] = (g.counts[r.recommendation] || 0) + 1
+        }
+      }
+      const maxPrefs = Math.max(1, ...roster.map((stu) => stu.depts.length))
+      const columns = [
+        { key: 'account',      label: '帳號' },
+        { key: 'name',         label: '中文姓名' },
+        { key: 'name_english', label: '英文姓名' },
+        ...Array.from({ length: maxPrefs }, (_, i) => ({ key: `pref${i + 1}`, label: `志願${i + 1}` })),
+        { key: 'nationality',  label: '國籍' },
+        { key: 'center',       label: '中心' },
+        { key: 'appeared',     label: '出席' },
+        { key: 'teacher_avg',  label: '老師平均分' },
+        { key: 'teacher_recs', label: '老師建議' },
+        { key: 'confirm',      label: '確認結果' },
+      ]
+      const rowOf = (stu) => {
+        const g = s1[stu.account] || { appeared: false, scores: [], counts: {} }
+        const avg = g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
+        const recsText = ['pass', 'pending', 'fail']
+          .filter((k) => g.counts[k]).map((k) => `${recLabel1(k)}×${g.counts[k]}`).join('、') || '未評分'
+        return {
+          account: stu.account, name: stu.name, name_english: stu.name_english,
+          ...Object.fromEntries(stu.depts.map((d, i) => [`pref${i + 1}`, d.department || ''])),
+          nationality: stu.nationality, center: stu.center || '',
+          appeared: g.appeared ? '已到' : '未到',
+          teacher_avg: avg != null ? avg.toFixed(1) : '',
+          teacher_recs: recsText,
+          confirm: '通過',   // 名單即「已通過一階」者
+        }
+      }
+      // 總表：依中心、帳號排序
+      const mainRows = [...roster]
+        .sort((a, b) => (a.center || '').localeCompare(b.center || '') || (a.account || '').localeCompare(b.account || ''))
+        .map(rowOf)
+      const [, m = '', dd = ''] = date.split('-')
+      const sheets = [{ name: `${m}.${dd}`, columns, rows: mainRows }]
+      // 各系分頁：校區排序（台北→高雄→其他）、同校區依人數多到少；
+      // 系內依該系所在志願序，再依中心、帳號排序
+      const byDept = {}
+      for (const stu of roster) {
+        for (const d of stu.depts) {
+          if (!byDept[d.department]) byDept[d.department] = []
+          byDept[d.department].push({ stu, pref: d.preference_order ?? 99 })
+        }
+      }
+      const deptNames = Object.keys(byDept).sort((a, b) => {
+        const ca = CAMPUS_OPTIONS.indexOf(resolveCampus(a, campusOv))
+        const cb = CAMPUS_OPTIONS.indexOf(resolveCampus(b, campusOv))
+        if (ca !== cb) return ca - cb
+        if (byDept[a].length !== byDept[b].length) return byDept[b].length - byDept[a].length
+        return a.localeCompare(b)
+      })
+      for (const dep of deptNames) {
+        const rows = byDept[dep]
+          .sort((x, y) =>
+            x.pref - y.pref ||
+            (x.stu.center || '').localeCompare(y.stu.center || '') ||
+            (x.stu.account || '').localeCompare(y.stu.account || ''))
+          .map((x) => rowOf(x.stu))
+        sheets.push({ name: deptShort(dep), columns, rows })
+      }
+      writeXlsxMulti(sheets, `面試名單${m}_${dd}.xlsx`)
+      showToast(`已下載 ${date} 面試名單（${roster.length} 位 / ${deptNames.length} 系）`)
+    } catch (e) {
+      showToast('下載失敗：' + e.message, 'error')
+    } finally { setBusy(false) }
+  }
+
   // ── 衍生計算 ─────────────────────────────────────────────────────────────
   const allDone = (stu) => stu.depts.every((d) => effStatus(cmap, stu.account, d) === 'done')
 
@@ -376,6 +469,7 @@ export default function CheckinApp() {
             <span style={{ fontSize: 13, color: '#555' }}>面試日期</span>
             <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={date} onChange={(e) => setDate(e.target.value)} />
             <Btn onClick={load}>🔄 重新整理</Btn>
+            <Btn variant="primary" onClick={exportDayList} disabled={busy || loading}>⬇ 下載當日名單</Btn>
             <span style={{ fontSize: 11, color: '#aaa' }}>每 30 秒自動更新</span>
             <input style={{ ...s.input, width: 220, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號 / 護照" value={search} onChange={(e) => setSearch(e.target.value)} />
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>

@@ -128,6 +128,24 @@ export const campusOf = (dept = '') => {
   return '其他'
 }
 
+// ── 系所簡稱（多分頁匯出用：Excel 分頁名）──
+// 比對採關鍵字 includes（容忍 (專) 後綴）；長關鍵字在前避免誤判。
+export const DEPT_SHORT = [
+  ['資訊科技與管理', '資訊'],
+  ['資訊科技與通訊', '資通'],
+  ['資訊管理',       '資管'],
+  ['餐飲管理',       '餐管'],
+  ['食品營養',       '食保'],
+  ['家庭研究',       '家兒'],
+  ['社會工作',       '社工'],
+  ['建築設計',       '建築'],
+  ['休閒產業',       '休產'],
+]
+export const deptShort = (dept = '') => {
+  for (const [k, v] of DEPT_SHORT) if (dept.includes(k)) return v
+  return (dept.replace(/學系\(專\)$/, '') || dept).slice(0, 8)
+}
+
 // 後台「校區設定」可選的校區（同時也是選系頁的分組順序來源）
 export const CAMPUS_OPTIONS = ['台北校區', '高雄校區', '其他']
 

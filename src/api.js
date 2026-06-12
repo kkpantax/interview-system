@@ -334,6 +334,23 @@ export async function deleteStage1Record(id) {
   return res
 }
 
+// 依帳號清單撈一階評分紀錄（二階報到頁「下載當日名單」用）。
+// in.() 過長會爆 URL，分批每 50 帳號一次。
+export async function getStage1RecordsByAccounts(accounts) {
+  const uniq = [...new Set((accounts || []).filter(Boolean))]
+  const out = []
+  for (let i = 0; i < uniq.length; i += 50) {
+    const batch = uniq.slice(i, i + 50).map((a) => `"${a}"`).join(',')
+    const rows = await callProxy(
+      `/rest/v1/stage1_records?account=in.(${encodeURIComponent(batch)})` +
+        '&select=account,appeared,total_score,scores,recommendation',
+      'GET',
+    )
+    out.push(...(rows || []))
+  }
+  return out
+}
+
 // 標記通過一階（更新單筆 application，需要 UPDATE 的 RLS 政策）
 export async function markStage1Passed(applicationId, date) {
   return callProxy(
