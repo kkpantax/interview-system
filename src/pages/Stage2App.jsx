@@ -7,10 +7,11 @@ import ScoreForm from '../components/ScoreForm'
 import Stage2GuideModal from '../components/Stage2GuideModal'
 import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
-  getStage2List, getStage2Stats, saveEvaluation,
+  getStage2List, getStage2Stats, saveEvaluation, deleteEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
   getAllCheckins, upsertCheckin, deleteCheckin,
 } from '../api'
+import { getTeacher } from '../auth'
 
 const localToday = () => {
   const d = new Date()
@@ -195,12 +196,21 @@ function EvaluatorGate({ dept, onStart, initialName = '' }) {
   )
 }
 
-// 唯讀檢視某學生在本系的所有評分內容（不進入再評分頁）
-function EvalDetailModal({ student, onClose }) {
+// 唯讀檢視某學生在本系的所有評分內容（不進入再評分頁）；
+// 超級管理員另傳 onDelete，可刪除誤送出的評分
+function EvalDetailModal({ student, onDelete, onClose }) {
+  const [busyId, setBusyId] = useState(null)
   const decInfo = (v) => DECISIONS.find((d) => d.v === v) || DECISIONS.find((d) => d.v === 'pending')
   const evs = [...(student.evaluations || [])].sort(
     (a, b) => String(b.eval_date || '').localeCompare(String(a.eval_date || '')),
   )
+  const handleDelete = async (e) => {
+    if (!onDelete) return
+    const who = e.evaluator_name || '（未填老師）'
+    if (!window.confirm(`確定刪除「${who}」於 ${e.eval_date || ''} 的這筆評分？\n刪除後該生可重新評分，此動作無法復原。`)) return
+    setBusyId(e.id)
+    try { await onDelete(e) } finally { setBusyId(null) }
+  }
   return (
     <Modal title={`${student.name} 的評分紀錄`} onClose={onClose} width={560}>
       <div style={{ fontSize: 13, color: '#666', marginBottom: 14 }}>
@@ -222,6 +232,12 @@ function EvalDetailModal({ student, onClose }) {
               <span style={{ marginLeft: 'auto', fontSize: 13 }}>
                 總分 <b style={{ fontSize: 16 }}>{e.total_score ?? '—'}</b> / 40
               </span>
+              {onDelete && (
+                <Btn onClick={() => handleDelete(e)} disabled={busyId === e.id}
+                  style={{ background: '#fee2e2', borderColor: '#fecaca', color: '#b91c1c', padding: '4px 10px', fontSize: 12 }}>
+                  {busyId === e.id ? '刪除中…' : '🗑 刪除此筆'}
+                </Btn>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 16px', fontSize: 13 }}>
               {SCORE_ITEMS.map((it) => (
@@ -277,6 +293,20 @@ function Stage2Scoring({ dept }) {
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
   }, [])
+
+  // 超級管理員可刪除誤送出的評分（老師端維持唯讀，避免老師自行刪改）
+  const isSuper = getTeacher()?.role === 'superadmin'
+  const deleteEval = async (e) => {
+    try {
+      await deleteEvaluation(e.id)
+      // 同步移除彈窗內該筆，再重撈名單/統計（評分歸零的學生會回到待評分）
+      setViewing((v) => (v ? { ...v, evaluations: (v.evaluations || []).filter((x) => x.id !== e.id) } : v))
+      await load()
+      showToast('已刪除該筆評分，該生可重新評分')
+    } catch (e2) {
+      showToast('刪除失敗：' + e2.message, 'error')
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -522,7 +552,13 @@ function Stage2Scoring({ dept }) {
         </>
       )}
 
-      {viewing && <EvalDetailModal student={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <EvalDetailModal
+          student={viewing}
+          onDelete={isSuper ? deleteEval : undefined}
+          onClose={() => setViewing(null)}
+        />
+      )}
 
       {finishing && (
         <Modal title="完成今日評分" onClose={() => setFinishing(null)} width={420}>

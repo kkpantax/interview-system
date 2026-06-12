@@ -356,6 +356,19 @@ export async function deleteStage1Record(id) {
   return res
 }
 
+// 刪除單筆第二階段評分（僅超級管理員介面提供：老師誤送出時移除後可重評）。
+// 需 evaluations 的 DELETE RLS 政策。
+export async function deleteEvaluation(id) {
+  const res = await callProxy(
+    `/rest/v1/evaluations?id=eq.${id}`,
+    'DELETE', undefined, 'return=representation',
+  )
+  if (!Array.isArray(res) || !res.length) {
+    throw new Error('刪除失敗：0 筆（請確認 evaluations 的 DELETE RLS 政策）')
+  }
+  return res
+}
+
 // 依帳號清單撈一階評分紀錄（二階報到頁「下載當日名單」用）。
 // in.() 過長會爆 URL，分批每 50 帳號一次。
 export async function getStage1RecordsByAccounts(accounts) {
