@@ -69,12 +69,19 @@ const hhmm = (ts) => {
   } catch { return '' }
 }
 
-// 各志願膠囊外觀
+// 各志願膠囊外觀（going＝行政已派出、學生前往系所途中；sent＝系所老師確認開始面試）
 const PILL_STYLE = {
   waiting: { bg: '#f3f4f6', color: '#9ca3af', border: '#e5e7eb', icon: '⚪', label: '待面試' },
+  going:   { bg: '#fef3c7', color: '#b45309', border: '#fde68a', icon: '🟡', label: '前往中' },
   sent:    { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd', icon: '🔵', label: '面試中' },
   done:    { bg: '#dcfce7', color: '#15803d', border: '#86efac', icon: '✅', label: '已完成' },
 }
+
+// 越南籍判斷（派遣優先規則用）
+const isVN = (stu) => /越南|vietnam/i.test(stu.nationality || '')
+
+// 佔用中狀態（前往中或面試中，學生此刻只能對應一個系）
+const BUSY_STATUSES = ['going', 'sent']
 
 // 漏網之魚：面試日已過者，依「原面試日當天」的報到／進度紀錄分類。
 // 回傳 [{ ...student, arrived, kind: 'absent'|'incomplete', statuses: [{...dept, st}] }]，
@@ -128,9 +135,9 @@ export default function CheckinApp() {
     getInfoLinks().then((rows) => setInfoLinks(rows || [])).catch(() => { /* 連結載入失敗不影響主功能 */ })
   }, [])
 
-  // 守衛：superadmin / checkin2（二階面試管理員）能進；舊 admin 角色視同 checkin2
+  // 守衛：只有 admin / superadmin 能進
   useEffect(() => {
-    if (!teacher || !['superadmin', 'checkin2', 'admin'].includes(teacher.role)) {
+    if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) {
       window.location.hash = '#/login?stage=checkin2'
     }
   }, [teacher])
@@ -225,43 +232,45 @@ export default function CheckinApp() {
     } catch (e) { showToast('取消失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
-  // 該生目前「面試中」的系（手動標記 sent 者；理論上同時最多一系）
-  const currentSentDept = (account) => {
+  // 該生目前佔用中的系（前往中/面試中；理論上同時最多一系）
+  const currentBusyDept = (account) => {
     const stu = roster.find((x) => x.account === account)
     if (!stu) return null
-    const hit = stu.depts.find((d) => effStatus(cmap, account, d) === 'sent')
+    const hit = stu.depts.find((d) => BUSY_STATUSES.includes(effStatus(cmap, account, d)))
     return hit ? hit.department : null
   }
 
-  // 一鍵派出（智慧建議 / 各系看板用）：標記為該系面試中；若已在他系面試中先確認
+  // 一鍵派出（智慧建議 / 各系看板用）：標記為 🟡 前往中，系所老師按「開始面試」後變 🔵 面試中。
+  // 若該生已在他系前往中/面試中則先確認，避免一人同時兩系。
   const dispatchTo = async (account, department) => {
-    const other = currentSentDept(account)
+    const other = currentBusyDept(account)
     if (other && other !== department &&
-        !window.confirm(`該生目前正在「${other}」面試中，確定要同時派往「${department}」嗎？\n（一般建議等該系完成後再派出）`)) return
+        !window.confirm(`該生目前正在「${other}」（前往中/面試中），確定要同時派往「${department}」嗎？\n（一般建議等該系完成後再派出）`)) return
     setBusy(true)
     try {
-      await upsertCheckin({ account, checkin_date: date, department, status: 'sent' })
+      await upsertCheckin({ account, checkin_date: date, department, status: 'going' })
       await load()
     } catch (e) { showToast('派出失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
-  // 膠囊循環：待面試 → sent → done → 刪除（回到待面試）
+  // 膠囊循環：待面試 → going（前往中）→ sent（面試中）→ done → 刪除（回到待面試）
   const cyclePill = async (account, dept) => {
     if (!isArrived(account)) return
     if ((dept.evaluations || []).length > 0) return   // 已評分鎖定
     const cur = cmap[account]?.byDept?.[dept.department]?.status
-    // 防呆：切成「面試中」前，若該生已在他系面試中先確認，避免一人同時兩系
-    if (cur !== 'sent' && cur !== 'done') {
-      const other = currentSentDept(account)
+    // 防呆：要進入前往中/面試中之前，若該生已在他系佔用中先確認，避免一人同時兩系
+    if (!BUSY_STATUSES.includes(cur) && cur !== 'done') {
+      const other = currentBusyDept(account)
       if (other && other !== dept.department &&
-          !window.confirm(`該生目前正在「${other}」面試中，確定要同時派往「${dept.department}」嗎？`)) return
+          !window.confirm(`該生目前正在「${other}」（前往中/面試中），確定要同時派往「${dept.department}」嗎？`)) return
     }
     setBusy(true)
     try {
-      if (!cur) await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'sent' })
+      if (!cur) await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'going' })
+      else if (cur === 'going') await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'sent' })
       else if (cur === 'sent') await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'done' })
       else if (cur === 'done') await deleteCheckin(account, date, dept.department)
-      else await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'sent' })
+      else await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'going' })
       await load()
     } catch (e) { showToast('更新失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
@@ -429,31 +438,36 @@ export default function CheckinApp() {
     const m = {}
     for (const stu of roster) {
       for (const d of stu.depts) {
-        if (!m[d.department]) m[d.department] = { sent: 0, done: 0, waiting: 0 }
+        if (!m[d.department]) m[d.department] = { going: 0, sent: 0, done: 0, waiting: 0 }
         m[d.department][effStatus(cmap, stu.account, d)]++
       }
     }
     // 規則3：報考人數少的系排前面，方便優先收尾
     return Object.entries(m).sort((a, b) => {
-      const na = a[1].sent + a[1].done + a[1].waiting
-      const nb = b[1].sent + b[1].done + b[1].waiting
+      const na = a[1].going + a[1].sent + a[1].done + a[1].waiting
+      const nb = b[1].going + b[1].sent + b[1].done + b[1].waiting
       return na - nb || a[0].localeCompare(b[0])
     })
   })()
 
   // ── 智慧派遣：依各系即時負載計算建議 ─────────────────────────────────────
+  // load：各系目前「面試中」人數；inDept：各系面試中學生；
+  // nextOf：各系建議下一位（空閒系優先分配，志願序低→報到早優先，避免同一生被多系同時建議）；
+  // suggestOf：每位待派學生建議先去的系（負載最低，平手取志願序低者）。
   const dispatch = (() => {
     // 優先規則（高→低）：1.非越南籍 2.當日志願數少 3.報考人數少的系 4.志願序 5.報到時間
-    const isVN = (stu) => /越南|vietnam/i.test(stu.nationality || '')
-    const load = {}, cnt = {}, inDept = {}, busyStu = {}
+    // 佔用（going 前往中＋sent 面試中）皆計入該系負載，且佔用中的學生不再被建議
+    const load = {}, cnt = {}, inDept = {}, goingDept = {}, busyStu = {}
     for (const stu of roster) {
       for (const d of stu.depts) {
         if (!(d.department in load)) { load[d.department] = 0; cnt[d.department] = 0 }
         cnt[d.department]++
-        if (effStatus(cmap, stu.account, d) === 'sent') {
+        const st = effStatus(cmap, stu.account, d)
+        if (BUSY_STATUSES.includes(st)) {
           load[d.department]++
           busyStu[stu.account] = d.department
-          ;(inDept[d.department] = inDept[d.department] || []).push(stu)
+          if (st === 'sent') (inDept[d.department] = inDept[d.department] || []).push(stu)
+          else (goingDept[d.department] = goingDept[d.department] || []).push(stu)
         }
       }
     }
@@ -500,7 +514,7 @@ export default function CheckinApp() {
         (a.preference_order ?? 99) - (b.preference_order ?? 99))
       suggestOf[stu.account] = waits[0].department
     }
-    return { load, cnt, inDept, nextOf, suggestOf }
+    return { load, cnt, inDept, goingDept, nextOf, suggestOf }
   })()
 
   // 篩選
@@ -517,7 +531,25 @@ export default function CheckinApp() {
     return true
   })
 
-  if (!teacher || !['superadmin', 'checkin2', 'admin'].includes(teacher.role)) return null
+  // 動態輪值排序：①可派遣（已報到且閒置，依派遣優先規則）→ ②前往中/面試中 → ③未報到 → ④全部完成沉底
+  const groupOf = (stu) => {
+    if (allDone(stu)) return 3
+    if (!isArrived(stu.account)) return 2
+    return stu.depts.some((d) => BUSY_STATUSES.includes(effStatus(cmap, stu.account, d))) ? 1 : 0
+  }
+  const sortedRoster = [...filtered].sort((a, b) => {
+    const ga = groupOf(a), gb = groupOf(b)
+    if (ga !== gb) return ga - gb
+    if (ga === 0) {
+      return (isVN(a) ? 1 : 0) - (isVN(b) ? 1 : 0) ||
+        a.depts.length - b.depts.length ||
+        String(cmap[a.account]?.main?.updated_at || '').localeCompare(String(cmap[b.account]?.main?.updated_at || '')) ||
+        (a.name || '').localeCompare(b.name || '')
+    }
+    return (a.name || '').localeCompare(b.name || '')
+  })
+
+  if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) return null
 
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13, verticalAlign: 'middle' }
@@ -617,10 +649,14 @@ export default function CheckinApp() {
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '12px 16px' }}>
                 {deptStats.map(([dep, c]) => {
                   const meet = meetUrlOf(dep)
-                  const idle = c.sent === 0 && c.waiting > 0
+                  const idle = c.sent === 0 && c.going === 0 && c.waiting > 0
                   const next = dispatch.nextOf[dep]
                   return (
-                  <div key={dep} style={{ border: `1px solid ${idle ? '#86efac' : '#e8e7e3'}`, background: idle ? '#f0fdf4' : undefined, borderRadius: 10, padding: '8px 12px', minWidth: 180 }}>
+                  <div key={dep} style={{
+                    border: `1px solid ${idle ? '#86efac' : '#e8e7e3'}`,
+                    background: idle ? '#f0fdf4' : '#fff',
+                    borderRadius: 10, padding: '8px 12px', minWidth: 180,
+                  }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{dep}</span>
                       {idle && (
@@ -632,10 +668,16 @@ export default function CheckinApp() {
                       )}
                     </div>
                     <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+                      <span style={{ color: '#b45309' }}>🟡 {c.going}</span>
                       <span style={{ color: '#1e40af' }}>🔵 {c.sent}</span>
                       <span style={{ color: '#15803d' }}>✅ {c.done}</span>
                       <span style={{ color: '#9ca3af' }}>⚪ {c.waiting}</span>
                     </div>
+                    {(dispatch.goingDept[dep] || []).length > 0 && (
+                      <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
+                        前往中：{dispatch.goingDept[dep].map((x) => x.name).join('、')}
+                      </div>
+                    )}
                     {(dispatch.inDept[dep] || []).length > 0 && (
                       <div style={{ fontSize: 11, color: '#1e40af', marginTop: 4 }}>
                         面試中：{dispatch.inDept[dep].map((x) => x.name).join('、')}
@@ -656,6 +698,9 @@ export default function CheckinApp() {
 
           {/* 主表格 */}
           <Card>
+            <div style={{ fontSize: 11.5, color: '#999', padding: '8px 14px 0' }}>
+              名單為動態輪值排序：可派遣（非越南籍／志願少優先）→ 前往中／面試中 → 未報到 → 全部完成沉底
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1060 }}>
                 <thead>
@@ -664,7 +709,7 @@ export default function CheckinApp() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((stu) => {
+                  {sortedRoster.map((stu) => {
                     const arrived = isArrived(stu.account)
                     const rowDone = allDone(stu)
                     const main = cmap[stu.account]?.main
@@ -706,7 +751,7 @@ export default function CheckinApp() {
                               const clickable = arrived && !locked
                               return (
                                 <button key={d.department} onClick={() => cyclePill(stu.account, d)} disabled={!clickable || busy}
-                                  title={locked ? '已評分，鎖定為已完成' : !arrived ? '請先完成總報到' : '點擊切換：待面試→面試中→已完成'}
+                                  title={locked ? '已評分，鎖定為已完成' : !arrived ? '請先完成總報到' : '點擊切換：待面試→前往中→面試中→已完成'}
                                   style={{
                                     display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
                                     border: `1px solid ${ps.border}`, borderRadius: 8, padding: '4px 9px',
@@ -738,7 +783,7 @@ export default function CheckinApp() {
                       </tr>
                     )
                   })}
-                  {!filtered.length && (
+                  {!sortedRoster.length && (
                     <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                       {loading ? '載入中…' : '此日期沒有排定二階面試的學生'}
                     </td></tr>

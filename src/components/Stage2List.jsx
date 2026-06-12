@@ -26,14 +26,15 @@ function CheckinPill({ info }) {
   if (info === undefined) return <span style={{ color: '#ccc' }}>—</span>   // 未傳 checkinMap
   let st = { bg: '#f3f4f6', color: '#9ca3af', text: '⚪ 未報到' }
   if (info) {
-    if (info.deptStatus === 'sent') st = { bg: '#dbeafe', color: '#1e40af', text: '🔵 前往面試中' }
+    if (info.deptStatus === 'sent') st = { bg: '#dbeafe', color: '#1e40af', text: '🔵 面試中' }
+    else if (info.deptStatus === 'going') st = { bg: '#fef3c7', color: '#b45309', text: '🟡 前往中（請準備）' }
     else if (info.deptStatus === 'done') st = { bg: '#dcfce7', color: '#15803d', text: '✅ 已完成' }
     else if (info.arrived) st = { bg: '#ecfdf5', color: '#15803d', text: '🟢 已報到' }
   }
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 6,
-      fontSize: 12, fontWeight: info?.deptStatus === 'sent' ? 700 : 600,
+      fontSize: 12, fontWeight: (info?.deptStatus === 'sent' || info?.deptStatus === 'going') ? 700 : 600,
       background: st.bg, color: st.color,
     }}>{st.text}</span>
   )
@@ -50,6 +51,17 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
     ? ['中文姓名', '英文姓名', '帳號', '志願', '評分結果', '']
     : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '報到', '一階通過日', '']
 
+  // 待評分區（有 checkinMap 時）依報到動態排序：🔵面試中 → 🟡前往中 → 🟢已報到 → 其他
+  const ckRank = (stu) => {
+    const i = checkinMap?.[stu.account]
+    if (!i) return 3
+    if (i.deptStatus === 'sent') return 0
+    if (i.deptStatus === 'going') return 1
+    if (i.arrived) return 2
+    return 3
+  }
+  const list = checkinMap ? [...students].sort((a, b) => ckRank(a) - ckRank(b)) : students
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -59,7 +71,7 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
           </tr>
         </thead>
         <tbody>
-          {students.map((stu) => {
+          {list.map((stu) => {
             const last = showEvalSummary ? latestEval(stu.evaluations) : null
             const info = last ? decInfo(last.recommendation) : null
             return (
