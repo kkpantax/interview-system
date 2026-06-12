@@ -7,6 +7,7 @@ import {
   getStage2NoShows, getCheckinsBefore, getStage2DateCounts,
 } from '../api'
 import DayBarChart from '../components/DayBarChart'
+import CheckinGuideModal from '../components/CheckinGuideModal'
 import { getTeacher, logoutTeacher } from '../auth'
 import { todayISO } from '../utils'
 
@@ -110,6 +111,7 @@ export default function CheckinApp() {
   const [assignDate, setAssignDate] = useState(todayISO)
   const [toast, setToast]     = useState(null)
   const [dateCounts, setDateCounts] = useState(null)   // 二階各日人數統計
+  const [showGuide, setShowGuide] = useState(false)     // 操作說明
 
   const loadDateCounts = async () => {
     try { setDateCounts(await getStage2DateCounts()) } catch { /* 統計失敗不影響主功能 */ }
@@ -322,6 +324,7 @@ export default function CheckinApp() {
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#d1fae5' }}>載入中…</span>}
+          <Btn style={{ background: '#ffffff22', borderColor: '#ffffff44', color: '#fff', fontWeight: 600 }} onClick={() => setShowGuide(true)}>📖 操作說明</Btn>
           <span style={{ fontSize: 12, color: '#d1fae5' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#dcfce7' }} onClick={logoutTeacher}>登出</Btn>
         </div>
@@ -612,6 +615,7 @@ export default function CheckinApp() {
           </Card>
         </>
       )}
+      {showGuide && <CheckinGuideModal onClose={() => setShowGuide(false)} />}
     </PageShell>
   )
 }
