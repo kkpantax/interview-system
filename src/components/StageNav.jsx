@@ -1,6 +1,6 @@
 import { getTeacher } from '../auth'
 
-// 行政人員專用的「階段切換列」：只在 localStorage 登入身分為 admin / superadmin 時顯示。
+// 行政人員專用的「階段切換列」：superadmin 顯示全部；checkin2 只顯示二階兩顆。
 // 由 PageShell 透過 stageKey prop 自動渲染在 header 下方，各頁不需自行處理。
 const ITEMS = [
   { key: 'admin',    label: '書審後台',   hash: '#/admin' },
@@ -15,7 +15,11 @@ const ITEMS = [
 
 export function StageNav({ current, accent = '#1a1a18' }) {
   const t = getTeacher()
-  if (!t || (t.role !== 'admin' && t.role !== 'superadmin')) return null
+  if (!t) return null
+  const isSuper = t.role === 'superadmin'
+  const isCheckin2 = t.role === 'checkin2' || t.role === 'admin'
+  if (!isSuper && !isCheckin2) return null
+  const items = isSuper ? ITEMS : ITEMS.filter((it) => it.key === 'checkin2' || it.key === 'stage2')
 
   return (
     <div
@@ -30,7 +34,7 @@ export function StageNav({ current, accent = '#1a1a18' }) {
       <span style={{ fontSize: 11, color: '#ffffff88', marginRight: 4, whiteSpace: 'nowrap' }}>
         階段切換
       </span>
-      {ITEMS.map((it) => {
+      {items.map((it) => {
         const active = it.key === current
         return (
           <button

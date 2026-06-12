@@ -38,7 +38,7 @@ export default function Stage1App() {
   const [search, setSearch]     = useState('')
   const [toast, setToast]       = useState(null)
   const [showMail, setShowMail] = useState(false)
-  const isAdmin = teacher?.role === 'admin' || teacher?.role === 'superadmin'
+  const isAdmin = teacher?.role === 'superadmin'
 
   const myId = teacher?.id
   // 目前登入老師對該帳號的那筆評分紀錄（每位老師只看/改自己的）

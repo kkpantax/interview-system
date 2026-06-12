@@ -62,7 +62,7 @@ export default function Stage1ConfirmApp() {
 
   // 守衛：只有 admin 能進
   useEffect(() => {
-    if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) {
+    if (!teacher || (teacher.role !== 'superadmin')) {
       window.location.hash = '#/login?stage=confirm1'
     }
   }, [teacher])
@@ -222,7 +222,7 @@ export default function Stage1ConfirmApp() {
   const prefCols = Array.from({ length: maxPrefs }, (_, i) => ({ key: `pref${i + 1}`, label: `志願${i + 1}` }))
   const exportColumns = [...EXPORT_COLS_BEFORE, ...prefCols, ...EXPORT_COLS_AFTER]
 
-  if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) return null
+  if (!teacher || (teacher.role !== 'superadmin')) return null
 
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13, verticalAlign: 'middle' }

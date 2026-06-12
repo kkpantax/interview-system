@@ -17,11 +17,20 @@ export default function TeacherLogin({ stage }) {
   const isCheckin2 = stage === 'checkin2'
   const needAdmin = isAdmin || isStage4 || isConfirm1 || isStats || isCheckin2   // 皆需 admin 角色
 
-  const stageLabel  = needAdmin ? '行政人員' : stage === '2' ? '第二階段' : '第一階段'
+  const stageLabel  = isCheckin2 ? '二階報到管理' : needAdmin ? '行政人員' : stage === '2' ? '第二階段' : '第一階段'
   const accent      = needAdmin ? '#1a1a18' : stage === '2' ? '#15803d' : '#1e40af'
   const accentBg    = needAdmin ? '#ecebe6' : stage === '2' ? '#f0fdf4' : '#eff6ff'
   const targetHash  = isCheckin2 ? '#/checkin2' : isStats ? '#/stats' : isStage4 ? '#/stage4' : isConfirm1 ? '#/confirm1' : isAdmin ? '#/admin' : stage === '2' ? '#/stage2' : '#/stage1'
   const stageRole   = needAdmin ? 'admin'   : stage === '2' ? 'stage2'   : 'stage1'
+
+  // 權限規則：superadmin 全系統可用；checkin2（二階面試管理員）僅能進二階報到，
+  // 舊的 admin 角色一律視同 checkin2；其餘行政頁（書審/實體確認/放榜/就學/統計）僅 superadmin。
+  const roleAllowed = (role) => {
+    if (role === 'superadmin') return true
+    if (isCheckin2) return role === 'checkin2' || role === 'admin'
+    if (needAdmin) return false
+    return role === stageRole || role === 'both'
+  }
   const headerLabel = isCheckin2 ? '二階報到管理登入' : isStats ? '報名統計登入' : isStage4 ? '第四階段確認登入' : isConfirm1 ? '實體面試確認登入' : isAdmin ? '行政人員登入' : `${stageLabel}老師登入`
 
   // 已登入且角色符合 → 直接跳轉，不顯示登入表單
@@ -29,11 +38,7 @@ export default function TeacherLogin({ stage }) {
     try {
       const stored = JSON.parse(localStorage.getItem('teacher'))
       if (!stored) return
-      const alreadyAllowed =
-        stored.role === 'superadmin' ||
-        stored.role === stageRole ||
-        (!needAdmin && stored.role === 'both')
-      if (alreadyAllowed) window.location.hash = targetHash
+      if (roleAllowed(stored.role)) window.location.hash = targetHash
     } catch { /* ignore */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -44,12 +49,7 @@ export default function TeacherLogin({ stage }) {
     try {
       const teacher = await loginTeacher(username.trim(), password)
       if (!teacher) { setErr('帳號或密碼錯誤'); return }
-      // admin 角色只給行政；both 給一階/二階但不含行政
-      const allowed =
-        teacher.role === 'superadmin' ||
-        teacher.role === stageRole ||
-        (!needAdmin && teacher.role === 'both')
-      if (!allowed) { setErr(`此帳號沒有${stageLabel}的權限`); return }
+      if (!roleAllowed(teacher.role)) { setErr(`此帳號沒有${stageLabel}的權限`); return }
       localStorage.setItem('teacher', JSON.stringify(teacher))
       window.location.hash = targetHash
     } catch (e2) {

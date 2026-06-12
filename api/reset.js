@@ -56,8 +56,8 @@ export default async function handler(req) {
   if (!teacher || teacher.password_hash !== expected) {
     return json({ error: '帳號或密碼錯誤' }, 401)
   }
-  if (teacher.role !== 'admin' && teacher.role !== 'superadmin') {
-    return json({ error: '只有行政人員可執行年度重置' }, 403)
+  if (teacher.role !== 'superadmin') {
+    return json({ error: '只有超級管理員可執行年度重置' }, 403)
   }
 
   // 用 service key 逐表刪除（繞過 RLS）。

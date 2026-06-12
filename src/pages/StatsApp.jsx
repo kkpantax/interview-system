@@ -85,7 +85,7 @@ export default function StatsApp() {
   // 守衛：只有 admin / superadmin 能進（本頁可匯出含個資的報名明細）
   const teacher = getTeacher()
   useEffect(() => {
-    if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) {
+    if (!teacher || (teacher.role !== 'superadmin')) {
       window.location.hash = '#/login?stage=stats'
     }
   }, [teacher])

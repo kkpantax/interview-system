@@ -3,16 +3,14 @@ import { Btn, Card, CardHead, Pill, s } from './UI'
 import { getTeachers, createTeacher, deleteTeacher } from '../api'
 
 const ROLES = [
-  { v: 'stage1',     label: '一階老師' },
-  { v: 'stage2',     label: '二階老師' },
-  { v: 'both',       label: '一階＋二階' },
-  { v: 'admin',      label: '行政人員' },
+  { v: 'checkin2',   label: '二階面試管理員（二階報到＋系所評分）' },
   { v: 'superadmin', label: '⭐ 超級管理員（全系統）' },
 ]
-const roleLabel = (r) => ROLES.find((x) => x.v === r)?.label || r
+const LEGACY_LABELS = { stage1: '一階老師（舊）', stage2: '二階老師（舊）', both: '一階＋二階（舊）', admin: '行政人員（舊＝二階管理員）' }
+const roleLabel = (r) => ROLES.find((x) => x.v === r)?.label || LEGACY_LABELS[r] || r
 const needsDept = (r) => r === 'stage2' || r === 'both'
 
-const emptyForm = { username: '', password: '', display_name: '', role: 'stage1', department: '' }
+const emptyForm = { username: '', password: '', display_name: '', role: 'checkin2', department: '' }
 
 export default function TeacherManager({ depts = [], showToast }) {
   const [teachers, setTeachers] = useState([])

@@ -128,9 +128,9 @@ export default function CheckinApp() {
     getInfoLinks().then((rows) => setInfoLinks(rows || [])).catch(() => { /* 連結載入失敗不影響主功能 */ })
   }, [])
 
-  // 守衛：只有 admin / superadmin 能進
+  // 守衛：superadmin / checkin2（二階面試管理員）能進；舊 admin 角色視同 checkin2
   useEffect(() => {
-    if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) {
+    if (!teacher || !['superadmin', 'checkin2', 'admin'].includes(teacher.role)) {
       window.location.hash = '#/login?stage=checkin2'
     }
   }, [teacher])
@@ -424,7 +424,7 @@ export default function CheckinApp() {
     return true
   })
 
-  if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) return null
+  if (!teacher || !['superadmin', 'checkin2', 'admin'].includes(teacher.role)) return null
 
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13, verticalAlign: 'middle' }

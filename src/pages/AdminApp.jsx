@@ -122,7 +122,7 @@ export default function AdminApp() {
 
   // 守衛：未登入或非 admin 角色導回行政登入頁
   useEffect(() => {
-    if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin'))
+    if (!teacher || (teacher.role !== 'superadmin'))
       window.location.hash = '#/login?stage=admin'
   }, [teacher])
 
@@ -360,7 +360,7 @@ export default function AdminApp() {
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
 
-  if (!teacher || (teacher.role !== 'admin' && teacher.role !== 'superadmin')) return null
+  if (!teacher || (teacher.role !== 'superadmin')) return null
 
   return (
     <PageShell
