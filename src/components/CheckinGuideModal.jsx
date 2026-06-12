@@ -89,8 +89,23 @@ export default function CheckinGuideModal({ onClose }) {
         ))}
       </div>
 
+      <StepHead n={0}>面試前一天的準備（4 件事）</StepHead>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, margin: '8px 0 4px' }}>
+        {[
+          ['① 核對名單', '長條圖點明天的日期，確認應到人數與名單；缺人到「📅 未排程」勾選後指派。'],
+          ['② 清漏網之魚', '看「⚠ 漏網之魚」紅色徽章，把之前缺席／未完成的學生改期或移回未排程。'],
+          ['③ 檢查連結', '右上「ℹ 面試資訊」：老師時段表已填、各系 Meet 連結都打得開。有誤請通知系統管理員。'],
+          ['④ 下載名單備援', '按「⬇ 下載當日名單」存一份 Excel（總表＋各系分頁），可列印當紙本備援。'],
+        ].map(([t, d]) => (
+          <div key={t} style={{ ...miniCard, padding: '9px 12px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 2 }}>{t}</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55 }}>{d}</div>
+          </div>
+        ))}
+      </div>
+
       <StepHead n={1}>確認日期是今天</StepHead>
-      <p style={p}>進入「📋 報到追蹤」分頁，系統預設顯示今天。上方綠色長條圖是各日面試人數，<b>點任一天可切換</b>到該日名單；也可直接改「面試日期」欄位。</p>
+      <p style={p}>進入「📋 報到追蹤」分頁，系統預設顯示今天。上方綠色長條圖是各日面試人數，<b>點任一天可切換</b>到該日名單；也可直接改「面試日期」欄位。名單<b>每 30 秒自動更新</b>（系所老師標記的狀態會自己出現），需要立刻刷新按「🔄 重新整理」。</p>
       <Callout tag="注意">日期不對的話，整份名單都會是別天的學生。開始前先看一眼日期。</Callout>
 
       <StepHead n={2}>學生到場 → 按「✅ 報到」</StepHead>
@@ -149,6 +164,7 @@ export default function CheckinGuideModal({ onClose }) {
         面試結束、學生回到主會議室時點成 <Tag bg={C.greenSoft} color={C.green}>✅ 已完成</Tag>，再送往下一個志願系所。
       </p>
       <Callout tag="一人一系" color={C.amber} bg={C.amberBg}>同一位學生同一時間只能前往／面試一個系。若他已在某系 🟡 前往中或 🔵 面試中，又要派往別的系，系統會先跳出確認視窗，避免按錯。</Callout>
+      <Callout tag="一系一位" color={C.red} bg={C.redBg}>反過來，<b>一個系同一時間也只服務一位學生</b>。該系已有人 🟡 前往中或 🔵 面試中時，系統會直接擋下派遣並顯示佔用者姓名——等他完成再派下一位，這不是故障。</Callout>
       <Callout tag="自動鎖定">系所老師一送出評分，該膠囊會自動變成「✅ 已完成（已評分）」並鎖定，<b>不用手動點、也點不動</b>，這是正常的。</Callout>
       <Callout tag="完成判斷">一位學生的所有膠囊都變 ✅ 後，該列底色變淡綠，代表他今天的面試全部結束、可以離場。</Callout>
 
@@ -169,6 +185,8 @@ export default function CheckinGuideModal({ onClose }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>社會工作學系(專)</span>
             <Tag bg={C.greenSoft} color={C.green}>✳ 空閒</Tag>
+            <span style={fakeBtn('#eff6ff', '#1d4ed8', '#bfdbfe')}>📹 Meet</span>
+            <span style={fakeBtn('#faf5ff', '#7e22ce', '#d8b4fe')}>📋 複製</span>
           </div>
           <div style={{ display: 'flex', gap: 10, fontSize: 11.5 }}>
             <span style={{ color: C.amber }}>🟡 0</span>
@@ -183,9 +201,28 @@ export default function CheckinGuideModal({ onClose }) {
         </div>
       </Shot>
       <ShotCap>上：學生列下方的派遣建議；下：派遣看板的系卡，綠框＝空閒可接收、💡 下一位＝這個系現在最該收的學生</ShotCap>
-      <p style={p}>按「派出」等於把該系膠囊標成 🟡 前往中。名單同時會<b>自動輪值排序</b>：可派遣的學生排最上面、前往中／面試中其次、未報到再次、全部完成的沉到最底——<b>名單最上面那幾位就是下一批該處理的人</b>，不必一直捲動找人。</p>
+      <p style={p}>按「派出」等於把該系膠囊標成 🟡 前往中，而且系統會<b>同時自動複製一段給該生的通知訊息</b>（依國籍自動選越南文／印尼文／英文，內含稱呼、系名與 Meet 連結）——切到通訊軟體直接貼上送出即可，不必自己打字。名單同時會<b>自動輪值排序</b>：可派遣的學生排最上面、前往中／面試中其次、未報到再次、全部完成的沉到最底——<b>名單最上面那幾位就是下一批該處理的人</b>，不必一直捲動找人。</p>
 
-      <StepHead n={5}>看全場進度</StepHead>
+      <StepHead n={5}>連結都在「ℹ 面試資訊」</StepHead>
+      <p style={p}>右上角「ℹ 面試資訊」集中放當天會用到的連結，分三類：<b>📑 老師面試時段安排表</b>（各系主任填的時段／老師／線上或實體）、<b>📹 各系視訊面試連結</b>、<b>🔗 其他連結</b>。每條都有「複製」「開啟」兩個鈕。</p>
+      <Shot sub="二階面試報到管理" right="ℹ 面試資訊">
+        <div style={{ ...miniCard, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>A 組 Meet（餐飲管理）</div>
+            <div style={{ fontSize: 10.5, color: '#999' }}>對應：餐飲 · https://meet.google.com/xxx-xxxx-xxx</div>
+          </div>
+          <span style={fakeBtn('#fff', '#333', '#ddd')}>複製</span>
+          <span style={fakeBtn(C.green, '#fff')}>開啟</span>
+        </div>
+        <div style={{ background: '#f8fafc', border: `1px dashed #cbd5e1`, borderRadius: 8, padding: '8px 11px', fontSize: 11.5, color: '#475569', lineHeight: 1.6 }}>
+          Chào bạn NGUYEN VAN AN, tiếp theo vui lòng vào đường link Google Meet dưới đây để tham gia phỏng vấn vòng 2 của khoa「餐飲管理學系(專)」:<br />https://meet.google.com/xxx-xxxx-xxx
+        </div>
+      </Shot>
+      <ShotCap>上：連結列（複製／開啟）；下：「派出」或系卡「📋 複製」自動產生的通知訊息範例（越南籍學生→越南文）</ShotCap>
+      <Callout tag="貼給誰">貼到與學生（或協助翻譯的學伴）的通訊軟體對話即可。系卡上的「📹 Meet」是行政自己要旁聽／確認時用的。</Callout>
+      <Callout tag="連結錯了" color={C.amber} bg={C.amberBg}>連結內容由系統管理員在行政後台「連結管理」維護，發現錯誤口頭通知即可，改完此頁自動更新。</Callout>
+
+      <StepHead n={6}>看全場進度</StepHead>
       <p style={p}>畫面上方有兩排即時統計，隨每一次點擊自動更新：</p>
       <Shot sub="二階面試報到管理" right="報到追蹤">
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -214,10 +251,10 @@ export default function CheckinGuideModal({ onClose }) {
       <ShotCap>統計卡＋派遣看板：系卡依「報考人數少→多」排列、最該收尾的小系在前面；哪個系塞車、誰還沒報到，一眼看出</ShotCap>
       <p style={p}>名單太長時，勾「只看未報到」或「只看未完成」就只剩需要處理的人。</p>
 
-      <StepHead n={6}>學生沒來或要換天 → 「改期」</StepHead>
+      <StepHead n={7}>學生沒來或要換天 → 「改期」</StepHead>
       <p style={p}>該列最右邊有「改期」按鈕，輸入新日期（YYYY-MM-DD）即可把他移到別天；輸入留空則取消排程、回到「📅 未排程」名單。</p>
 
-      <StepHead n={7}>每天收尾 → 看「⚠ 漏網之魚」</StepHead>
+      <StepHead n={8}>學生沒來？隔天看「⚠ 漏網之魚」</StepHead>
       <p style={p}>面試日已經過了、但當天沒報到或沒做完的學生，會自動列在這個分頁，分兩種：</p>
       <Shot sub="二階面試報到管理" right="漏網之魚">
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5 }}>
@@ -238,15 +275,30 @@ export default function CheckinGuideModal({ onClose }) {
       </Shot>
       <ShotCap>紅＝整天沒出現；黃＝有報到但還有系所沒面完。選新日期按「改期」，或「移回未排程」之後再安排</ShotCap>
 
-      <StepHead n={8}>排新日期 → 「📅 未排程」</StepHead>
+      <StepHead n={9}>排新日期 → 「📅 未排程」</StepHead>
       <p style={p}>還沒有面試日的學生都在這裡。勾選學生（可全選）→ 上方選日期 → 按「指派面試日」。指派完成後他們就會出現在該日的報到追蹤名單。</p>
 
-      <div style={{ background: C.greenSoft, border: `1px solid #bbf7d0`, borderRadius: 10, padding: '12px 16px', margin: '22px 0 6px', fontSize: 13, lineHeight: 1.8 }}>
+      <StepHead n={10}>收場三步驟</StepHead>
+      <p style={p}>① 確認統計卡「<b>全部完成」＝「已報到</b>」；② 沒到或沒跑完的不用處理，隔天會自動進「⚠ 漏網之魚」；③ 再按一次「<b>⬇ 下載當日名單</b>」存檔，作為當日紀錄。</p>
+      <Callout tag="名單內容">下載的 Excel 含「總表」（依中心→帳號排序）與<b>各系分頁</b>（台北校區在前、系內依志願序排），附一階出席／平均分／建議，可直接轉交各系或留存。</Callout>
+
+      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', margin: '20px 0 6px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: C.amber, marginBottom: 6 }}>⚠ 三條鐵則（系統會強制執行）</div>
+        <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, lineHeight: 1.75 }}>
+          <li><b>先總報到，才能派遣</b>——膠囊點不動，先看他報到了沒。</li>
+          <li><b>一個系同時只服務一位</b>——被擋下就等該系完成再派。</li>
+          <li><b>一位學生同時只去一個系</b>——跳確認視窗時，原則上選取消、等他面完再派。</li>
+        </ul>
+      </div>
+
+      <div style={{ background: C.greenSoft, border: `1px solid #bbf7d0`, borderRadius: 10, padding: '12px 16px', margin: '14px 0 6px', fontSize: 13, lineHeight: 1.8 }}>
         <b style={{ color: C.greenD }}>常見問題</b><br />
         <b>「派出」和點膠囊差在哪？</b>一樣的，派出＝直接把該系標成 🟡 前往中（等於點膠囊第一下），只是系統先幫你算好派去哪。<br />
         <b>膠囊點不動？</b>先確認該生已按「✅ 報到」；若顯示「已評分」則是系統自動鎖定，不需處理。<br />
         <b>會不會沒存到？</b>每一次點擊都即時寫入資料庫，重新整理或換電腦資料都在。<br />
-        <b>多人同時操作？</b>可以，多台電腦同開此頁不衝突；按「🔄 重新整理」可看到別人剛更新的狀態。
+        <b>多人同時操作？</b>可以，多台電腦同開此頁不衝突；名單每 30 秒自動同步別人的更新。<br />
+        <b>通知訊息的語言怎麼決定？</b>依學生國籍自動選：越南籍→越南文、印尼籍→印尼文、其他→英文。<br />
+        <b>面完了膠囊還停在 🔵？</b>老師可能還沒送出評分，可先手動點成 ✅，或提醒老師送出（送出後自動鎖定）。
       </div>
     </Modal>
   )
