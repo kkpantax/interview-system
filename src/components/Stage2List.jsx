@@ -42,7 +42,8 @@ function CheckinPill({ info }) {
 // 第二階段名單（presentational）
 // showEvalSummary=true：已評分區，顯示最新建議 badge、已評次數，按鈕為「再次評分」
 // checkinMap：account → { arrived, deptStatus }（待評分區才用，不傳則顯示「—」）
-export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false, checkinMap }) {
+// onMarkInterview / onCancelInterview / markingAccount：老師標記「面試中」（選填，不傳則維持原樣）
+export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false, checkinMap, onMarkInterview, onCancelInterview, markingAccount }) {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const headers = showEvalSummary
@@ -93,7 +94,16 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
                       <Btn variant="primary" onClick={() => onOpen(stu)}>再次評分 →</Btn>
                     </div>
                   ) : (
-                    <Btn variant="primary" onClick={() => onOpen(stu)}>評分 →</Btn>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      {onMarkInterview && (() => {
+                        const ds = checkinMap?.[stu.account]?.deptStatus
+                        const busy = markingAccount === stu.account
+                        if (ds === 'done') return null
+                        if (ds === 'sent') return <Btn disabled={busy} onClick={() => onCancelInterview(stu)}>↩ 取消面試中</Btn>
+                        return <Btn variant="blue" disabled={busy} onClick={() => onMarkInterview(stu)}>🎤 開始面試</Btn>
+                      })()}
+                      <Btn variant="primary" onClick={() => onOpen(stu)}>評分 →</Btn>
+                    </div>
                   )}
                 </td>
               </tr>

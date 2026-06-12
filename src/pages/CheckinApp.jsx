@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Card, CardHead, Btn, s } from '../components/UI'
 import {
@@ -174,6 +174,28 @@ export default function CheckinApp() {
   useEffect(() => { load() }, [load])
   // 漏網之魚與未排程的人數徽章在任何分頁都常駐顯示，故一進頁就載入
   useEffect(() => { loadUnscheduled(); loadNoShows() }, [loadUnscheduled, loadNoShows])
+
+  // 輪詢用的 state 鏡像：interval closure 會吃到舊的 loading/busy，改讀 ref 避免 stale closure
+  const loadingRef = useRef(loading)
+  const busyRef    = useRef(busy)
+  useEffect(() => { loadingRef.current = loading }, [loading])
+  useEffect(() => { busyRef.current = busy }, [busy])
+
+  // 報到追蹤分頁每 30 秒自動刷新，系所老師標記的「面試中」會自動出現
+  useEffect(() => {
+    if (tab !== 'track') return
+    const id = setInterval(() => {
+      if (document.hidden || loadingRef.current || busyRef.current) return
+      load()
+    }, 30000)
+    // 從背景回到前景時立即刷新一次，不等下一輪
+    const onVisible = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [tab, load])
 
   // ── 報到 / 進度動作 ──────────────────────────────────────────────────────
   const isArrived = (account) => !!cmap[account]?.main
@@ -354,6 +376,7 @@ export default function CheckinApp() {
             <span style={{ fontSize: 13, color: '#555' }}>面試日期</span>
             <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={date} onChange={(e) => setDate(e.target.value)} />
             <Btn onClick={load}>🔄 重新整理</Btn>
+            <span style={{ fontSize: 11, color: '#aaa' }}>每 30 秒自動更新</span>
             <input style={{ ...s.input, width: 220, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號 / 護照" value={search} onChange={(e) => setSearch(e.target.value)} />
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>
               <input type="checkbox" checked={onlyNotArrived} onChange={(e) => setOnlyNotArrived(e.target.checked)} /> 只看未報到

@@ -9,7 +9,7 @@ import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
-  getCheckins,
+  getCheckins, upsertCheckin, deleteCheckin,
 } from '../api'
 
 const localToday = () => {
@@ -18,6 +18,17 @@ const localToday = () => {
 }
 
 const EMPTY_STATS = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
+
+// 報到狀態 map：account → { arrived: 有主會議室總報到列, deptStatus: 本系那列的 status }
+const buildDeptCheckinMap = (checkins, dept) => {
+  const cm = {}
+  for (const r of (checkins || [])) {
+    if (!cm[r.account]) cm[r.account] = { arrived: false, deptStatus: null }
+    if (!r.department) cm[r.account].arrived = true
+    else if (r.department === dept) cm[r.account].deptStatus = r.status
+  }
+  return cm
+}
 
 // 評分老師的「當日工作階段」存 localStorage：重新整理／返回各系都不必重輸入。
 // EVAL_SESSION_KEY 存 { name, date }，按「完成今日評分」時清除；只在 date === 今天 時自動沿用，
@@ -256,6 +267,7 @@ function Stage2Scoring({ dept }) {
   const [saving, setSaving]       = useState(false)
   const [toast, setToast]         = useState(null)
   const [finishing, setFinishing] = useState(null)   // 今日總結 { total, admit, waitlist, reject, pending }
+  const [marking, setMarking]     = useState(null)   // 正在更新面試中標記的帳號
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -270,14 +282,7 @@ function Stage2Scoring({ dept }) {
       setStudents(list || [])
       setStats(st || EMPTY_STATS)
       setQuota(quotas?.[dept] ?? null)
-      // 報到狀態 map：account → { arrived: 有主會議室總報到列, deptStatus: 本系那列的 status }
-      const cm = {}
-      for (const r of (checkins || [])) {
-        if (!cm[r.account]) cm[r.account] = { arrived: false, deptStatus: null }
-        if (!r.department) cm[r.account].arrived = true
-        else if (r.department === dept) cm[r.account].deptStatus = r.status
-      }
-      setCheckinMap(cm)
+      setCheckinMap(buildDeptCheckinMap(checkins, dept))
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -286,6 +291,47 @@ function Stage2Scoring({ dept }) {
   }, [dept, showToast])
 
   useEffect(() => { if (evaluator) load() }, [evaluator, load])
+
+  // 輕量更新：只重抓今日報到列，不重載整個名單（失敗靜默）
+  const refreshCheckins = useCallback(async () => {
+    try {
+      const checkins = await getCheckins(localToday())
+      setCheckinMap(buildDeptCheckinMap(checkins, dept))
+    } catch { /* ignore */ }
+  }, [dept])
+
+  // 標記「面試中」：寫入本系 status='sent'，行政報到頁同步顯示🔵面試中
+  const markInterview = async (stu) => {
+    if (!checkinMap[stu.account]?.arrived) {
+      const ok = window.confirm(`「${stu.name}」尚未在主會議室完成總報到。若考生已直接進入本系會議室，仍可標記為面試中（行政端會同步看到）。確定標記為面試中？`)
+      if (!ok) return
+    }
+    setMarking(stu.account)
+    try {
+      await upsertCheckin({ account: stu.account, checkin_date: localToday(), department: dept, status: 'sent' })
+      await refreshCheckins()
+      showToast(`已標記 ${stu.name} 面試中`)
+    } catch (e) {
+      showToast('標記失敗：' + e.message, 'error')
+    } finally {
+      setMarking(null)
+    }
+  }
+
+  // 誤按取消：刪除本系那筆進度列，回到待面試
+  const cancelInterview = async (stu) => {
+    if (!window.confirm(`取消「${stu.name}」的面試中標記？`)) return
+    setMarking(stu.account)
+    try {
+      await deleteCheckin(stu.account, localToday(), dept)
+      await refreshCheckins()
+      showToast(`已取消 ${stu.name} 的面試中標記`)
+    } catch (e) {
+      showToast('取消失敗：' + e.message, 'error')
+    } finally {
+      setMarking(null)
+    }
+  }
 
   if (!evaluator) {
     const startEvaluator = (v) => {
@@ -326,6 +372,8 @@ function Stage2Scoring({ dept }) {
         department: dept,
         ...payload,
       })
+      // 靜默同步行政報到頁膠囊為「已完成」（updated_at 留下完成時間），失敗不影響評分結果
+      try { await upsertCheckin({ account: active.account, checkin_date: localToday(), department: dept, status: 'done' }) } catch { /* ignore */ }
       showToast(`已儲存 ${active.name} 的評分`)
       setActive(null)
       await load()
@@ -433,7 +481,8 @@ function Stage2Scoring({ dept }) {
 
           <Card style={{ marginBottom: 16 }}>
             <CardHead left={`${dept} · 待評分`} right={`${unscored.length} 位`} />
-            <Stage2List students={unscored} onOpen={setActive} loading={loading} checkinMap={checkinMap} />
+            <Stage2List students={unscored} onOpen={setActive} loading={loading} checkinMap={checkinMap}
+              onMarkInterview={markInterview} onCancelInterview={cancelInterview} markingAccount={marking} />
           </Card>
 
           <Card>
