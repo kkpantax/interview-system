@@ -841,15 +841,6 @@ export default function CheckinApp() {
                               )
                             })}
                           </div>
-                          {arrived && !rowDone && dispatch.suggestOf[stu.account] && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                              <span style={{ fontSize: 11.5, color: '#92400e' }}>
-                                💡 建議先派 → <b>{dispatch.suggestOf[stu.account]}</b>（今日 {dispatch.cnt[dispatch.suggestOf[stu.account]] || 0} 人・{dispatch.load[dispatch.suggestOf[stu.account]] || 0} 人面試中）
-                              </span>
-                              <button onClick={() => dispatchTo(stu.account, dispatch.suggestOf[stu.account])} disabled={busy}
-                                style={{ border: '1px solid #fbbf24', background: '#fef3c7', color: '#92400e', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>派出</button>
-                            </div>
-                          )}
                         </td>
                         <td style={td}>
                           <button onClick={() => reschedule(stu.account, stu.name)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>改期</button>
