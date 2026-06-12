@@ -80,24 +80,22 @@ const PILL_STYLE = {
 // 越南籍判斷（派遣優先規則用）
 const isVN = (stu) => /越南|vietnam/i.test(stu.nationality || '')
 
-// ── 派遣通知訊息（複製到剪貼簿）：依國籍給 中越 / 中印尼 / 中英 雙語 ──────────
+// ── 派遣通知訊息（複製到剪貼簿）：依國籍給 越南文 / 印尼文 / 英文 單一語言 ──────────
 const msgLangOf = (stu) => {
   const n = stu?.nationality || ''
   if (/越南|vietnam/i.test(n)) return 'vi'
   if (/印尼|indonesia/i.test(n)) return 'id'
   return 'en'
 }
-const MSG_LANG_LABEL = { vi: '中越', id: '中印尼', en: '中英' }
+const MSG_LANG_LABEL = { vi: '越南文', id: '印尼文', en: '英文' }
 const meetMsgOf = (stu, dept, url) => {
   const name = (stu?.name_english || stu?.name || '').trim()
-  const zhName = name ? `${name} 同學您好，` : '同學您好，'
-  const zh = `${zhName}接下來請進入以下視訊會議網址，進行「${dept}」第二階段面試：\n${url}`
   const foreign = {
     vi: `${name ? `Chào bạn ${name}, ` : ''}tiếp theo vui lòng vào đường link Google Meet dưới đây để tham gia phỏng vấn vòng 2 của khoa「${dept}」:\n${url}`,
     id: `${name ? `Halo ${name}, ` : ''}selanjutnya silakan masuk ke tautan Google Meet berikut untuk mengikuti wawancara tahap 2 jurusan「${dept}」:\n${url}`,
     en: `${name ? `Hi ${name}, ` : ''}please join the Google Meet link below for your stage-2 interview with「${dept}」:\n${url}`,
   }
-  return `${zh}\n\n${foreign[msgLangOf(stu)]}`
+  return foreign[msgLangOf(stu)]
 }
 // 同步複製（在點擊手勢內呼叫，避免 Safari 擋非手勢的剪貼簿操作）；失敗退回 textarea+execCommand
 const copyText = (text) => {
