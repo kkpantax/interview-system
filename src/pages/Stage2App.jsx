@@ -5,11 +5,12 @@ import { writeXlsx } from '../components/ExportBtn'
 import Stage2List from '../components/Stage2List'
 import ScoreForm from '../components/ScoreForm'
 import Stage2GuideModal from '../components/Stage2GuideModal'
+import TranslatorSOPModal from '../components/TranslatorSOPModal'
 import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation, deleteEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
-  getAllCheckins, upsertCheckin, deleteCheckin, resetStage2CheckinDept,
+  getAllCheckins, upsertCheckin, deleteCheckin, resetStage2CheckinDept, getInfoLinks,
 } from '../api'
 import { getTeacher } from '../auth'
 
@@ -288,6 +289,8 @@ function Stage2Scoring({ dept }) {
   const [saving, setSaving]       = useState(false)
   const [toast, setToast]         = useState(null)
   const [finishing, setFinishing] = useState(null)   // 今日總結 { total, admit, waitlist, reject, pending }
+  const [showSOP, setShowSOP]     = useState(false)  // 翻譯工讀生須知
+  const [infoLinks, setInfoLinks] = useState(null)   // info_links（首次開啟 SOP 時才載入）
   const [marking, setMarking]     = useState(null)   // 正在更新面試中標記的帳號
 
   const showToast = useCallback((msg, type = 'ok') => {
@@ -494,6 +497,12 @@ function Stage2Scoring({ dept }) {
       showToast('讀取今日評分失敗：' + err.message, 'error')
     }
   }
+  const openSOP = () => {
+    setShowSOP(true)
+    if (infoLinks === null) {
+      getInfoLinks().then((rows) => setInfoLinks(rows || [])).catch(() => setInfoLinks([]))
+    }
+  }
   const leave = () => {
     try { localStorage.removeItem(EVAL_SESSION_KEY) } catch { /* ignore */ }
     window.location.hash = '#/stage2'
@@ -527,6 +536,7 @@ function Stage2Scoring({ dept }) {
               onChange={(e) => setSearch(e.target.value)}
             />
             <Btn onClick={load}>🔄 更新報到狀態</Btn>
+            <Btn onClick={openSOP} style={{ background: '#ecfdf5', borderColor: '#86efac', color: '#15803d', fontWeight: 600 }}>🌐 翻譯工讀生須知</Btn>
             <span style={{ fontSize: 11, color: '#aaa' }}>報到狀態每 30 秒自動更新</span>
             <div style={{ flex: 1 }} />
             <Btn onClick={downloadToday}>⬇ 下載今日評分</Btn>
@@ -564,6 +574,10 @@ function Stage2Scoring({ dept }) {
           onDelete={isSuper ? deleteEval : undefined}
           onClose={() => setViewing(null)}
         />
+      )}
+
+      {showSOP && (
+        <TranslatorSOPModal dept={dept} links={infoLinks} onClose={() => setShowSOP(false)} />
       )}
 
       {finishing && (
