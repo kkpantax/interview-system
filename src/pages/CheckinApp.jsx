@@ -225,11 +225,37 @@ export default function CheckinApp() {
     } catch (e) { showToast('取消失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
+  // 該生目前「面試中」的系（手動標記 sent 者；理論上同時最多一系）
+  const currentSentDept = (account) => {
+    const stu = roster.find((x) => x.account === account)
+    if (!stu) return null
+    const hit = stu.depts.find((d) => effStatus(cmap, account, d) === 'sent')
+    return hit ? hit.department : null
+  }
+
+  // 一鍵派出（智慧建議 / 各系看板用）：標記為該系面試中；若已在他系面試中先確認
+  const dispatchTo = async (account, department) => {
+    const other = currentSentDept(account)
+    if (other && other !== department &&
+        !window.confirm(`該生目前正在「${other}」面試中，確定要同時派往「${department}」嗎？\n（一般建議等該系完成後再派出）`)) return
+    setBusy(true)
+    try {
+      await upsertCheckin({ account, checkin_date: date, department, status: 'sent' })
+      await load()
+    } catch (e) { showToast('派出失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
   // 膠囊循環：待面試 → sent → done → 刪除（回到待面試）
   const cyclePill = async (account, dept) => {
     if (!isArrived(account)) return
     if ((dept.evaluations || []).length > 0) return   // 已評分鎖定
     const cur = cmap[account]?.byDept?.[dept.department]?.status
+    // 防呆：切成「面試中」前，若該生已在他系面試中先確認，避免一人同時兩系
+    if (cur !== 'sent' && cur !== 'done') {
+      const other = currentSentDept(account)
+      if (other && other !== dept.department &&
+          !window.confirm(`該生目前正在「${other}」面試中，確定要同時派往「${dept.department}」嗎？`)) return
+    }
     setBusy(true)
     try {
       if (!cur) await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'sent' })
@@ -407,7 +433,74 @@ export default function CheckinApp() {
         m[d.department][effStatus(cmap, stu.account, d)]++
       }
     }
-    return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]))
+    // 規則3：報考人數少的系排前面，方便優先收尾
+    return Object.entries(m).sort((a, b) => {
+      const na = a[1].sent + a[1].done + a[1].waiting
+      const nb = b[1].sent + b[1].done + b[1].waiting
+      return na - nb || a[0].localeCompare(b[0])
+    })
+  })()
+
+  // ── 智慧派遣：依各系即時負載計算建議 ─────────────────────────────────────
+  const dispatch = (() => {
+    // 優先規則（高→低）：1.非越南籍 2.當日志願數少 3.報考人數少的系 4.志願序 5.報到時間
+    const isVN = (stu) => /越南|vietnam/i.test(stu.nationality || '')
+    const load = {}, cnt = {}, inDept = {}, busyStu = {}
+    for (const stu of roster) {
+      for (const d of stu.depts) {
+        if (!(d.department in load)) { load[d.department] = 0; cnt[d.department] = 0 }
+        cnt[d.department]++
+        if (effStatus(cmap, stu.account, d) === 'sent') {
+          load[d.department]++
+          busyStu[stu.account] = d.department
+          ;(inDept[d.department] = inDept[d.department] || []).push(stu)
+        }
+      }
+    }
+    // 全域配對：把（學生×待面試系）攤平，依優先規則排序後貪婪指派各系「建議下一位」，
+    // 同一生不會被多系同時建議
+    const pairs = []
+    for (const stu of roster) {
+      if (!isArrived(stu.account) || busyStu[stu.account]) continue
+      for (const d of stu.depts) {
+        if (effStatus(cmap, stu.account, d) !== 'waiting') continue
+        pairs.push({
+          stu, dep: d.department,
+          vn: isVN(stu) ? 1 : 0,
+          nDepts: stu.depts.length,
+          deptN: cnt[d.department] || 0,
+          pref: d.preference_order ?? 99,
+          t: cmap[stu.account]?.main?.updated_at || '',
+        })
+      }
+    }
+    pairs.sort((x, y) =>
+      x.vn - y.vn ||
+      x.nDepts - y.nDepts ||
+      x.deptN - y.deptN ||
+      x.pref - y.pref ||
+      String(x.t).localeCompare(String(y.t)) ||
+      x.dep.localeCompare(y.dep))
+    const taken = new Set()
+    const nextOf = {}
+    for (const pr of pairs) {
+      if (taken.has(pr.stu.account) || nextOf[pr.dep]) continue
+      nextOf[pr.dep] = pr.stu
+      taken.add(pr.stu.account)
+    }
+    // 每位待派學生建議先去的系：報考人數少的系優先收尾，其次目前負載低、志願序低
+    const suggestOf = {}
+    for (const stu of roster) {
+      if (!isArrived(stu.account) || busyStu[stu.account]) continue
+      const waits = stu.depts.filter((d) => effStatus(cmap, stu.account, d) === 'waiting')
+      if (!waits.length) continue
+      waits.sort((a, b) =>
+        (cnt[a.department] || 0) - (cnt[b.department] || 0) ||
+        (load[a.department] || 0) - (load[b.department] || 0) ||
+        (a.preference_order ?? 99) - (b.preference_order ?? 99))
+      suggestOf[stu.account] = waits[0].department
+    }
+    return { load, cnt, inDept, nextOf, suggestOf }
   })()
 
   // 篩選
@@ -520,14 +613,19 @@ export default function CheckinApp() {
           {/* 各系即時狀態 */}
           {deptStats.length > 0 && (
             <Card style={{ marginBottom: 16 }}>
-              <CardHead left="各系即時狀態" right="面試中／已完成／待面試" />
+              <CardHead left="各系即時狀態（派遣看板）" right="人數少的系在前 · 綠框＝空閒 · 💡非越南籍/志願少者優先" />
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '12px 16px' }}>
                 {deptStats.map(([dep, c]) => {
                   const meet = meetUrlOf(dep)
+                  const idle = c.sent === 0 && c.waiting > 0
+                  const next = dispatch.nextOf[dep]
                   return (
-                  <div key={dep} style={{ border: '1px solid #e8e7e3', borderRadius: 10, padding: '8px 12px', minWidth: 150 }}>
+                  <div key={dep} style={{ border: `1px solid ${idle ? '#86efac' : '#e8e7e3'}`, background: idle ? '#f0fdf4' : undefined, borderRadius: 10, padding: '8px 12px', minWidth: 180 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{dep}</span>
+                      {idle && (
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 6, padding: '1px 6px' }}>✳ 空閒</span>
+                      )}
                       {meet && (
                         <button title={`開啟「${dep}」視訊面試連結`} onClick={() => window.open(meet, '_blank', 'noopener')}
                           style={{ border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 7, fontSize: 11, padding: '1px 7px', cursor: 'pointer', fontFamily: 'inherit' }}>📹 Meet</button>
@@ -538,6 +636,18 @@ export default function CheckinApp() {
                       <span style={{ color: '#15803d' }}>✅ {c.done}</span>
                       <span style={{ color: '#9ca3af' }}>⚪ {c.waiting}</span>
                     </div>
+                    {(dispatch.inDept[dep] || []).length > 0 && (
+                      <div style={{ fontSize: 11, color: '#1e40af', marginTop: 4 }}>
+                        面試中：{dispatch.inDept[dep].map((x) => x.name).join('、')}
+                      </div>
+                    )}
+                    {next && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '1px dashed #e8e7e3' }}>
+                        <span style={{ fontSize: 11.5, color: '#92400e' }}>💡 下一位：<b>{next.name}</b></span>
+                        <button onClick={() => dispatchTo(next.account, dep)} disabled={busy}
+                          style={{ border: '1px solid #fbbf24', background: '#fef3c7', color: '#92400e', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>派出</button>
+                      </div>
+                    )}
                   </div>
                 )})}
               </div>
@@ -612,6 +722,15 @@ export default function CheckinApp() {
                               )
                             })}
                           </div>
+                          {arrived && !rowDone && dispatch.suggestOf[stu.account] && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                              <span style={{ fontSize: 11.5, color: '#92400e' }}>
+                                💡 建議先派 → <b>{dispatch.suggestOf[stu.account]}</b>（今日 {dispatch.cnt[dispatch.suggestOf[stu.account]] || 0} 人・{dispatch.load[dispatch.suggestOf[stu.account]] || 0} 人面試中）
+                              </span>
+                              <button onClick={() => dispatchTo(stu.account, dispatch.suggestOf[stu.account])} disabled={busy}
+                                style={{ border: '1px solid #fbbf24', background: '#fef3c7', color: '#92400e', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>派出</button>
+                            </div>
+                          )}
                         </td>
                         <td style={td}>
                           <button onClick={() => reschedule(stu.account, stu.name)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>改期</button>
