@@ -80,6 +80,41 @@ const PILL_STYLE = {
 // 越南籍判斷（派遣優先規則用）
 const isVN = (stu) => /越南|vietnam/i.test(stu.nationality || '')
 
+// ── 派遣通知訊息（複製到剪貼簿）：依國籍給 中越 / 中印尼 / 中英 雙語 ──────────
+const msgLangOf = (stu) => {
+  const n = stu?.nationality || ''
+  if (/越南|vietnam/i.test(n)) return 'vi'
+  if (/印尼|indonesia/i.test(n)) return 'id'
+  return 'en'
+}
+const MSG_LANG_LABEL = { vi: '中越', id: '中印尼', en: '中英' }
+const meetMsgOf = (stu, dept, url) => {
+  const name = (stu?.name_english || stu?.name || '').trim()
+  const zhName = name ? `${name} 同學您好，` : '同學您好，'
+  const zh = `${zhName}接下來請進入以下視訊會議網址，進行「${dept}」第二階段面試：\n${url}`
+  const foreign = {
+    vi: `${name ? `Chào bạn ${name}, ` : ''}tiếp theo vui lòng vào đường link Google Meet dưới đây để tham gia phỏng vấn vòng 2 của khoa「${dept}」:\n${url}`,
+    id: `${name ? `Halo ${name}, ` : ''}selanjutnya silakan masuk ke tautan Google Meet berikut untuk mengikuti wawancara tahap 2 jurusan「${dept}」:\n${url}`,
+    en: `${name ? `Hi ${name}, ` : ''}please join the Google Meet link below for your stage-2 interview with「${dept}」:\n${url}`,
+  }
+  return `${zh}\n\n${foreign[msgLangOf(stu)]}`
+}
+// 同步複製（在點擊手勢內呼叫，避免 Safari 擋非手勢的剪貼簿操作）；失敗退回 textarea+execCommand
+const copyText = (text) => {
+  try {
+    if (navigator.clipboard?.writeText) { navigator.clipboard.writeText(text); return true }
+  } catch { /* fallthrough */ }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta); ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch { return false }
+}
+
 // 佔用中狀態（前往中或面試中，學生此刻只能對應一個系）
 const BUSY_STATUSES = ['going', 'sent']
 
@@ -255,7 +290,7 @@ export default function CheckinApp() {
 
   // 一鍵派出（智慧建議 / 各系看板用）：標記為 🟡 前往中，系所老師按「開始面試」後變 🔵 面試中。
   // 若該生已在他系前往中/面試中則先確認，避免一人同時兩系。
-  const dispatchTo = async (account, department) => {
+  const dispatchTo = async (account, department, copiedNote = null) => {
     // 硬擋：該系已有人前往中/面試中時不可再派（一系同時只服務一位）
     const occ = deptOccupant(department, account)
     if (occ) {
@@ -269,6 +304,8 @@ export default function CheckinApp() {
     try {
       await upsertCheckin({ account, checkin_date: date, department, status: 'going' })
       await load()
+      const who = roster.find((x) => x.account === account)
+      showToast(`已派出 ${who?.name || account} → ${department}${copiedNote ? `，並已複製${copiedNote}通知訊息` : ''}`)
     } catch (e) { showToast('派出失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
@@ -688,6 +725,18 @@ export default function CheckinApp() {
                         <button title={`開啟「${dep}」視訊面試連結`} onClick={() => window.open(meet, '_blank', 'noopener')}
                           style={{ border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 7, fontSize: 11, padding: '1px 7px', cursor: 'pointer', fontFamily: 'inherit' }}>📹 Meet</button>
                       )}
+                      {meet && (
+                        <button
+                          title={`複製「${dep}」視訊面試通知訊息（依學生國籍自動選語言）`}
+                          onClick={() => {
+                            const stu = (dispatch.goingDept[dep] || [])[0] || (dispatch.inDept[dep] || [])[0] || next || null
+                            const ok = copyText(meetMsgOf(stu, dep, meet))
+                            const lang = MSG_LANG_LABEL[msgLangOf(stu)]
+                            if (ok) showToast(`已複製「${dep}」${lang}通知訊息${stu ? `（${stu.name_english || stu.name}）` : ''}`)
+                            else showToast('複製失敗，請手動複製連結', 'error')
+                          }}
+                          style={{ border: '1px solid #d8b4fe', background: '#faf5ff', color: '#7e22ce', borderRadius: 7, fontSize: 11, padding: '1px 7px', cursor: 'pointer', fontFamily: 'inherit' }}>📋 複製</button>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
                       <span style={{ color: '#b45309' }}>🟡 {c.going}</span>
@@ -708,7 +757,11 @@ export default function CheckinApp() {
                     {next && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '1px dashed #e8e7e3' }}>
                         <span style={{ fontSize: 11.5, color: '#92400e' }}>💡 下一位：<b>{next.name}</b></span>
-                        <button onClick={() => dispatchTo(next.account, dep)} disabled={busy || deptBusy}
+                        <button onClick={() => {
+                          let note = null
+                          if (meet && copyText(meetMsgOf(next, dep, meet))) note = MSG_LANG_LABEL[msgLangOf(next)]
+                          dispatchTo(next.account, dep, note)
+                        }} disabled={busy || deptBusy}
                           title={deptBusy ? '該系已有人前往中／面試中，完成後才能派出下一位' : undefined}
                           style={{ border: '1px solid #fbbf24', background: '#fef3c7', color: '#92400e', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '1px 8px', cursor: deptBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: deptBusy ? 0.45 : 1 }}>派出</button>
                       </div>
