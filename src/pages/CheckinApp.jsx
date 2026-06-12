@@ -240,9 +240,28 @@ export default function CheckinApp() {
     return hit ? hit.department : null
   }
 
+  // 防呆：該系目前佔用中（前往中/面試中）的學生——一系同時只服務一位。
+  // 回傳 { stu, st } 或 null；exceptAccount 排除自己（同一生狀態推進不算）。
+  const deptOccupant = (department, exceptAccount) => {
+    for (const stu of roster) {
+      if (stu.account === exceptAccount) continue
+      const d = stu.depts.find((x) => x.department === department)
+      if (!d) continue
+      const st = effStatus(cmap, stu.account, d)
+      if (BUSY_STATUSES.includes(st)) return { stu, st }
+    }
+    return null
+  }
+
   // 一鍵派出（智慧建議 / 各系看板用）：標記為 🟡 前往中，系所老師按「開始面試」後變 🔵 面試中。
   // 若該生已在他系前往中/面試中則先確認，避免一人同時兩系。
   const dispatchTo = async (account, department) => {
+    // 硬擋：該系已有人前往中/面試中時不可再派（一系同時只服務一位）
+    const occ = deptOccupant(department, account)
+    if (occ) {
+      showToast(`「${department}」目前有「${occ.stu.name}」${occ.st === 'sent' ? '面試中' : '前往中'}，一系同時只服務一位，請等完成後再派出`, 'error')
+      return
+    }
     const other = currentBusyDept(account)
     if (other && other !== department &&
         !window.confirm(`該生目前正在「${other}」（前往中/面試中），確定要同時派往「${department}」嗎？\n（一般建議等該系完成後再派出）`)) return
@@ -260,6 +279,12 @@ export default function CheckinApp() {
     const cur = cmap[account]?.byDept?.[dept.department]?.status
     // 防呆：要進入前往中/面試中之前，若該生已在他系佔用中先確認，避免一人同時兩系
     if (!BUSY_STATUSES.includes(cur) && cur !== 'done') {
+      // 硬擋：該系已有人前往中/面試中時不可再派（一系同時只服務一位）
+      const occ = deptOccupant(dept.department, account)
+      if (occ) {
+        showToast(`「${dept.department}」目前有「${occ.stu.name}」${occ.st === 'sent' ? '面試中' : '前往中'}，一系同時只服務一位，請等完成後再派出`, 'error')
+        return
+      }
       const other = currentBusyDept(account)
       if (other && other !== dept.department &&
           !window.confirm(`該生目前正在「${other}」（前往中/面試中），確定要同時派往「${dept.department}」嗎？`)) return
@@ -650,6 +675,7 @@ export default function CheckinApp() {
                 {deptStats.map(([dep, c]) => {
                   const meet = meetUrlOf(dep)
                   const idle = c.sent === 0 && c.going === 0 && c.waiting > 0
+                  const deptBusy = c.going + c.sent > 0   // 一系同時只服務一位：佔用中禁派
                   const next = dispatch.nextOf[dep]
                   return (
                   <div key={dep} style={{
@@ -686,8 +712,9 @@ export default function CheckinApp() {
                     {next && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '1px dashed #e8e7e3' }}>
                         <span style={{ fontSize: 11.5, color: '#92400e' }}>💡 下一位：<b>{next.name}</b></span>
-                        <button onClick={() => dispatchTo(next.account, dep)} disabled={busy}
-                          style={{ border: '1px solid #fbbf24', background: '#fef3c7', color: '#92400e', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>派出</button>
+                        <button onClick={() => dispatchTo(next.account, dep)} disabled={busy || deptBusy}
+                          title={deptBusy ? '該系已有人前往中／面試中，完成後才能派出下一位' : undefined}
+                          style={{ border: '1px solid #fbbf24', background: '#fef3c7', color: '#92400e', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '1px 8px', cursor: deptBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: deptBusy ? 0.45 : 1 }}>派出</button>
                       </div>
                     )}
                   </div>
