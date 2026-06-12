@@ -9,7 +9,7 @@ import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
-  getCheckins, upsertCheckin, deleteCheckin,
+  getAllCheckins, upsertCheckin, deleteCheckin,
 } from '../api'
 
 const localToday = () => {
@@ -20,9 +20,14 @@ const localToday = () => {
 const EMPTY_STATS = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
 
 // 報到狀態 map：account → { arrived: 有主會議室總報到列, deptStatus: 本系那列的 status }
-const buildDeptCheckinMap = (checkins, dept) => {
+// 報到列以「該學生自己的面試日」比對（行政端是按排定面試日記錄報到，不一定是今天），
+// 無排程者退回今天。改期後舊日期的列自動失效。
+const buildDeptCheckinMap = (checkins, dept, students) => {
+  const dateOf = {}
+  for (const stu of (students || [])) dateOf[stu.account] = stu.stage2_date || localToday()
   const cm = {}
   for (const r of (checkins || [])) {
+    if (r.checkin_date !== dateOf[r.account]) continue
     if (!cm[r.account]) cm[r.account] = { arrived: false, deptStatus: null }
     if (!r.department) cm[r.account].arrived = true
     else if (r.department === dept) cm[r.account].deptStatus = r.status
@@ -259,7 +264,7 @@ function Stage2Scoring({ dept }) {
   const [students, setStudents]   = useState([])
   const [stats, setStats]         = useState(EMPTY_STATS)
   const [quota, setQuota]         = useState(null)
-  const [checkinMap, setCheckinMap] = useState({})   // account → { arrived, deptStatus }
+  const [checkinRows, setCheckinRows] = useState([])  // stage2_checkins 原始列，map 於 render 時依學生面試日推導
   const [search, setSearch]       = useState('')
   const [active, setActive]       = useState(null)
   const [viewing, setViewing]     = useState(null)
@@ -277,12 +282,12 @@ function Stage2Scoring({ dept }) {
     setLoading(true)
     try {
       const [list, st, quotas, checkins] = await Promise.all([
-        getStage2List(dept), getStage2Stats(dept), getDepartmentQuotas(), getCheckins(localToday()),
+        getStage2List(dept), getStage2Stats(dept), getDepartmentQuotas(), getAllCheckins(),
       ])
       setStudents(list || [])
       setStats(st || EMPTY_STATS)
       setQuota(quotas?.[dept] ?? null)
-      setCheckinMap(buildDeptCheckinMap(checkins, dept))
+      setCheckinRows(checkins || [])
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -292,13 +297,12 @@ function Stage2Scoring({ dept }) {
 
   useEffect(() => { if (evaluator) load() }, [evaluator, load])
 
-  // 輕量更新：只重抓今日報到列，不重載整個名單（失敗靜默）
+  // 輕量更新：只重抓報到列，不重載整個名單（失敗靜默）
   const refreshCheckins = useCallback(async () => {
     try {
-      const checkins = await getCheckins(localToday())
-      setCheckinMap(buildDeptCheckinMap(checkins, dept))
+      setCheckinRows(await getAllCheckins() || [])
     } catch { /* ignore */ }
-  }, [dept])
+  }, [])
 
   // 報到狀態每 30 秒自動更新：行政端按報到後，老師端不必手動按更新。
   // interval closure 讀 ref 鏡像，避免吃到舊的 active（評分表開啟時暫停輪詢）。
@@ -327,7 +331,7 @@ function Stage2Scoring({ dept }) {
     }
     setMarking(stu.account)
     try {
-      await upsertCheckin({ account: stu.account, checkin_date: localToday(), department: dept, status: 'sent' })
+      await upsertCheckin({ account: stu.account, checkin_date: stu.stage2_date || localToday(), department: dept, status: 'sent' })
       await refreshCheckins()
       showToast(`已標記 ${stu.name} 面試中`)
     } catch (e) {
@@ -342,7 +346,7 @@ function Stage2Scoring({ dept }) {
     if (!window.confirm(`取消「${stu.name}」的面試中標記？`)) return
     setMarking(stu.account)
     try {
-      await deleteCheckin(stu.account, localToday(), dept)
+      await deleteCheckin(stu.account, stu.stage2_date || localToday(), dept)
       await refreshCheckins()
       showToast(`已取消 ${stu.name} 的面試中標記`)
     } catch (e) {
@@ -362,6 +366,9 @@ function Stage2Scoring({ dept }) {
     }
     return <EvaluatorGate dept={dept} onStart={startEvaluator} initialName={readRememberedName()} />
   }
+
+  // 報到狀態 map 於每次 render 依「各學生自己的面試日」即時推導
+  const checkinMap = buildDeptCheckinMap(checkinRows, dept, students)
 
   const q = search.trim().toLowerCase()
   const filtered = students.filter((stu) =>
@@ -392,7 +399,7 @@ function Stage2Scoring({ dept }) {
         ...payload,
       })
       // 靜默同步行政報到頁膠囊為「已完成」（updated_at 留下完成時間），失敗不影響評分結果
-      try { await upsertCheckin({ account: active.account, checkin_date: localToday(), department: dept, status: 'done' }) } catch { /* ignore */ }
+      try { await upsertCheckin({ account: active.account, checkin_date: active.stage2_date || localToday(), department: dept, status: 'done' }) } catch { /* ignore */ }
       showToast(`已儲存 ${active.name} 的評分`)
       setActive(null)
       await load()
@@ -462,21 +469,10 @@ function Stage2Scoring({ dept }) {
       title="實踐大學" subtitle="第二階段 · 評分" accent="#14532d" toast={toast}
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {!active && (
-            <input
-              style={{ ...s.input, marginBottom: 0, width: 160 }}
-              placeholder="搜尋帳號 / 姓名"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          )}
           <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f4f0', padding: '4px 10px', background: '#ffffff1a', borderRadius: 6 }}>
             {dept}
           </span>
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>評分：{evaluator.name} · {evaluator.date}</span>
-          {!active && <button onClick={load} style={ghostBtn}>🔄 更新報到狀態</button>}
-          {!active && <span style={{ fontSize: 11, color: '#a7c4ad' }}>報到狀態每 30 秒自動更新</span>}
-          {!active && <button onClick={downloadToday} style={ghostBtn}>下載今日評分</button>}
           {!active && <button onClick={openFinish} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>完成今日評分</button>}
           <button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>
         </div>
@@ -486,6 +482,20 @@ function Stage2Scoring({ dept }) {
         <ScoreForm student={active} evaluator={evaluator} onSave={handleSave} onBack={() => setActive(null)} saving={saving} />
       ) : (
         <>
+          {/* 工具列：搜尋＋報到狀態更新＋下載（從 header 移下來，header 只留主要動作） */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <input
+              style={{ ...s.input, width: 220, marginBottom: 0 }}
+              placeholder="搜尋帳號 / 姓名"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Btn onClick={load}>🔄 更新報到狀態</Btn>
+            <span style={{ fontSize: 11, color: '#aaa' }}>報到狀態每 30 秒自動更新</span>
+            <div style={{ flex: 1 }} />
+            <Btn onClick={downloadToday}>⬇ 下載今日評分</Btn>
+          </div>
+
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             {statCards.map((c) => (
               <div key={c.label} style={{

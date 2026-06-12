@@ -544,6 +544,11 @@ export async function getCheckins(date) {
   return callProxy(`/rest/v1/stage2_checkins?checkin_date=eq.${date}&select=*`, 'GET')
 }
 
+// 全部報到／進度列（老師端依各學生自己的面試日比對，不限定單一日期）。
+export async function getAllCheckins() {
+  return callProxy('/rest/v1/stage2_checkins?select=*', 'GET')
+}
+
 // upsert 一筆報到／進度（on_conflict account,checkin_date,department，merge-duplicates）。
 export async function upsertCheckin({ account, checkin_date, department, status }) {
   return callProxy(
