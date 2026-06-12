@@ -168,19 +168,9 @@ export default function CheckinGuideModal({ onClose }) {
       <Callout tag="自動鎖定">系所老師一送出評分，該膠囊會自動變成「✅ 已完成（已評分）」並鎖定，<b>不用手動點、也點不動</b>，這是正常的。</Callout>
       <Callout tag="完成判斷">一位學生的所有膠囊都變 ✅ 後，該列底色變淡綠，代表他今天的面試全部結束、可以離場。</Callout>
 
-      <StepHead n={4}>讓系統幫你排 → 智慧派遣與「派出」鈕</StepHead>
-      <p style={p}>不確定下一個該派誰、派去哪？系統會依照「<b>非越南籍優先 → 志願數少的學生優先 → 報考人數少的系優先收尾</b>」（再比志願序、報到時間）即時計算建議，有兩個地方可以直接按「派出」：</p>
-      <Shot sub="二階面試報到管理" right="報到追蹤">
-        <div style={{ ...miniCard, padding: '10px 12px', marginBottom: 10 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-            <DeptPill st="waiting" dept="社會工作學系(專)" pref={1} />
-            <DeptPill st="waiting" dept="餐飲管理學系(專)" pref={2} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.amber }}>
-            <span>💡 建議先派 → <b>社會工作學系(專)</b>（今日 2 人・0 人面試中）</span>
-            <span style={fakeBtn(C.amberBg, C.amber, '#fbbf24')}>派出</span>
-          </div>
-        </div>
+      <StepHead n={4}>派遣統一在看板 → 按「派出」</StepHead>
+      <p style={p}>派遣一律在「<b>各系即時狀態（派遣看板）</b>」操作（學生名單列上沒有派出鈕）。系統會依照「<b>非越南籍優先 → 志願數少的學生優先 → 報考人數少的系優先收尾</b>」（再比志願序、報到時間）即時計算，每張系卡直接顯示建議的下一位：</p>
+      <Shot sub="二階面試報到管理" right="報到追蹤 · 派遣看板">
         <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '8px 12px', display: 'inline-block' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>社會工作學系(專)</span>
@@ -200,8 +190,8 @@ export default function CheckinGuideModal({ onClose }) {
           </div>
         </div>
       </Shot>
-      <ShotCap>上：學生列下方的派遣建議；下：派遣看板的系卡，綠框＝空閒可接收、💡 下一位＝這個系現在最該收的學生</ShotCap>
-      <p style={p}>按「派出」等於把該系膠囊標成 🟡 前往中，而且系統會<b>同時自動複製一段給該生的通知訊息</b>（依國籍自動選越南文／印尼文／英文，內含稱呼、系名與 Meet 連結）——切到通訊軟體直接貼上送出即可，不必自己打字。名單同時會<b>自動輪值排序</b>：可派遣的學生排最上面、前往中／面試中其次、未報到再次、全部完成的沉到最底——<b>名單最上面那幾位就是下一批該處理的人</b>，不必一直捲動找人。</p>
+      <ShotCap>派遣看板的系卡：綠框＝空閒可接收、💡 下一位＝這個系現在最該收的學生；該系佔用中時「派出」會反灰</ShotCap>
+      <p style={p}>按「派出」等於把該系膠囊標成 🟡 前往中，而且系統會<b>同時自動複製一段給該生的通知訊息</b>（依國籍自動選越南文／印尼文／英文，連系所名稱都會翻成該語言，內含稱呼與 Meet 連結）——切到通訊軟體直接貼上送出即可，不必自己打字。名單同時會<b>自動輪值排序</b>：可派遣的學生排最上面、前往中／面試中其次、未報到再次、全部完成的沉到最底——<b>名單最上面那幾位就是下一批該處理的人</b>，不必一直捲動找人。</p>
 
       <StepHead n={5}>連結都在「ℹ 面試資訊」</StepHead>
       <p style={p}>右上角「ℹ 面試資訊」集中放當天會用到的連結，分三類：<b>📑 老師面試時段安排表</b>（各系主任填的時段／老師／線上或實體）、<b>📹 各系視訊面試連結</b>、<b>🔗 其他連結</b>。每條都有「複製」「開啟」兩個鈕。</p>
