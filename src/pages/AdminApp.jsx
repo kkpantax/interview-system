@@ -7,6 +7,7 @@ import TeacherManager from '../components/TeacherManager'
 import CenterManager from '../components/CenterManager'
 import DeptQuotaManager from '../components/DeptQuotaManager'
 import CampusManager from '../components/CampusManager'
+import InfoLinksManager from '../components/InfoLinksManager'
 import StudentEditModal from '../components/StudentEditModal'
 import ProgressOverview from '../components/ProgressOverview'
 import { ExportMenu } from '../components/ExportMenu'
@@ -381,7 +382,7 @@ export default function AdminApp() {
     >
       {/* 分頁 */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e8e7e3' }}>
-        {[{ k: 'overview', label: '📊 進度總覽' }, { k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'campus', label: '校區設定' }, { k: 'quota', label: '預計錄取人數' }, { k: 'reset', label: '年度重置' }].map((t) => (
+        {[{ k: 'overview', label: '📊 進度總覽' }, { k: 'students', label: '學生總覽' }, { k: 'teachers', label: '帳號管理' }, { k: 'centers', label: '中心管理' }, { k: 'campus', label: '校區設定' }, { k: 'quota', label: '預計錄取人數' }, { k: 'links', label: '連結管理' }, { k: 'reset', label: '年度重置' }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{
               padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
@@ -405,6 +406,8 @@ export default function AdminApp() {
 
       {tab === 'campus' && <CampusManager depts={depts} showToast={showToast} />}
       {tab === 'quota' && <DeptQuotaManager depts={depts} showToast={showToast} />}
+
+      {tab === 'links' && <InfoLinksManager showToast={showToast} />}
 
       {tab === 'reset' && (
         <div style={{ maxWidth: 720 }}>

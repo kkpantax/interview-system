@@ -112,6 +112,28 @@ export async function setDepartmentQuota(department, quota) {
   )
 }
 
+// ── 面試資訊連結（info_links：老師時段表 / 各系 Meet / 其他，後台「連結管理」可編輯）──
+// kind: 'schedule'＝時段安排表、'meet'＝各系視訊連結（departments 存逗號分隔系名關鍵字）、'link'＝其他
+export async function getInfoLinks() {
+  return callProxy('/rest/v1/info_links?select=*&order=sort_order.asc,id.asc', 'GET')
+}
+export async function addInfoLink(row) {
+  return callProxy('/rest/v1/info_links', 'POST', row, 'return=representation')
+}
+export async function updateInfoLink(id, patch) {
+  return callProxy(
+    `/rest/v1/info_links?id=eq.${id}`,
+    'PATCH', { ...patch, updated_at: new Date().toISOString() }, 'return=representation',
+  )
+}
+export async function deleteInfoLink(id) {
+  const res = await callProxy(`/rest/v1/info_links?id=eq.${id}`, 'DELETE', undefined, 'return=representation')
+  if (!Array.isArray(res) || !res.length) {
+    throw new Error('刪除失敗：0 筆（請確認 info_links 的 DELETE RLS 政策）')
+  }
+  return res
+}
+
 // ── 各系所屬校區（行政後台設定，存於 department_campus）──
 // 回傳 { 系名: 校區 } 的 map；未設定的系不在 map 內，由前端用關鍵字 fallback。
 export async function getDepartmentCampuses() {

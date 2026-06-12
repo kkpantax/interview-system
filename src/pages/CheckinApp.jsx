@@ -5,12 +5,13 @@ import {
   getStage2Roster, getStage2Unscheduled, setStage2Date,
   getCheckins, upsertCheckin, deleteCheckin,
   getStage2NoShows, getCheckinsBefore, getStage2DateCounts,
-  getStage1RecordsByAccounts, getDepartmentCampuses,
+  getStage1RecordsByAccounts, getDepartmentCampuses, getInfoLinks,
 } from '../api'
 import { writeXlsxMulti } from '../components/ExportBtn'
 import { DECISIONS_STAGE1, CAMPUS_OPTIONS, resolveCampus, deptShort } from '../constants'
 import DayBarChart from '../components/DayBarChart'
 import CheckinGuideModal from '../components/CheckinGuideModal'
+import InfoLinksModal from '../components/InfoLinksModal'
 import { getTeacher, logoutTeacher } from '../auth'
 import { todayISO } from '../utils'
 
@@ -115,11 +116,17 @@ export default function CheckinApp() {
   const [toast, setToast]     = useState(null)
   const [dateCounts, setDateCounts] = useState(null)   // 二階各日人數統計
   const [showGuide, setShowGuide] = useState(false)     // 操作說明
+  const [showInfo, setShowInfo]   = useState(false)     // 面試資訊
+  const [infoLinks, setInfoLinks] = useState([])         // info_links（時段表 / Meet / 其他）
 
   const loadDateCounts = async () => {
     try { setDateCounts(await getStage2DateCounts()) } catch { /* 統計失敗不影響主功能 */ }
   }
   useEffect(() => { loadDateCounts() }, [])
+
+  useEffect(() => {
+    getInfoLinks().then((rows) => setInfoLinks(rows || [])).catch(() => { /* 連結載入失敗不影響主功能 */ })
+  }, [])
 
   // 守衛：只有 admin / superadmin 能進
   useEffect(() => {
@@ -372,6 +379,17 @@ export default function CheckinApp() {
     } finally { setBusy(false) }
   }
 
+  // ── 面試資訊連結：依系名比對 Meet 連結；時段表取 kind='schedule' 第一筆 ──────
+  const meetUrlOf = (dept = '') => {
+    for (const l of infoLinks) {
+      if (l.kind !== 'meet' || !l.url) continue
+      const keys = String(l.departments || '').split(/[,，]/).map((k) => k.trim()).filter(Boolean)
+      if (keys.some((k) => dept.includes(k))) return l.url
+    }
+    return null
+  }
+  const scheduleLink = infoLinks.find((l) => l.kind === 'schedule' && l.url) || null
+
   // ── 衍生計算 ─────────────────────────────────────────────────────────────
   const allDone = (stu) => stu.depts.every((d) => effStatus(cmap, stu.account, d) === 'done')
 
@@ -439,6 +457,7 @@ export default function CheckinApp() {
       right={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#d1fae5' }}>載入中…</span>}
+          <Btn style={{ background: '#ffffff22', borderColor: '#ffffff44', color: '#fff', fontWeight: 600 }} onClick={() => setShowInfo(true)}>ℹ 面試資訊</Btn>
           <Btn style={{ background: '#ffffff22', borderColor: '#ffffff44', color: '#fff', fontWeight: 600 }} onClick={() => setShowGuide(true)}>📖 操作說明</Btn>
           <span style={{ fontSize: 12, color: '#d1fae5' }}>{teacher.display_name || teacher.username}</span>
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#dcfce7' }} onClick={logoutTeacher}>登出</Btn>
@@ -470,6 +489,9 @@ export default function CheckinApp() {
             <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={date} onChange={(e) => setDate(e.target.value)} />
             <Btn onClick={load}>🔄 重新整理</Btn>
             <Btn variant="primary" onClick={exportDayList} disabled={busy || loading}>⬇ 下載當日名單</Btn>
+            {scheduleLink && (
+              <Btn onClick={() => window.open(scheduleLink.url, '_blank', 'noopener')}>📑 老師時段表</Btn>
+            )}
             <span style={{ fontSize: 11, color: '#aaa' }}>每 30 秒自動更新</span>
             <input style={{ ...s.input, width: 220, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號 / 護照" value={search} onChange={(e) => setSearch(e.target.value)} />
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>
@@ -500,16 +522,24 @@ export default function CheckinApp() {
             <Card style={{ marginBottom: 16 }}>
               <CardHead left="各系即時狀態" right="面試中／已完成／待面試" />
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '12px 16px' }}>
-                {deptStats.map(([dep, c]) => (
+                {deptStats.map(([dep, c]) => {
+                  const meet = meetUrlOf(dep)
+                  return (
                   <div key={dep} style={{ border: '1px solid #e8e7e3', borderRadius: 10, padding: '8px 12px', minWidth: 150 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{dep}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{dep}</span>
+                      {meet && (
+                        <button title={`開啟「${dep}」視訊面試連結`} onClick={() => window.open(meet, '_blank', 'noopener')}
+                          style={{ border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 7, fontSize: 11, padding: '1px 7px', cursor: 'pointer', fontFamily: 'inherit' }}>📹 Meet</button>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
                       <span style={{ color: '#1e40af' }}>🔵 {c.sent}</span>
                       <span style={{ color: '#15803d' }}>✅ {c.done}</span>
                       <span style={{ color: '#9ca3af' }}>⚪ {c.waiting}</span>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             </Card>
           )}
@@ -733,6 +763,7 @@ export default function CheckinApp() {
         </>
       )}
       {showGuide && <CheckinGuideModal onClose={() => setShowGuide(false)} />}
+      {showInfo && <InfoLinksModal links={infoLinks} onClose={() => setShowInfo(false)} />}
     </PageShell>
   )
 }
