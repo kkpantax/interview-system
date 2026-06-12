@@ -58,10 +58,23 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const setRow = (account, p) => setRows((rs) => rs.map((r) => (r.account === account ? { ...r, ...p } : r)))
   const applyBatchMode = (mode) => { setF('batchMode', mode); setRows((rs) => rs.map((r) => ({ ...r, mode }))) }
 
-  const [sentMap, setSentMap] = useState({})
-  useEffect(() => { getMailLog(kind).then(setSentMap).catch(() => {}) }, [kind])
-
   const [created, setCreated] = useState({})   // { account: draftId }
+  const [sentMap, setSentMap] = useState({})
+  useEffect(() => {
+    getMailLog(kind).then((sm) => {
+      setSentMap(sm)
+      // 還原「已建草稿、未寄出」的 draftId：created 只存在 state，去 Gmail 檢查草稿後
+      // 關閉視窗或重新整理就清空，會導致「送出本批」永遠按不了。只還原本次名單內的帳號。
+      setCreated((c) => {
+        const n = { ...c }
+        for (const r of (recipients || [])) {
+          const log = sm[r.account]
+          if (!n[r.account] && log?.status === 'draft' && log.draft_ids?.length) n[r.account] = log.draft_ids[0]
+        }
+        return n
+      })
+    }).catch(() => {})
+  }, [kind, recipients])
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(null)
 
@@ -129,8 +142,9 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
   }
 
   const doSend = async () => {
-    const entries = Object.entries(created)   // [[account, draftId], ...]
-    if (!entries.length) { onToast?.('尚未建立草稿', 'warn'); return }
+    const included = new Set(selected.map((r) => r.account))
+    const entries = Object.entries(created).filter(([a]) => included.has(a))   // [[account, draftId], ...]，只送有勾選者
+    if (!entries.length) { onToast?.('尚未建立草稿（或草稿對應的學生都未勾選）', 'warn'); return }
     if (!window.confirm(`確定送出這批 ${entries.length} 封草稿嗎？寄件人為公務信箱（會自動分批送出）。`)) return
     const CHUNK = 8   // 每批送出封數，避免一次太多導致逾時
     setBusy(true)

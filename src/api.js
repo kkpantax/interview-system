@@ -882,7 +882,7 @@ export async function logMail(rows) {
 
 export async function getMailLog(kind) {
   const rows = await callProxy(
-    `/rest/v1/mail_log?select=account,kind,status,sent_at&kind=eq.${encodeURIComponent(kind)}`,
+    `/rest/v1/mail_log?select=account,kind,status,sent_at,draft_ids&kind=eq.${encodeURIComponent(kind)}`,
     'GET',
   )
   return Object.fromEntries((rows || []).map((r) => [r.account, r]))
