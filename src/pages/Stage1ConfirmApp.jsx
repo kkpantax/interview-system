@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, Pill, s } from '../components/UI'
-import ExportBtn, { writeXlsx } from '../components/ExportBtn'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
 import MailComposer from '../components/MailComposer'
-import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, getNotifyStage2, deleteStage1Record } from '../api'
+import { getStage1List, getStage1Pending, getStage1Records, setStage1ConfirmByAccount, deleteStage1Record } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
 import { DECISIONS_STAGE1, SCORE_ITEMS_STAGE1 } from '../constants'
@@ -29,20 +28,6 @@ const isScored = (r) => !!r && !!r.scores && Object.keys(r.scores).length > 0
 // 確認結果（由 applications 推導）：通過 / 不通過 / 待確認
 const confirmStateOf = (stu) =>
   stu.stage1_passed_date ? 'pass' : stu.status === 'rejected' ? 'reject' : 'pending'
-
-const EXPORT_COLS_BEFORE = [
-  { key: 'account',      label: '帳號' },
-  { key: 'name',         label: '中文姓名' },
-  { key: 'name_english', label: '英文姓名' },
-]
-const EXPORT_COLS_AFTER = [
-  { key: 'nationality',  label: '國籍' },
-  { key: 'center',       label: '中心' },
-  { key: 'appeared',     label: '出席' },
-  { key: 'teacher_avg',  label: '老師平均分' },
-  { key: 'teacher_recs', label: '老師建議' },
-  { key: 'confirm',      label: '確認結果' },
-]
 
 export default function Stage1ConfirmApp() {
   const teacher = getTeacher()
@@ -155,33 +140,6 @@ export default function Stage1ConfirmApp() {
     setSortBy((p) => (p === 'default' ? 'score_desc' : p === 'score_desc' ? 'score_asc' : 'default'))
   const sortArrow = sortBy === 'score_desc' ? ' ↓' : sortBy === 'score_asc' ? ' ↑' : ' ⇅'
 
-  // 匯出二階系所面試通知名單（取全部通過一階 + 書審通過者，不受頁面日期限制）
-  const exportNotifyStage2 = async () => {
-    try {
-      const people = await getNotifyStage2()
-      if (!people.length) { showToast('沒有可匯出的二階通知名單', 'warn'); return }
-      const rows = people.map((p) => ({
-        name: p.name, name_english: p.name_english, email: p.email,
-        depts: (p.allDepts || []).map((d) => d.department).filter(Boolean).join('、'),
-        nationality: p.nationality,
-      }))
-      writeXlsx(
-        [
-          { key: 'name', label: '中文姓名' },
-          { key: 'name_english', label: '英文姓名' },
-          { key: 'email', label: 'Email' },
-          { key: 'depts', label: '報考系所' },
-          { key: 'nationality', label: '國籍' },
-        ],
-        rows,
-        '二階系所面試通知.xlsx',
-      )
-      showToast(`已匯出 ${rows.length} 筆二階通知名單`)
-    } catch (e) {
-      showToast('匯出失敗：' + e.message, 'error')
-    }
-  }
-
   // 開啟寄信面板：用畫面當前日期已載入的名單，依確認狀態篩選（不再撈全部通過者）
   const openMail = (kind) => {
     const want = kind === 's1_reject' ? 'reject' : 'pass'
@@ -198,29 +156,6 @@ export default function Stage1ConfirmApp() {
   const passCount    = students.filter((g) => confirmStateOf(g) === 'pass').length
   const rejectCount  = students.filter((g) => confirmStateOf(g) === 'reject').length
   const pendingCount = students.filter((g) => confirmStateOf(g) === 'pending').length
-
-  // 下載名單（定稿）：身分 + 志願拆欄 + 出席 + 老師建議 + 確認結果
-  const exportRows = students.map((stu) => {
-    const { scored, counts } = recSummary(stu.account)
-    const appeared = recsOf(stu.account).some((r) => r.appeared)
-    const avg = avgOf(scored)
-    const recsText = ['pass', 'pending', 'fail']
-      .filter((k) => counts[k]).map((k) => `${recLabel(k)}×${counts[k]}`).join('、') || (scored.length ? '' : '未評分')
-    const st = confirmStateOf(stu)
-    return {
-      account: stu.account, name: stu.name, name_english: stu.name_english,
-      ...Object.fromEntries((stu.allDepts || []).map((d, i) => [`pref${i + 1}`, d.department || ''])),
-      nationality: stu.nationality,
-      center: stu.center || '',
-      appeared: appeared ? '已到' : '未到',
-      teacher_avg: avg != null ? avg.toFixed(1) : '',
-      teacher_recs: recsText,
-      confirm: st === 'pass' ? '通過' : st === 'reject' ? '不通過' : '待確認',
-    }
-  })
-  const maxPrefs = Math.max(1, ...students.map((stu) => (stu.allDepts || []).length))
-  const prefCols = Array.from({ length: maxPrefs }, (_, i) => ({ key: `pref${i + 1}`, label: `志願${i + 1}` }))
-  const exportColumns = [...EXPORT_COLS_BEFORE, ...prefCols, ...EXPORT_COLS_AFTER]
 
   if (!teacher || (teacher.role !== 'superadmin')) return null
 
@@ -259,9 +194,6 @@ export default function Stage1ConfirmApp() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Btn variant="primary" onClick={() => openMail('s2_invite')}>✉ 二階邀請（通過者）</Btn>
           <Btn onClick={() => openMail('s1_reject')}>✉ 未通過通知</Btn>
-          <Btn onClick={exportNotifyStage2}>⬇ 匯出二階面試通知名單</Btn>
-          <ExportBtn columns={exportColumns} rows={exportRows} filename={`實體面試確認名單_${date}.xlsx`}
-            label="⬇ 下載名單" disabled={!students.length} onEmpty={() => showToast('沒有可下載的名單', 'warn')} />
         </div>
       </div>
 

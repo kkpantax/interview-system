@@ -448,7 +448,6 @@ export default function CheckinApp() {
     }
     return null
   }
-  const scheduleLink = infoLinks.find((l) => l.kind === 'schedule' && l.url) || null
 
   // ── 衍生計算 ─────────────────────────────────────────────────────────────
   const allDone = (stu) => stu.depts.every((d) => effStatus(cmap, stu.account, d) === 'done')
@@ -639,9 +638,6 @@ export default function CheckinApp() {
             <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={date} onChange={(e) => setDate(e.target.value)} />
             <Btn onClick={load}>🔄 重新整理</Btn>
             <Btn variant="primary" onClick={exportDayList} disabled={busy || loading}>⬇ 下載當日名單</Btn>
-            {scheduleLink && (
-              <Btn onClick={() => window.open(scheduleLink.url, '_blank', 'noopener')}>📑 老師時段表</Btn>
-            )}
             <span style={{ fontSize: 11, color: '#aaa' }}>每 30 秒自動更新</span>
             <input style={{ ...s.input, width: 220, marginBottom: 0 }} placeholder="搜尋姓名 / 英文名 / 帳號 / 護照" value={search} onChange={(e) => setSearch(e.target.value)} />
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#555', cursor: 'pointer' }}>

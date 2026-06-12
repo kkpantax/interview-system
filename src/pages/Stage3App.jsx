@@ -25,6 +25,26 @@ const acctOf = (e) => e.applications?.account ?? null
 const deptOf = (e) => e.department || e.applications?.department || ''
 const keyOf  = (e) => `${acctOf(e)}__${deptOf(e)}`
 
+// 同一學生在同一系所若有多筆評分（重複評分），只保留最新一筆（eval_date 新者優先，
+// 再比 created_at；都相同則保留後載入者），避免放榜頁同系出現重複列。
+const newerOf = (a, b) => {
+  const da = String(a.eval_date || ''), db = String(b.eval_date || '')
+  if (da !== db) return da > db ? a : b
+  const ca = String(a.created_at || ''), cb = String(b.created_at || '')
+  if (ca !== cb) return ca > cb ? a : b
+  return a
+}
+const dedupeEvals = (list) => {
+  const best = new Map()
+  for (const e of (list || [])) {
+    const a = acctOf(e), d = deptOf(e)
+    const k = a && d ? `${a}__${d}` : `__row__${e.id}`
+    const prev = best.get(k)
+    best.set(k, prev ? newerOf(e, prev) : e)
+  }
+  return [...best.values()]
+}
+
 const EXPORT_COLS = [
   { key: 'account',      label: '帳號' },
   { key: 'name',         label: '中文姓名' },
@@ -66,7 +86,7 @@ export default function Stage3App() {
     setLoading(true)
     try {
       const [ev, fa] = await Promise.all([getStage3Data(), getFinalAdmissions()])
-      setEvals(ev || [])
+      setEvals(dedupeEvals(ev))
       setFinals(new Map((fa || []).map((r) => [`${r.account}__${r.department}`, r])))
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')

@@ -4,7 +4,6 @@ import { Card, CardHead, s } from '../components/UI'
 import Stage1List from '../components/Stage1List'
 import Stage1ScoreForm from '../components/Stage1ScoreForm'
 import Stage1EvalDetailModal from '../components/Stage1EvalDetailModal'
-import ExportBtn from '../components/ExportBtn'
 import MailComposer from '../components/MailComposer'
 import { getStage1List, getStage1Pending, getStage1Records, saveStage1Checkin, saveStage1Score } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -190,21 +189,6 @@ export default function Stage1App() {
         <span style={{ fontSize: 12, color: '#aaa' }}>應試 {students.length} 位 · 已到 {appearedCount} 位 · 建議通過 {passCount} 位</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {isAdmin && <button onClick={() => setShowMail(true)} style={{ ...s.btn }}>✉ 寄送一階通知</button>}
-          <ExportBtn
-            columns={[
-              { key: 'name', label: '中文姓名' },
-              { key: 'name_english', label: '英文姓名' },
-              { key: 'email', label: 'Email' },
-              { key: 'interview_date', label: '面試日期' },
-              { key: 'interview_time', label: '面試時間' },
-              { key: 'center', label: '中心' },
-            ]}
-            rows={students}
-            filename={`一階面試通知_${date}.xlsx`}
-            label="⬇ 匯出寄信名單"
-            disabled={!students.length}
-            onEmpty={() => showToast('沒有可匯出的名單', 'warn')}
-          />
         </div>
       </div>
 
