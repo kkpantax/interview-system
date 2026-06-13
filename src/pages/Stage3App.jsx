@@ -5,6 +5,7 @@ import { writeXlsx } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
 import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3 } from '../api'
 import { DECISIONS } from '../constants'
+import EvalDetailModal from '../components/EvalDetailModal'
 import { getTeacher, logoutTeacher } from '../auth'
 
 // 最終錄取狀態（對應 final_admissions.final_status 的 CHECK）
@@ -88,6 +89,8 @@ const CENTER_EXPORT_COLS = [
 export default function Stage3App() {
   const teacher = getTeacher()
   const [evals, setEvals]       = useState([])
+  const [rawEvals, setRawEvals] = useState([])   // 未去重的全部評分（供「查看評分紀錄」逐筆顯示）
+  const [viewing, setViewing]   = useState(null)  // 正在檢視評分紀錄的學生（account+dept）
   const [finals, setFinals]     = useState(() => new Map())   // key(account__dept) → final row
   const [dept, setDept]         = useState('')
   const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
@@ -107,6 +110,7 @@ export default function Stage3App() {
     setLoading(true)
     try {
       const [ev, fa] = await Promise.all([getStage3Data(), getFinalAdmissions()])
+      setRawEvals(ev || [])
       setEvals(dedupeEvals(ev))
       setFinals(new Map((fa || []).map((r) => [`${r.account}__${r.department}`, r])))
     } catch (e) {
@@ -129,6 +133,23 @@ export default function Stage3App() {
   }, [deptList, dept])
 
   const statusOf = (e) => finals.get(keyOf(e))?.final_status || 'pending'
+
+  const evalCount = useMemo(() => {
+    const m = new Map()
+    for (const r of rawEvals) m.set(keyOf(r), (m.get(keyOf(r)) || 0) + 1)
+    return m
+  }, [rawEvals])
+  const recCount = (e) => evalCount.get(keyOf(e)) || 0
+  const openRecords = (e) => {
+    const a = acctOf(e), d = deptOf(e)
+    setViewing({
+      name: e.applications?.name || '',
+      name_english: e.applications?.name_english || '',
+      account: a || '',
+      department: d,
+      evaluations: rawEvals.filter((r) => acctOf(r) === a && deptOf(r) === d),
+    })
+  }
 
   // 已確認重複正取：同帳號在多個系 final_status = 'admitted'（真正需要處理的問題）
   const confirmedConflicts = useMemo(() => {
@@ -490,7 +511,7 @@ export default function Stage3App() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['中文姓名', '帳號', '國籍', '性別', '志願序', '一階', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['中文姓名', '帳號', '國籍', '性別', '一階', '二階分數', '評分紀錄', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -511,9 +532,13 @@ export default function Stage3App() {
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
                     <td style={td}>{e.applications?.nationality || '—'}</td>
                     <td style={td}>{e.applications?.gender || '—'}</td>
-                    <td style={td}>{e.applications?.preference_order ?? '—'}</td>
                     <td style={td}>{passed ? <span style={{ color: '#15803d' }}>通過</span> : '—'}</td>
                     <td style={td}>{e.total_score ?? '—'}</td>
+                    <td style={td}>
+                      <Btn onClick={() => openRecords(e)} style={{ padding: '3px 10px', fontSize: 12 }}>
+                        查看{recCount(e) > 1 ? ` ${recCount(e)}` : ''}
+                      </Btn>
+                    </td>
                     <td style={td}><Pill color={ri.color} bg={ri.bg}>{ri.label}</Pill></td>
                     <td style={td}><Pill color={statusInfo(cur).color} bg={statusInfo(cur).bg}>{statusInfo(cur).label}</Pill></td>
                     <td style={td}>{statusButtons(e)}</td>
@@ -536,7 +561,7 @@ export default function Stage3App() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['姓名', '帳號', '國籍', '性別', '科系', '志願序', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '帳號', '國籍', '性別', '科系', '志願序', '二階分數', '評分紀錄', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -552,6 +577,11 @@ export default function Stage3App() {
                     <td style={td}>{deptOf(e)}</td>
                     <td style={td}>{e.applications?.preference_order ?? '—'}</td>
                     <td style={td}>{e.total_score ?? '—'}</td>
+                    <td style={td}>
+                      <Btn onClick={() => openRecords(e)} style={{ padding: '3px 10px', fontSize: 12 }}>
+                        查看{recCount(e) > 1 ? ` ${recCount(e)}` : ''}
+                      </Btn>
+                    </td>
                     <td style={td}><Pill color={ri.color} bg={ri.bg}>{ri.label}</Pill></td>
                     <td style={td}><Pill color={statusInfo(cur).color} bg={statusInfo(cur).bg}>{statusInfo(cur).label}</Pill></td>
                     <td style={td}>{statusButtons(e)}</td>
@@ -559,7 +589,7 @@ export default function Stage3App() {
                 )
               })}
               {!centerRows.length && (
-                <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={11} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '此中心尚無評分資料'}
                 </td></tr>
               )}
@@ -573,6 +603,7 @@ export default function Stage3App() {
         說明：一階為簽到通過制（無分數）；二階分數與老師建議來自各系評分。設定最終狀態後即時寫入；
         上方警示區紅色為「同一人已被多系正取」（需擇一保留），黃色為「老師建議重複、行政尚未確認」（請擇一正取）。
       </div>
+      {viewing && <EvalDetailModal student={viewing} onClose={() => setViewing(null)} />}
     </PageShell>
   )
 }
