@@ -50,7 +50,7 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const headers = showEvalSummary
     ? ['中文姓名', '英文姓名', '帳號', '志願', '評分結果', '']
-    : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '報到', '一階通過日', '']
+    : ['中文姓名', '英文姓名', '帳號', '志願', '國籍', '性別', '報到', '二階面試日', '']
 
   // 待評分區（有 checkinMap 時）依報到動態排序：🔵面試中 → 🟡前往中 → 🟢已報到 → 其他
   const ckRank = (stu) => {
@@ -97,7 +97,7 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
                     <td style={td}>{stu.nationality}</td>
                     <td style={td}>{stu.gender}</td>
                     <td style={td}><CheckinPill info={checkinMap ? (checkinMap[stu.account] || null) : undefined} /></td>
-                    <td style={{ ...td, color: '#15803d' }}>{stu.stage1_passed_date || '—'}</td>
+                    <td style={{ ...td, color: '#1e40af' }}>{stu.stage2_date || '—'}</td>
                   </>
                 )}
                 <td style={td}>
