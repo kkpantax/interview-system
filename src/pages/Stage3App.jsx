@@ -25,9 +25,12 @@ const acctOf = (e) => e.applications?.account ?? null
 const deptOf = (e) => e.department || e.applications?.department || ''
 const keyOf  = (e) => `${acctOf(e)}__${deptOf(e)}`
 
-// 同一學生在同一系所若有多筆評分（重複評分），只保留最新一筆（eval_date 新者優先，
-// 再比 created_at；都相同則保留後載入者），避免放榜頁同系出現重複列。
-const newerOf = (a, b) => {
+// 同一學生在同一系所若有多筆評分（重複評分），只保留「最高分」那一筆，避免放榜頁同系出現
+// 重複列。分數相同時，再以 eval_date 新者優先、其次 created_at；都相同則保留後載入者。
+// （total_score 為 null 視為最低，確保有分數的評分一定勝過未評分的）
+const bestScoreOf = (a, b) => {
+  const sa = a.total_score ?? -Infinity, sb = b.total_score ?? -Infinity
+  if (sa !== sb) return sa > sb ? a : b
   const da = String(a.eval_date || ''), db = String(b.eval_date || '')
   if (da !== db) return da > db ? a : b
   const ca = String(a.created_at || ''), cb = String(b.created_at || '')
@@ -40,7 +43,7 @@ const dedupeEvals = (list) => {
     const a = acctOf(e), d = deptOf(e)
     const k = a && d ? `${a}__${d}` : `__row__${e.id}`
     const prev = best.get(k)
-    best.set(k, prev ? newerOf(e, prev) : e)
+    best.set(k, prev ? bestScoreOf(e, prev) : e)
   }
   return [...best.values()]
 }
@@ -469,7 +472,7 @@ export default function Stage3App() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['中文姓名', '帳號', '一階', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['中文姓名', '帳號', '國籍', '性別', '志願序', '一階', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -488,6 +491,9 @@ export default function Stage3App() {
                       )}
                     </td>
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
+                    <td style={td}>{e.applications?.nationality || '—'}</td>
+                    <td style={td}>{e.applications?.gender || '—'}</td>
+                    <td style={td}>{e.applications?.preference_order ?? '—'}</td>
                     <td style={td}>{passed ? <span style={{ color: '#15803d' }}>通過</span> : '—'}</td>
                     <td style={td}>{e.total_score ?? '—'}</td>
                     <td style={td}><Pill color={ri.color} bg={ri.bg}>{ri.label}</Pill></td>
@@ -497,7 +503,7 @@ export default function Stage3App() {
                 )
               })}
               {!rows.length && (
-                <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '此科系尚無第二階段評分'}
                 </td></tr>
               )}
@@ -512,7 +518,7 @@ export default function Stage3App() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['姓名', '帳號', '科系', '志願序', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '帳號', '國籍', '性別', '科系', '志願序', '二階分數', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -523,6 +529,8 @@ export default function Stage3App() {
                   <tr key={e.id}>
                     <td style={{ ...td, fontWeight: 500 }}>{e.applications?.name || '—'}</td>
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
+                    <td style={td}>{e.applications?.nationality || '—'}</td>
+                    <td style={td}>{e.applications?.gender || '—'}</td>
                     <td style={td}>{deptOf(e)}</td>
                     <td style={td}>{e.applications?.preference_order ?? '—'}</td>
                     <td style={td}>{e.total_score ?? '—'}</td>
@@ -533,7 +541,7 @@ export default function Stage3App() {
                 )
               })}
               {!centerRows.length && (
-                <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '此中心尚無評分資料'}
                 </td></tr>
               )}
