@@ -540,6 +540,22 @@ export async function getStage2EvalsByDate(dept, date) {
   )
 }
 
+export async function addStage2Translator({ department, session_date, translator_name }) {
+  return callProxy(
+    '/rest/v1/stage2_translators?on_conflict=department,session_date,translator_name',
+    'POST',
+    { department, session_date, translator_name },
+    'resolution=merge-duplicates,return=representation',
+  )
+}
+export async function getStage2TranslatorsByDate(dept, date) {
+  return callProxy(
+    `/rest/v1/stage2_translators?select=translator_name` +
+      `&department=eq.${encodeURIComponent(dept)}&session_date=eq.${date}&order=translator_name.asc`,
+    'GET',
+  )
+}
+
 // ── Stage 2 報到管理（線上面試：主會議室總報到 + 各系會議室進度）──────────────
 // 某日二階面試名單：已過一階 + 書審通過 + stage2_date = date，附 evaluations 摘要
 // （該志願是否已評分，用來把膠囊鎖定為「已完成」）。

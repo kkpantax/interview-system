@@ -11,6 +11,7 @@ import {
   getStage2List, getStage2Stats, saveEvaluation, deleteEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
   getAllCheckins, upsertCheckin, deleteCheckin, resetStage2CheckinDept, getInfoLinks,
+  addStage2Translator, getStage2TranslatorsByDate,
 } from '../api'
 import { getTeacher } from '../auth'
 
@@ -42,7 +43,7 @@ const buildDeptCheckinMap = (checkins, dept, students) => {
 // 避免跨日後仍以昨天日期記錄評分。EVAL_NAME_KEY 記住老師姓名（同一台電腦長期保留，供預填）。
 const EVAL_SESSION_KEY = 'stage2_evaluator'
 const EVAL_NAME_KEY    = 'stage2_evaluator_name'
-const EVAL_TRANSLATOR_KEY = 'stage2_evaluator_translator'
+const EVAL_TRANSLATOR_KEY = 'stage2_translator_name'
 
 const readEvaluatorSession = () => {
   try {
@@ -170,10 +171,40 @@ function DeptPicker() {
 }
 
 function EvaluatorGate({ dept, onStart, initialName = '', initialTranslator = '' }) {
-  const [name, setName] = useState(initialName)
-  const [translator, setTranslator] = useState(initialTranslator)
+  const [role, setRole] = useState('teacher')           // 'teacher' | 'translator'
+  const [teacherName, setTeacherName] = useState(initialName)
+  const [translatorName, setTranslatorName] = useState(initialTranslator)
   const [date, setDate] = useState(localToday())
-  const start = () => { if (name.trim()) onStart({ name: name.trim(), translator: translator.trim(), date }) }
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+  const [errMsg, setErrMsg] = useState('')
+
+  const startTeacher = () => { if (teacherName.trim()) onStart({ name: teacherName.trim(), date }) }
+  const submitTranslator = async () => {
+    if (!translatorName.trim() || submitting) return
+    setSubmitting(true); setErrMsg('')
+    try {
+      await addStage2Translator({ department: dept, session_date: date, translator_name: translatorName.trim() })
+      try { localStorage.setItem(EVAL_TRANSLATOR_KEY, translatorName.trim()) } catch { /* ignore */ }
+      setDone(true)
+    } catch (e) {
+      setErrMsg('登記失敗，請再試一次 / Đăng ký thất bại, vui lòng thử lại：' + e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const roleBtn = (v, zh, vi) => (
+    <button key={v} onClick={() => { setRole(v); setDone(false); setErrMsg('') }} style={{
+      flex: 1, padding: '9px 8px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.3,
+      border: role === v ? '1px solid #15803d' : '1px solid #d6d3cd',
+      background: role === v ? '#ecfdf5' : '#fff',
+      color: role === v ? '#15803d' : '#666',
+    }}>
+      <div style={{ fontSize: 13.5, fontWeight: role === v ? 700 : 500 }}>{zh}</div>
+      <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.85 }}>{vi}</div>
+    </button>
+  )
 
   return (
     <PageShell
@@ -181,29 +212,67 @@ function EvaluatorGate({ dept, onStart, initialName = '', initialTranslator = ''
       right={<button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>}
     >
       <Card style={{ maxWidth: 460, margin: '0 auto' }}>
-        <CardHead left="評分人員資料" />
+        <CardHead left="進入評分 / 翻譯登記" />
         <div style={{ padding: '18px 20px' }}>
-          <div style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.6 }}>
-            進入「{dept}」評分前，請填寫評分老師姓名與評分日期；若現場有翻譯同學，也請翻譯同學填入姓名。此資料會記錄在每一筆評分上，並可下載當日評分 Excel 供行政人員查核。
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            {roleBtn('teacher', '我是評分老師', 'Tôi là giáo viên')}
+            {roleBtn('translator', '我是翻譯同學', 'Tôi là phiên dịch')}
           </div>
-          <span style={s.secLabel}>評分老師姓名</span>
-          <input style={s.input} placeholder="請輸入姓名" value={name} autoFocus
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
-          <span style={s.secLabel}>
-            翻譯同學姓名（選填）
-            <span style={{ color: '#15803d', fontWeight: 400, marginLeft: 6 }}>· Tên bạn phiên dịch (nếu có)</span>
-          </span>
-          <input style={s.input} placeholder="翻譯同學請填寫姓名 / Bạn phiên dịch điền tên vào đây"
-            value={translator}
-            onChange={(e) => setTranslator(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
-          <span style={s.secLabel}>評分日期</span>
-          <input type="date" style={s.input} value={date} onChange={(e) => setDate(e.target.value)} />
-          <Btn variant="primary" onClick={start} disabled={!name.trim()}
-            style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
-            開始評分
-          </Btn>
+
+          {role === 'teacher' ? (
+            <>
+              <div style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.6 }}>
+                進入「{dept}」評分前，請填寫評分老師姓名與評分日期。此資料會記錄在每一筆評分上，並可下載當日評分 Excel 供行政人員查核。
+              </div>
+              <span style={s.secLabel}>評分老師姓名</span>
+              <input style={s.input} placeholder="請輸入姓名" value={teacherName} autoFocus
+                onChange={(e) => setTeacherName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') startTeacher() }} />
+              <span style={s.secLabel}>評分日期</span>
+              <input type="date" style={s.input} value={date} onChange={(e) => setDate(e.target.value)} />
+              <Btn variant="primary" onClick={startTeacher} disabled={!teacherName.trim()}
+                style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
+                開始評分
+              </Btn>
+            </>
+          ) : done ? (
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              <div style={{ fontSize: 40 }}>✅</div>
+              <div style={{ fontSize: 16, fontWeight: 700, margin: '8px 0 2px' }}>已登記完成</div>
+              <div style={{ fontSize: 13, color: '#15803d', marginBottom: 14 }}>Đã đăng ký thành công</div>
+              <div style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
+                {translatorName}　·　{dept}　·　{date}
+              </div>
+              <div style={{ fontSize: 12.5, color: '#888', marginBottom: 16, lineHeight: 1.6 }}>
+                你不需要評分，登記完成即可。<br/>
+                Bạn không cần chấm điểm, đăng ký xong là được.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn onClick={() => { setDone(false); setTranslatorName('') }}
+                  style={{ flex: 1, justifyContent: 'center' }}>再登記一位 / Đăng ký người khác</Btn>
+                <Btn onClick={() => { window.location.hash = '#/stage2' }}
+                  style={{ flex: 1, justifyContent: 'center' }}>返回各系 / Quay lại</Btn>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.6 }}>
+                你是「{dept}」的翻譯同學嗎？請填寫姓名與日期登記即可，<b>不需要評分</b>。<br/>
+                <span style={{ color: '#15803d' }}>Bạn là phiên dịch của khoa「{dept}」? Vui lòng điền tên và ngày để đăng ký, <b>không cần chấm điểm</b>.</span>
+              </div>
+              <span style={s.secLabel}>翻譯同學姓名<span style={{ color: '#15803d', fontWeight: 400, marginLeft: 6 }}>· Tên của bạn phiên dịch</span></span>
+              <input style={s.input} placeholder="請填寫你的姓名 / Điền tên của bạn" value={translatorName} autoFocus
+                onChange={(e) => setTranslatorName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') submitTranslator() }} />
+              <span style={s.secLabel}>日期<span style={{ color: '#15803d', fontWeight: 400, marginLeft: 6 }}>· Ngày</span></span>
+              <input type="date" style={s.input} value={date} onChange={(e) => setDate(e.target.value)} />
+              {errMsg && <div style={{ color: '#dc2626', fontSize: 12.5, marginBottom: 8, lineHeight: 1.5 }}>{errMsg}</div>}
+              <Btn variant="primary" onClick={submitTranslator} disabled={!translatorName.trim() || submitting}
+                style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
+                {submitting ? '登記中… / Đang gửi…' : '送出登記 / Đăng ký'}
+              </Btn>
+            </>
+          )}
         </div>
       </Card>
     </PageShell>
@@ -414,7 +483,6 @@ function Stage2Scoring({ dept }) {
       try {
         localStorage.setItem(EVAL_SESSION_KEY, JSON.stringify(v))
         localStorage.setItem(EVAL_NAME_KEY, v.name)
-        localStorage.setItem(EVAL_TRANSLATOR_KEY, v.translator || '')
       } catch { /* ignore */ }
       setEvaluator(v)
     }
@@ -469,34 +537,39 @@ function Stage2Scoring({ dept }) {
     try {
       const evs = await getStage2EvalsByDate(dept, evaluator.date)
       if (!evs || !evs.length) { showToast('該日期尚無評分可下載', 'error'); return }
+      let translatorNames = ''
+      try {
+        const tr = await getStage2TranslatorsByDate(dept, evaluator.date)
+        translatorNames = (tr || []).map((t) => t.translator_name).filter(Boolean).join('、')
+      } catch { /* 撈不到翻譯名單不影響評分下載 */ }
       const decLabel = (v) => (DECISIONS.find((d) => d.v === v) || {}).label || v || ''
       const columns = [
-        { key: 'evaluator_name', label: '評分老師' },
-        { key: 'translator_name', label: '翻譯同學' },
-        { key: 'eval_date',      label: '評分日期' },
-        { key: 'account',        label: '帳號' },
-        { key: 'name',           label: '中文姓名' },
-        { key: 'name_english',   label: '英文姓名' },
-        { key: 'nationality',    label: '國籍' },
-        { key: 'department',     label: '系所' },
+        { key: 'evaluator_name',  label: '評分老師' },
+        { key: 'translator_names', label: '翻譯同學' },
+        { key: 'eval_date',       label: '評分日期' },
+        { key: 'account',         label: '帳號' },
+        { key: 'name',            label: '中文姓名' },
+        { key: 'name_english',    label: '英文姓名' },
+        { key: 'nationality',     label: '國籍' },
+        { key: 'department',      label: '系所' },
         ...SCORE_ITEMS.map((it) => ({ key: it.key, label: it.label })),
-        { key: 'total_score',    label: '總分' },
-        { key: 'recommendation', label: '建議' },
-        { key: 'teacher_note',   label: '備註' },
+        { key: 'total_score',     label: '總分' },
+        { key: 'recommendation',  label: '建議' },
+        { key: 'teacher_note',    label: '備註' },
       ]
       const rows = evs.map((e) => ({
-        evaluator_name: e.evaluator_name || '',
-        translator_name: e.translator_name || '',
-        eval_date:      e.eval_date || '',
-        account:        e.applications?.account || '',
-        name:           e.applications?.name || '',
-        name_english:   e.applications?.name_english || '',
-        nationality:    e.applications?.nationality || '',
-        department:     e.department || '',
+        evaluator_name:  e.evaluator_name || '',
+        translator_names: translatorNames,
+        eval_date:       e.eval_date || '',
+        account:         e.applications?.account || '',
+        name:            e.applications?.name || '',
+        name_english:    e.applications?.name_english || '',
+        nationality:     e.applications?.nationality || '',
+        department:      e.department || '',
         ...Object.fromEntries(SCORE_ITEMS.map((it) => [it.key, e.scores?.[it.key] ?? ''])),
-        total_score:    e.total_score ?? '',
-        recommendation: decLabel(e.recommendation),
-        teacher_note:   e.teacher_note || '',
+        total_score:     e.total_score ?? '',
+        recommendation:  decLabel(e.recommendation),
+        teacher_note:    e.teacher_note || '',
       }))
       writeXlsx(columns, rows, `第二階段評分_${dept}_${evaluator.date}.xlsx`)
     } catch (err) {
