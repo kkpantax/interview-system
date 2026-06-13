@@ -42,6 +42,7 @@ const buildDeptCheckinMap = (checkins, dept, students) => {
 // 避免跨日後仍以昨天日期記錄評分。EVAL_NAME_KEY 記住老師姓名（同一台電腦長期保留，供預填）。
 const EVAL_SESSION_KEY = 'stage2_evaluator'
 const EVAL_NAME_KEY    = 'stage2_evaluator_name'
+const EVAL_TRANSLATOR_KEY = 'stage2_evaluator_translator'
 
 const readEvaluatorSession = () => {
   try {
@@ -52,6 +53,9 @@ const readEvaluatorSession = () => {
 }
 const readRememberedName = () => {
   try { return localStorage.getItem(EVAL_NAME_KEY) || '' } catch { return '' }
+}
+const readRememberedTranslator = () => {
+  try { return localStorage.getItem(EVAL_TRANSLATOR_KEY) || '' } catch { return '' }
 }
 
 const ghostBtn = { background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
@@ -165,10 +169,11 @@ function DeptPicker() {
   )
 }
 
-function EvaluatorGate({ dept, onStart, initialName = '' }) {
+function EvaluatorGate({ dept, onStart, initialName = '', initialTranslator = '' }) {
   const [name, setName] = useState(initialName)
+  const [translator, setTranslator] = useState(initialTranslator)
   const [date, setDate] = useState(localToday())
-  const start = () => { if (name.trim()) onStart({ name: name.trim(), date }) }
+  const start = () => { if (name.trim()) onStart({ name: name.trim(), translator: translator.trim(), date }) }
 
   return (
     <PageShell
@@ -179,11 +184,19 @@ function EvaluatorGate({ dept, onStart, initialName = '' }) {
         <CardHead left="評分人員資料" />
         <div style={{ padding: '18px 20px' }}>
           <div style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.6 }}>
-            進入「{dept}」評分前，請填寫評分老師姓名與評分日期。此資料會記錄在每一筆評分上，並可下載當日評分 Excel 供行政人員查核。
+            進入「{dept}」評分前，請填寫評分老師姓名與評分日期；若現場有翻譯同學，也請翻譯同學填入姓名。此資料會記錄在每一筆評分上，並可下載當日評分 Excel 供行政人員查核。
           </div>
           <span style={s.secLabel}>評分老師姓名</span>
           <input style={s.input} placeholder="請輸入姓名" value={name} autoFocus
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
+          <span style={s.secLabel}>
+            翻譯同學姓名（選填）
+            <span style={{ color: '#15803d', fontWeight: 400, marginLeft: 6 }}>· Tên bạn phiên dịch (nếu có)</span>
+          </span>
+          <input style={s.input} placeholder="翻譯同學請填寫姓名 / Bạn phiên dịch điền tên vào đây"
+            value={translator}
+            onChange={(e) => setTranslator(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
           <span style={s.secLabel}>評分日期</span>
           <input type="date" style={s.input} value={date} onChange={(e) => setDate(e.target.value)} />
@@ -228,6 +241,7 @@ function EvalDetailModal({ student, onDelete, onClose }) {
           <div key={e.id || idx} style={{ border: '1px solid #e8e7e3', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
               <b style={{ fontSize: 14 }}>{e.evaluator_name || '（未填老師）'}</b>
+              {e.translator_name ? <span style={{ fontSize: 12, color: '#15803d' }}>翻譯：{e.translator_name}</span> : null}
               <span style={{ fontSize: 12, color: '#888' }}>{e.eval_date || ''}</span>
               <Pill color={info.color} bg={info.bg}>{info.label}</Pill>
               <span style={{ marginLeft: 'auto', fontSize: 13 }}>
@@ -400,10 +414,11 @@ function Stage2Scoring({ dept }) {
       try {
         localStorage.setItem(EVAL_SESSION_KEY, JSON.stringify(v))
         localStorage.setItem(EVAL_NAME_KEY, v.name)
+        localStorage.setItem(EVAL_TRANSLATOR_KEY, v.translator || '')
       } catch { /* ignore */ }
       setEvaluator(v)
     }
-    return <EvaluatorGate dept={dept} onStart={startEvaluator} initialName={readRememberedName()} />
+    return <EvaluatorGate dept={dept} onStart={startEvaluator} initialName={readRememberedName()} initialTranslator={readRememberedTranslator()} />
   }
 
   // 報到狀態 map 於每次 render 依「各學生自己的面試日」即時推導
@@ -434,6 +449,7 @@ function Stage2Scoring({ dept }) {
         application_id: active.id,
         eval_date: evaluator.date,
         evaluator_name: evaluator.name,
+        translator_name: evaluator.translator || null,
         department: dept,
         ...payload,
       })
@@ -456,6 +472,7 @@ function Stage2Scoring({ dept }) {
       const decLabel = (v) => (DECISIONS.find((d) => d.v === v) || {}).label || v || ''
       const columns = [
         { key: 'evaluator_name', label: '評分老師' },
+        { key: 'translator_name', label: '翻譯同學' },
         { key: 'eval_date',      label: '評分日期' },
         { key: 'account',        label: '帳號' },
         { key: 'name',           label: '中文姓名' },
@@ -469,6 +486,7 @@ function Stage2Scoring({ dept }) {
       ]
       const rows = evs.map((e) => ({
         evaluator_name: e.evaluator_name || '',
+        translator_name: e.translator_name || '',
         eval_date:      e.eval_date || '',
         account:        e.applications?.account || '',
         name:           e.applications?.name || '',
@@ -517,7 +535,7 @@ function Stage2Scoring({ dept }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f4f0', padding: '4px 10px', background: '#ffffff1a', borderRadius: 6 }}>
             {dept}
           </span>
-          <span style={{ fontSize: 12, color: '#cbd5e1' }}>評分：{evaluator.name} · {evaluator.date}</span>
+          <span style={{ fontSize: 12, color: '#cbd5e1' }}>評分：{evaluator.name} · {evaluator.date}{evaluator.translator ? ` · 翻譯：${evaluator.translator}` : ''}</span>
           {!active && <button onClick={openFinish} style={{ ...ghostBtn, background: '#ffffff22', fontWeight: 600 }}>完成今日評分</button>}
           <button onClick={() => { window.location.hash = '#/stage2' }} style={ghostBtn}>← 返回各系</button>
         </div>

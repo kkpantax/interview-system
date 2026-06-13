@@ -443,7 +443,7 @@ export async function setStage1ConfirmByAccount(account, result, date) {
 // 同一學生在同系可能有多筆評分（多老師、多輪），故全帶回不去重。
 export async function getStage2List(dept) {
   const rows = await callProxy(
-    `/rest/v1/applications?select=*,evaluations(id,recommendation,total_score,eval_date,evaluator_name,scores,teacher_note,custom_questions)` +
+    `/rest/v1/applications?select=*,evaluations(id,recommendation,total_score,eval_date,evaluator_name,translator_name,scores,teacher_note,custom_questions)` +
       `&department=eq.${encodeURIComponent(dept)}` +
       `&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc`,
     'GET',
