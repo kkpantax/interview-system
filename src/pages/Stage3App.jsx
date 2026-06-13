@@ -25,9 +25,13 @@ const acctOf = (e) => e.applications?.account ?? null
 const deptOf = (e) => e.department || e.applications?.department || ''
 const keyOf  = (e) => `${acctOf(e)}__${deptOf(e)}`
 
-// 同一學生在同一系所若有多筆評分（重複評分），只保留「最高分」那一筆，避免放榜頁同系出現
-// 重複列。分數相同時，再以 eval_date 新者優先、其次 created_at；都相同則保留後載入者。
-// （total_score 為 null 視為最低，確保有分數的評分一定勝過未評分的）
+// 同一學生在同一系所若有多筆評分（重複評分），合併為一列，避免放榜頁同系出現重複列。
+// 合併規則（分數與建議分開取，因兩者性質不同）：
+//   · 分數 total_score：取「最高分」那筆為基底（分數相同→eval_date 新者→created_at 新者）。
+//     total_score 為 null 視為最低，確保有分數的評分一定勝過未評分的。
+//   · 老師建議 recommendation：取「最新一筆有做決定（非待定 pending）」的建議；
+//     若全部都待定，才沿用最新一筆（待定）。如此第一次待定、第二次錄取會顯示錄取；
+//     待定不會蓋過先前已做的決定；老師改判時以最新決定為準。
 const bestScoreOf = (a, b) => {
   const sa = a.total_score ?? -Infinity, sb = b.total_score ?? -Infinity
   if (sa !== sb) return sa > sb ? a : b
@@ -37,15 +41,29 @@ const bestScoreOf = (a, b) => {
   if (ca !== cb) return ca > cb ? a : b
   return a
 }
+const laterOf = (a, b) => {
+  const da = String(a.eval_date || ''), db = String(b.eval_date || '')
+  if (da !== db) return da > db ? a : b
+  const ca = String(a.created_at || ''), cb = String(b.created_at || '')
+  return cb > ca ? b : a
+}
+const isDecided = (e) => !!e.recommendation && e.recommendation !== 'pending'
 const dedupeEvals = (list) => {
-  const best = new Map()
+  const groups = new Map()
   for (const e of (list || [])) {
     const a = acctOf(e), d = deptOf(e)
     const k = a && d ? `${a}__${d}` : `__row__${e.id}`
-    const prev = best.get(k)
-    best.set(k, prev ? bestScoreOf(e, prev) : e)
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(e)
   }
-  return [...best.values()]
+  const out = []
+  for (const evs of groups.values()) {
+    const base = evs.reduce((acc, e) => bestScoreOf(e, acc))
+    const decided = evs.filter(isDecided)
+    const recSource = (decided.length ? decided : evs).reduce((acc, e) => laterOf(e, acc))
+    out.push({ ...base, recommendation: recSource.recommendation })
+  }
+  return out
 }
 
 const EXPORT_COLS = [
