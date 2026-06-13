@@ -29,6 +29,7 @@ function CheckinPill({ info }) {
     if (info.deptStatus === 'sent') st = { bg: '#dbeafe', color: '#1e40af', text: '🔵 面試中' }
     else if (info.deptStatus === 'going') st = { bg: '#fef3c7', color: '#b45309', text: '🟡 前往中（請準備）' }
     else if (info.deptStatus === 'done') st = { bg: '#dcfce7', color: '#15803d', text: '✅ 已完成' }
+    else if (info.deptStatus === 'abandoned') st = { bg: '#fafafa', color: '#9ca3af', text: '🚫 放棄面試' }
     else if (info.arrived) st = { bg: '#ecfdf5', color: '#15803d', text: '🟢 已報到' }
   }
   return (
@@ -44,7 +45,7 @@ function CheckinPill({ info }) {
 // showEvalSummary=true：已評分區，顯示最新建議 badge、已評次數，按鈕為「再次評分」
 // checkinMap：account → { arrived, deptStatus }（待評分區才用，不傳則顯示「—」）
 // onMarkInterview / onCancelInterview / markingAccount：老師標記「面試中」（選填，不傳則維持原樣）
-export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false, checkinMap, onMarkInterview, onCancelInterview, markingAccount }) {
+export default function Stage2List({ students, onOpen, onView = () => {}, loading, showEvalSummary = false, checkinMap, onMarkInterview, onCancelInterview, markingAccount, abandoned = false }) {
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
   const headers = showEvalSummary
@@ -105,6 +106,8 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
                       <Btn onClick={() => onView(stu)}>查看</Btn>
                       <Btn variant="primary" onClick={() => onOpen(stu)}>再次評分 →</Btn>
                     </div>
+                  ) : abandoned ? (
+                    <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>🚫 已放棄，無需評分</span>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       {onMarkInterview && (() => {

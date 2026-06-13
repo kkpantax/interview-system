@@ -498,8 +498,10 @@ function Stage2Scoring({ dept }) {
     (stu.account || '').toLowerCase().includes(q) ||
     (stu.name || '').toLowerCase().includes(q),
   )
-  const unscored = filtered.filter((stu) => !stu.evaluations || stu.evaluations.length === 0)
-  const scored   = filtered.filter((stu) => stu.evaluations && stu.evaluations.length > 0)
+  const isAbandonedDept = (stu) => checkinMap[stu.account]?.deptStatus === 'abandoned'
+  const scored    = filtered.filter((stu) => stu.evaluations && stu.evaluations.length > 0)
+  const abandoned = filtered.filter((stu) => (!stu.evaluations || stu.evaluations.length === 0) && isAbandonedDept(stu))
+  const unscored  = filtered.filter((stu) => (!stu.evaluations || stu.evaluations.length === 0) && !isAbandonedDept(stu))
 
   const statCards = [
     { label: '預計錄取',   n: quota == null ? '—' : quota, bg: '#ecfdf5', color: '#047857', target: true },
@@ -508,6 +510,7 @@ function Stage2Scoring({ dept }) {
     { label: '不建議錄取', n: stats.reject,   bg: '#fee2e2', color: '#dc2626' },
     { label: '待定',       n: stats.pending,  bg: '#f3f4f6', color: '#6b7280' },
     { label: '尚未評分',   n: unscored.length, bg: '#eff6ff', color: '#1e40af' },
+    ...(abandoned.length > 0 ? [{ label: '放棄面試', n: abandoned.length, bg: '#fafafa', color: '#9ca3af' }] : []),
   ]
 
   const handleSave = async (payload) => {
@@ -656,6 +659,13 @@ function Stage2Scoring({ dept }) {
             <CardHead left={`${dept} · 已評分`} right={`${scored.length} 位`} />
             <Stage2List students={scored} onOpen={setActive} onView={setViewing} loading={loading} showEvalSummary />
           </Card>
+
+          {abandoned.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <CardHead left={`${dept} · 放棄面試`} right={`${abandoned.length} 位 · 由行政報到端標記，無需評分`} />
+              <Stage2List students={abandoned} onOpen={setActive} loading={loading} checkinMap={checkinMap} abandoned />
+            </Card>
+          )}
         </>
       )}
 
