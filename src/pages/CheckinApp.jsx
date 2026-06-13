@@ -75,6 +75,7 @@ const PILL_STYLE = {
   going:   { bg: '#fef3c7', color: '#b45309', border: '#fde68a', icon: '🟡', label: '前往中' },
   sent:    { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd', icon: '🔵', label: '面試中' },
   done:    { bg: '#dcfce7', color: '#15803d', border: '#86efac', icon: '✅', label: '已完成' },
+  abandoned: { bg: '#fafafa', color: '#9ca3af', border: '#e5e7eb', icon: '🚫', label: '放棄面試' },
 }
 
 // 越南籍判斷（派遣優先規則用）
@@ -133,7 +134,7 @@ function buildNoShows(rosterRows, checkinRows) {
       return ck[`${stu.account}|${d}|${dept.department}`]?.status || 'waiting'
     }
     const statuses = stu.depts.map((x) => ({ ...x, st: stOf(x) }))
-    if (statuses.every((x) => x.st === 'done')) continue
+    if (statuses.every((x) => x.st === 'done' || x.st === 'abandoned')) continue
     out.push({ ...stu, arrived, statuses, kind: arrived ? 'incomplete' : 'absent' })
   }
   return out
@@ -314,6 +315,7 @@ export default function CheckinApp() {
     if (!isArrived(account)) return
     if ((dept.evaluations || []).length > 0) return   // 已評分鎖定
     const cur = cmap[account]?.byDept?.[dept.department]?.status
+    if (cur === 'abandoned') return   // 放棄中：須先按「復原」才能重新派遣
     // 防呆：要進入前往中/面試中之前，若該生已在他系佔用中先確認，避免一人同時兩系
     if (!BUSY_STATUSES.includes(cur) && cur !== 'done') {
       // 硬擋：該系已有人前往中/面試中時不可再派（一系同時只服務一位）
@@ -334,6 +336,24 @@ export default function CheckinApp() {
       else if (cur === 'done') await deleteCheckin(account, date, dept.department)
       else await upsertCheckin({ account, checkin_date: date, department: dept.department, status: 'going' })
       await load()
+    } catch (e) { showToast('更新失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // 某帳號某系是否被標記放棄面試（已評分者不會是放棄）
+  const abandonedOf = (account, deptName) =>
+    cmap[account]?.byDept?.[deptName]?.status === 'abandoned'
+
+  // 放棄／復原單一志願面試。when＝該志願所屬面試日（追蹤分頁用當前 date、漏網之魚用 stu.stage2_date）。
+  // 放棄＝視同處理完成：該生若所有志願皆完成或放棄，便不再出現在追蹤主表頂端與漏網之魚名單。
+  const toggleAbandon = async (account, dept, when, isAbandoned, reload) => {
+    if (!isAbandoned &&
+        !window.confirm(`確定將「${dept}」標記為放棄面試？\n該志願將視同處理完成，系所不會再面試此生此志願。`)) return
+    setBusy(true)
+    try {
+      if (isAbandoned) await deleteCheckin(account, when, dept)
+      else await upsertCheckin({ account, checkin_date: when, department: dept, status: 'abandoned' })
+      await reload()
+      showToast(isAbandoned ? `已復原「${dept}」` : `已將「${dept}」標記為放棄面試`)
     } catch (e) { showToast('更新失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
@@ -423,7 +443,7 @@ export default function CheckinApp() {
         { key: 'teacher_recs', label: '老師建議' },
         { key: 'confirm',      label: '確認結果' },
       ]
-      const rowOf = (stu) => {
+      const rowOf = (stu, dep = null) => {
         const g = s1[stu.account] || { appeared: false, scores: [], counts: {} }
         const avg = g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
         const recsText = ['pass', 'pending', 'fail']
@@ -435,7 +455,7 @@ export default function CheckinApp() {
           appeared: g.appeared ? '已到' : '未到',
           teacher_avg: avg != null ? avg.toFixed(1) : '',
           teacher_recs: recsText,
-          confirm: '通過',   // 名單即「已通過一階」者
+          confirm: dep && abandonedOf(stu.account, dep) ? '放棄' : '通過',   // 各系分頁：放棄該志願者標「放棄」
         }
       }
       // 總表：依中心、帳號排序
@@ -466,7 +486,7 @@ export default function CheckinApp() {
             x.pref - y.pref ||
             (x.stu.center || '').localeCompare(y.stu.center || '') ||
             (x.stu.account || '').localeCompare(y.stu.account || ''))
-          .map((x) => rowOf(x.stu))
+          .map((x) => rowOf(x.stu, dep))
         sheets.push({ name: deptShort(dep), columns, rows })
       }
       writeXlsxMulti(sheets, `面試名單${m}_${dd}.xlsx`)
@@ -487,7 +507,7 @@ export default function CheckinApp() {
   }
 
   // ── 衍生計算 ─────────────────────────────────────────────────────────────
-  const allDone = (stu) => stu.depts.every((d) => effStatus(cmap, stu.account, d) === 'done')
+  const allDone = (stu) => stu.depts.every((d) => ['done', 'abandoned'].includes(effStatus(cmap, stu.account, d)))
 
   const total = roster.length
   const arrivedCount = roster.filter((stu) => isArrived(stu.account)).length
@@ -499,14 +519,14 @@ export default function CheckinApp() {
     const m = {}
     for (const stu of roster) {
       for (const d of stu.depts) {
-        if (!m[d.department]) m[d.department] = { going: 0, sent: 0, done: 0, waiting: 0 }
+        if (!m[d.department]) m[d.department] = { going: 0, sent: 0, done: 0, waiting: 0, abandoned: 0 }
         m[d.department][effStatus(cmap, stu.account, d)]++
       }
     }
     // 規則3：報考人數少的系排前面，方便優先收尾
     return Object.entries(m).sort((a, b) => {
-      const na = a[1].going + a[1].sent + a[1].done + a[1].waiting
-      const nb = b[1].going + b[1].sent + b[1].done + b[1].waiting
+      const na = a[1].going + a[1].sent + a[1].done + a[1].waiting + a[1].abandoned
+      const nb = b[1].going + b[1].sent + b[1].done + b[1].waiting + b[1].abandoned
       return na - nb || a[0].localeCompare(b[0])
     })
   })()
@@ -743,6 +763,7 @@ export default function CheckinApp() {
                       <span style={{ color: '#1e40af' }}>🔵 {c.sent}</span>
                       <span style={{ color: '#15803d' }}>✅ {c.done}</span>
                       <span style={{ color: '#9ca3af' }}>⚪ {c.waiting}</span>
+                      {c.abandoned > 0 && <span style={{ color: '#9ca3af' }}>🚫 {c.abandoned}</span>}
                     </div>
                     {(dispatch.goingDept[dep] || []).length > 0 && (
                       <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
@@ -824,22 +845,43 @@ export default function CheckinApp() {
                               const locked = (d.evaluations || []).length > 0
                               const st = effStatus(cmap, stu.account, d)
                               const ps = PILL_STYLE[st]
-                              const clickable = arrived && !locked
+                              const isAb = st === 'abandoned'
+                              const clickable = arrived && !locked && !isAb
                               return (
-                                <button key={d.department} onClick={() => cyclePill(stu.account, d)} disabled={!clickable || busy}
-                                  title={locked ? '已評分，鎖定為已完成' : !arrived ? '請先完成總報到' : '點擊切換：待面試→前往中→面試中→已完成'}
-                                  style={{
-                                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                    border: `1px solid ${ps.border}`, borderRadius: 8, padding: '4px 9px',
-                                    background: ps.bg, color: ps.color, fontFamily: 'inherit',
-                                    cursor: clickable ? 'pointer' : 'default',
-                                    opacity: arrived ? 1 : 0.45,
-                                  }}>
-                                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-                                    {ps.icon} {d.department}{locked ? '（已評分）' : ''}
-                                  </span>
-                                  <span style={{ fontSize: 10, opacity: 0.8 }}>第{d.preference_order ?? '?'}志願 · {ps.label}</span>
-                                </button>
+                                <div key={d.department} style={{
+                                  position: 'relative',
+                                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                  border: `1px solid ${ps.border}`, borderRadius: 8, padding: '4px 9px',
+                                  paddingRight: locked ? 9 : 22,
+                                  background: ps.bg, color: ps.color,
+                                  opacity: (arrived || isAb) ? 1 : 0.45,
+                                }}>
+                                  <button onClick={() => cyclePill(stu.account, d)} disabled={!clickable || busy}
+                                    title={locked ? '已評分，鎖定為已完成' : isAb ? '已放棄面試，請按右上 ↩ 復原' : !arrived ? '請先完成總報到' : '點擊切換：待面試→前往中→面試中→已完成'}
+                                    style={{
+                                      border: 'none', background: 'transparent', padding: 0, margin: 0, textAlign: 'left',
+                                      color: 'inherit', font: 'inherit', fontFamily: 'inherit',
+                                      cursor: clickable ? 'pointer' : 'default',
+                                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                    }}>
+                                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                                      {ps.icon} {d.department}{locked ? '（已評分）' : ''}
+                                    </span>
+                                    <span style={{ fontSize: 10, opacity: 0.8 }}>第{d.preference_order ?? '?'}志願 · {ps.label}</span>
+                                  </button>
+                                  {!locked && (
+                                    <button onClick={() => toggleAbandon(stu.account, d.department, date, isAb, load)} disabled={busy}
+                                      title={isAb ? '復原（回到待面試）' : '標記放棄面試'}
+                                      style={{
+                                        position: 'absolute', top: 3, right: 4, lineHeight: 1,
+                                        border: 'none', background: 'transparent', padding: 0,
+                                        color: isAb ? '#15803d' : '#cbd5e1', cursor: busy ? 'default' : 'pointer',
+                                        fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                                      }}>
+                                      {isAb ? '↩' : '✕'}
+                                    </button>
+                                  )}
+                                </div>
                               )
                             })}
                           </div>
@@ -898,14 +940,31 @@ export default function CheckinApp() {
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {stu.statuses.map((d) => {
                             const ps = PILL_STYLE[d.st]
+                            const locked = (d.evaluations || []).length > 0
+                            const isAb = d.st === 'abandoned'
                             return (
                               <span key={d.department} style={{
+                                position: 'relative',
                                 display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start',
                                 border: `1px solid ${ps.border}`, borderRadius: 8, padding: '4px 9px',
+                                paddingRight: locked ? 9 : 22,
                                 background: ps.bg, color: ps.color,
                               }}>
                                 <span style={{ fontSize: 12.5, fontWeight: 600 }}>{ps.icon} {d.department}</span>
                                 <span style={{ fontSize: 10, opacity: 0.8 }}>第{d.preference_order ?? '?'}志願 · {ps.label}</span>
+                                {!locked && (
+                                  <button onClick={() => toggleAbandon(stu.account, d.department, stu.stage2_date, isAb,
+                                      () => Promise.all([loadNoShows(), load()]))} disabled={busy}
+                                    title={isAb ? '復原（回到待面試）' : '標記放棄面試'}
+                                    style={{
+                                      position: 'absolute', top: 3, right: 4, lineHeight: 1,
+                                      border: 'none', background: 'transparent', padding: 0,
+                                      color: isAb ? '#15803d' : '#cbd5e1', cursor: busy ? 'default' : 'pointer',
+                                      fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                                    }}>
+                                    {isAb ? '↩' : '✕'}
+                                  </button>
+                                )}
                               </span>
                             )
                           })}
