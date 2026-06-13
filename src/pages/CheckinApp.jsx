@@ -6,7 +6,7 @@ import {
   getCheckins, upsertCheckin, deleteCheckin,
   getStage2NoShows, getCheckinsBefore, getStage2DateCounts,
   getStage1RecordsByAccounts, getDepartmentCampuses, getInfoLinks,
-  fillStage2Date, setStage2DateByDept, setStage2DateForPref, getStage2AllPrefs,
+  fillStage2Date, setStage2DateByDept, setStage2DateForPref, setStage2DateByIds, getStage2AllPrefs,
 } from '../api'
 import { writeXlsxMulti } from '../components/ExportBtn'
 import { DECISIONS_STAGE1, CAMPUS_OPTIONS, resolveCampus, deptShort, deptI18n } from '../constants'
@@ -162,6 +162,9 @@ export default function CheckinApp() {
   const [splitDept, setSplitDept]     = useState('')   // 依系所：選定系所
   const [splitDeptDate, setSplitDeptDate] = useState(todayISO)  // 依系所：目標日期
   const [splitSearch, setSplitSearch] = useState('')   // 個別：搜尋帳號／姓名
+  const [splitDateFilter, setSplitDateFilter] = useState('')  // 個別：依目前面試日篩選（''=全部, '__none__'=未排）
+  const [splitDeptFilter, setSplitDeptFilter] = useState('')  // 個別：依系所篩選
+  const [bulkDate, setBulkDate]       = useState('')   // 個別：把篩選出的整批改為此日期
   const [prefDates, setPrefDates]     = useState({})   // 個別：每列輸入的日期 { [id]: 'YYYY-MM-DD' }
   const [toast, setToast]     = useState(null)
   const [dateCounts, setDateCounts] = useState(null)   // 二階各日人數統計
@@ -444,6 +447,20 @@ export default function CheckinApp() {
     try {
       await setStage2DateForPref(row.account, row.department, next || null)
       showToast(next ? `已將 ${row.name}「${row.department}」改至 ${next}` : `已把 ${row.name}「${row.department}」移回未排程`)
+      await Promise.all([loadAllPrefs(), load(), loadUnscheduled(), loadDateCounts()])
+    } catch (e) { showToast('套用失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  // 分天指派：把目前篩選出的整批志願列改到同一天
+  const applyBulkSplit = async (rows) => {
+    if (!bulkDate) { showToast('請選擇目標日期', 'warn'); return }
+    const ids = (rows || []).map((r) => r.id).filter(Boolean)
+    if (!ids.length) { showToast('沒有可套用的資料', 'warn'); return }
+    if (!window.confirm(`將篩選出的 ${ids.length} 筆面試日全部改為 ${bulkDate}？`)) return
+    setBusy(true)
+    try {
+      await setStage2DateByIds(ids, bulkDate)
+      showToast(`已將 ${ids.length} 筆改至 ${bulkDate}`)
       await Promise.all([loadAllPrefs(), load(), loadUnscheduled(), loadDateCounts()])
     } catch (e) { showToast('套用失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
@@ -1116,51 +1133,76 @@ export default function CheckinApp() {
                 <span style={{ fontSize: 12, color: '#aaa' }}>只會改這個系所的志願列，每個人的其他志願不變</span>
               </div>
 
-              {/* 個別志願 */}
+              {/* 查看 / 調整已排：依目前面試日、系所或搜尋 */}
               <div style={{ borderTop: '1px solid #f0efeb', paddingTop: 10 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, color: '#15803d', fontWeight: 600 }}>個別志願</span>
-                  <input style={{ ...s.input, width: 220, marginBottom: 0 }} placeholder="搜尋帳號 / 姓名" value={splitSearch} onChange={(e) => setSplitSearch(e.target.value)} />
-                  <span style={{ fontSize: 12, color: '#aaa' }}>逐一調整某位學生的單一志願面試日</span>
+                  <span style={{ fontSize: 13, color: '#15803d', fontWeight: 600 }}>查看 / 調整已排</span>
+                  <select style={{ ...s.input, width: 175, marginBottom: 0 }} value={splitDateFilter} onChange={(e) => setSplitDateFilter(e.target.value)}>
+                    <option value="">目前面試日（全部）</option>
+                    {[...new Set(allPrefs.map((p) => p.stage2_date).filter(Boolean))].sort().map((d) => {
+                      const n = allPrefs.filter((p) => p.stage2_date === d).length
+                      return <option key={d} value={d}>{d}（{n} 筆）</option>
+                    })}
+                    <option value="__none__">未排程</option>
+                  </select>
+                  <select style={{ ...s.input, width: 160, marginBottom: 0 }} value={splitDeptFilter} onChange={(e) => setSplitDeptFilter(e.target.value)}>
+                    <option value="">全部系所</option>
+                    {[...new Set(allPrefs.map((p) => p.department).filter(Boolean))].sort().map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  <input style={{ ...s.input, width: 170, marginBottom: 0 }} placeholder="搜尋帳號 / 姓名" value={splitSearch} onChange={(e) => setSplitSearch(e.target.value)} />
                 </div>
-                {splitSearch.trim() && (() => {
+                {(splitDateFilter || splitDeptFilter || splitSearch.trim()) ? (() => {
                   const kw = splitSearch.trim().toLowerCase()
-                  const hits = allPrefs.filter((p) =>
-                    String(p.account || '').toLowerCase().includes(kw) ||
-                    String(p.name || '').toLowerCase().includes(kw) ||
-                    String(p.name_english || '').toLowerCase().includes(kw))
-                  if (!hits.length) return <div style={{ fontSize: 13, color: '#aaa', padding: '6px 2px' }}>查無符合的學生</div>
+                  const shown = allPrefs.filter((p) => {
+                    const dateOk = !splitDateFilter
+                      || (splitDateFilter === '__none__' ? !p.stage2_date : p.stage2_date === splitDateFilter)
+                    const deptOk = !splitDeptFilter || p.department === splitDeptFilter
+                    const kwOk = !kw
+                      || String(p.account || '').toLowerCase().includes(kw)
+                      || String(p.name || '').toLowerCase().includes(kw)
+                      || String(p.name_english || '').toLowerCase().includes(kw)
+                    return dateOk && deptOk && kwOk
+                  })
+                  if (!shown.length) return <div style={{ fontSize: 13, color: '#aaa', padding: '6px 2px' }}>沒有符合條件的資料</div>
                   return (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-                        <thead><tr style={{ background: '#faf9f6' }}>
-                          {['姓名', '志願', '系所', '目前面試日', '改為', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
-                        </tr></thead>
-                        <tbody>
-                          {hits.map((p) => (
-                            <tr key={p.id}>
-                              <td style={td}>
-                                <div style={{ fontWeight: 500 }}>{p.name}</div>
-                                <div style={{ fontSize: 11, color: '#bbb' }}>{p.account}</div>
-                              </td>
-                              <td style={td}>第 {p.preference_order ?? '?'} 志願</td>
-                              <td style={td}>{p.department}</td>
-                              <td style={{ ...td, color: p.stage2_date ? '#1e40af' : '#ccc' }}>{p.stage2_date || '未排'}</td>
-                              <td style={td}>
-                                <input type="date" style={{ ...s.input, width: 150, marginBottom: 0 }}
-                                  value={prefDates[p.id] ?? p.stage2_date ?? ''}
-                                  onChange={(e) => setPrefDates((prev) => ({ ...prev, [p.id]: e.target.value }))} />
-                              </td>
-                              <td style={td}>
-                                <Btn variant="primary" disabled={busy} onClick={() => applyPrefSplit(p)}>套用</Btn>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 8, padding: '8px 10px' }}>
+                        <span style={{ fontSize: 12, color: '#6d28d9' }}>篩選出 {shown.length} 筆 · 全部改為</span>
+                        <input type="date" style={{ ...s.input, width: 150, marginBottom: 0 }} value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} />
+                        <Btn variant="primary" disabled={busy || !bulkDate} onClick={() => applyBulkSplit(shown)}>套用到全部</Btn>
+                        <span style={{ fontSize: 12, color: '#aaa' }}>或在下方逐筆調整</span>
+                      </div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 580 }}>
+                          <thead><tr style={{ background: '#faf9f6' }}>
+                            {['姓名', '志願', '系所', '目前面試日', '改為', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                          </tr></thead>
+                          <tbody>
+                            {shown.map((p) => (
+                              <tr key={p.id}>
+                                <td style={td}>
+                                  <div style={{ fontWeight: 500 }}>{p.name}</div>
+                                  <div style={{ fontSize: 11, color: '#bbb' }}>{p.account}</div>
+                                </td>
+                                <td style={td}>第 {p.preference_order ?? '?'} 志願</td>
+                                <td style={td}>{p.department}</td>
+                                <td style={{ ...td, color: p.stage2_date ? '#1e40af' : '#ccc' }}>{p.stage2_date || '未排'}</td>
+                                <td style={td}>
+                                  <input type="date" style={{ ...s.input, width: 150, marginBottom: 0 }}
+                                    value={prefDates[p.id] ?? p.stage2_date ?? ''}
+                                    onChange={(e) => setPrefDates((prev) => ({ ...prev, [p.id]: e.target.value }))} />
+                                </td>
+                                <td style={td}>
+                                  <Btn variant="primary" disabled={busy} onClick={() => applyPrefSplit(p)}>套用</Btn>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )
-                })()}
+                })() : <div style={{ fontSize: 13, color: '#aaa', padding: '6px 2px' }}>選「目前面試日」或系所、或輸入搜尋，即可列出並調整已排定的學生</div>}
               </div>
             </div>
           </Card>

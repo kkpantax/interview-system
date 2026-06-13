@@ -608,6 +608,7 @@ export async function setStage2Date(accounts, date) {
 }
 
 // 整批指派但「只填還沒排日期的志願」（stage2_date IS NULL），不覆蓋已分天指派過的列。
+// 供未排程整批指派用，避免把先前依系所／個別分天的結果蓋掉。每 50 個帳號一批。
 export async function fillStage2Date(accounts, date) {
   const list = [...new Set((accounts || []).filter(Boolean))]
   if (!list.length || !date) return
@@ -616,32 +617,55 @@ export async function fillStage2Date(accounts, date) {
     const inList = list.slice(i, i + BATCH).map((a) => encodeURIComponent(a)).join(',')
     await callProxy(
       `/rest/v1/applications?account=in.(${inList})&stage2_date=is.null`,
-      'PATCH', { stage2_date: date }, 'return=minimal',
+      'PATCH',
+      { stage2_date: date },
+      'return=minimal',
     )
   }
 }
 
-// 依系所整批指派二階面試日：只動該系所的志願列。date 傳 ''/null 即移回未排程。
+// 依系所整批指派二階面試日：只動該系所的志願列（其他志願不受影響）。二階資格者（過一階＋書審通過）。
+// date 傳 '' / null 表示把該系所移回未排程。需 applications 的 UPDATE RLS 政策。
 export async function setStage2DateByDept(dept, date) {
   if (!dept) return
   await callProxy(
     `/rest/v1/applications?department=eq.${encodeURIComponent(dept)}` +
       '&stage1_passed_date=not.is.null&paper_passed=is.true',
-    'PATCH', { stage2_date: date || null }, 'return=minimal',
+    'PATCH',
+    { stage2_date: date || null },
+    'return=minimal',
   )
 }
 
-// 個別調整：單一（帳號＋系所）那一列的二階面試日。
+// 個別調整：單一（帳號＋系所）那一列的二階面試日（account+department 組合唯一）。
 export async function setStage2DateForPref(account, dept, date) {
   if (!account || !dept) return
   await callProxy(
     `/rest/v1/applications?account=eq.${encodeURIComponent(account)}` +
       `&department=eq.${encodeURIComponent(dept)}`,
-    'PATCH', { stage2_date: date || null }, 'return=minimal',
+    'PATCH',
+    { stage2_date: date || null },
+    'return=minimal',
   )
 }
 
-// 分天指派用：所有二階資格者的「逐志願」清單（含各列目前 stage2_date）。
+// 批次調整：依 application id 一次設定多列的二階面試日（供「把篩選出的整批改期」用）。每 50 筆一批。
+export async function setStage2DateByIds(ids, date) {
+  const list = [...new Set((ids || []).filter(Boolean))]
+  if (!list.length) return
+  const BATCH = 50
+  for (let i = 0; i < list.length; i += BATCH) {
+    const inList = list.slice(i, i + BATCH).join(',')
+    await callProxy(
+      `/rest/v1/applications?id=in.(${inList})`,
+      'PATCH',
+      { stage2_date: date || null },
+      'return=minimal',
+    )
+  }
+}
+
+// 分天指派用：所有二階資格者的「逐志願」清單（含各列目前 stage2_date），供依系所統計與個別搜尋調整。
 export async function getStage2AllPrefs() {
   return callProxy(
     '/rest/v1/applications?select=id,account,name,name_english,department,preference_order,stage2_date' +
