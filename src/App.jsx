@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import Landing from './pages/Landing'
 import AdminApp from './pages/AdminApp'
 import Stage1App from './pages/Stage1App'
@@ -7,8 +7,9 @@ import Stage2App from './pages/Stage2App'
 import CheckinApp from './pages/CheckinApp'
 import Stage3App from './pages/Stage3App'
 import Stage4App from './pages/Stage4App'
-import StatsApp from './pages/StatsApp'
 import TeacherLogin from './pages/TeacherLogin'
+
+const StatsApp = lazy(() => import('./pages/StatsApp'))
 
 // 解析 window.location.hash → { path, query }
 // 例：#/stage2?dept=餐飲管理學系(專) → { path:'/stage2', query:{dept:'餐飲管理學系(專)'} }
@@ -38,7 +39,11 @@ export default function App() {
   if (path === '/checkin2') return <CheckinApp />
   if (path === '/stage3') return <Stage3App />
   if (path === '/stage4') return <Stage4App />
-  if (path === '/stats')  return <StatsApp />
+  if (path === '/stats')  return (
+    <Suspense fallback={<div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f4f0', color:'#999', fontSize:14 }}>載入統計儀表板…</div>}>
+      <StatsApp />
+    </Suspense>
+  )
   if (path === '/intl')   return <Landing initialView="intl" />
   return <Landing />
 }

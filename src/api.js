@@ -747,6 +747,19 @@ export async function saveYearlySnapshot(row) {
   )
 }
 
+// ── 統計儀表板原始資料（一次撈齊，前端純函式 buildDashboard 再彙總／可依校區篩選）──
+// 全部走現有 read RLS（getFunnelStats 已在生產驗證可讀），不需任何 DDL。
+export async function getDashboardData() {
+  const [apps, s1, s2chk, fa, s4] = await Promise.all([
+    callProxy('/rest/v1/applications?select=account,department,preference_order,nationality,gender,birth_date,center', 'GET'),
+    callProxy('/rest/v1/stage1_records?select=account', 'GET'),
+    callProxy('/rest/v1/stage2_checkins?select=account&department=eq.&status=eq.arrived', 'GET'),
+    callProxy('/rest/v1/final_admissions?select=account,department,final_status', 'GET'),
+    callProxy('/rest/v1/stage4_confirmations?select=account,department,contact_status', 'GET'),
+  ])
+  return { apps: apps || [], stage1: s1 || [], stage2: s2chk || [], finalAdmissions: fa || [], stage4: s4 || [] }
+}
+
 // ── Admin 匯出最終名單 ──────────────────────────────────────────────────────
 // recommendation = admit 的評分，連同 applications 一起帶出
 export async function getFinalList() {
