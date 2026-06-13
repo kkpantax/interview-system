@@ -142,11 +142,17 @@ export default function Stage1ConfirmApp() {
 
   // 開啟寄信面板：用畫面當前日期已載入的名單，依確認狀態篩選（不再撈全部通過者）
   const openMail = (kind) => {
-    const want = kind === 's1_reject' ? 'reject' : 'pass'
-    const people = students.filter((stu) => confirmStateOf(stu) === want)
-    if (!people.length) {
-      showToast(want === 'pass' ? '本日名單無「通過」者' : '本日名單無「未通過」者', 'warn')
-      return
+    let people
+    if (kind === 's1_noshow') {
+      people = students.filter((stu) => !recsOf(stu.account).some((r) => r.appeared))
+      if (!people.length) { showToast('本日名單無「未到」者', 'warn'); return }
+    } else {
+      const want = kind === 's1_reject' ? 'reject' : 'pass'
+      people = students.filter((stu) => confirmStateOf(stu) === want)
+      if (!people.length) {
+        showToast(want === 'pass' ? '本日名單無「通過」者' : '本日名單無「未通過」者', 'warn')
+        return
+      }
     }
     setMailKind(kind)
     setMailRecipients(people)
@@ -193,6 +199,7 @@ export default function Stage1ConfirmApp() {
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Btn variant="primary" onClick={() => openMail('s2_invite')}>✉ 二階邀請（通過者）</Btn>
+          <Btn onClick={() => openMail('s1_noshow')}>✉ 未到改期通知</Btn>
           <Btn onClick={() => openMail('s1_reject')}>✉ 未通過通知</Btn>
         </div>
       </div>

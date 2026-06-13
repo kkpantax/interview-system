@@ -38,8 +38,11 @@ const PHONE_LABEL = { EN: 'Local contact number', VI: 'Số điện thoại liê
 export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const isStage1Invite = kind === 's1_invite'
   const isReject = kind === 's1_reject'
-  const needInterview = !isReject
+  const isNoshow = kind === 's1_noshow'
+  const needInterview = !isReject && !isNoshow
+  const needReplyBy = needInterview || isNoshow
   const title = isReject ? '寄送第一階段未通過通知'
+    : isNoshow ? '寄送未報到改期通知'
     : isStage1Invite ? '寄送第一階段面試通知' : '寄送第二階段面試通知'
 
   const [form, setForm] = useState(() => ({
@@ -122,6 +125,7 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const validate = () => {
     if (!selected.length) return '沒有勾選任何學生'
     if (isReject) return null
+    if (isNoshow) { if (!form.replyBy.trim()) return '請填回覆期限'; return null }
     if (!form.date.trim()) return '請填面試日期'
     if (isStage1Invite) {
       if (selected.some((r) => r.mode === '實體') && !form.location.trim()) return '有實體面試，請填面試地點'
@@ -196,7 +200,7 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 14px', marginBottom: 14 }}>
         {needInterview && <div><label style={lbl}>面試日期</label>{inp('date', '2026/07/15')}</div>}
         {needInterview && <div><label style={lbl}>面試時間（沒帶各人時段時的預設）</label>{inp('time', '14:00–14:30')}</div>}
-        {needInterview && <div><label style={lbl}>回覆期限</label>{inp('replyBy', '2026/07/10')}</div>}
+        {needReplyBy && <div><label style={lbl}>回覆期限</label>{inp('replyBy', '2026/07/10')}</div>}
         {needInterview && (
           <div><label style={lbl}>面試時間填的是哪個時區</label>
             <select style={{ ...s.sel, width: '100%' }} value={form.tz} onChange={(e) => setF('tz', e.target.value)}>

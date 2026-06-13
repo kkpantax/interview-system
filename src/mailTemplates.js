@@ -14,6 +14,7 @@ export function pickLang(nationality) {
 export function templateKey({ kind, stage, mode, lang }) {
   const L = String(lang || 'EN').toUpperCase()
   if (kind === 's1_reject') return `S1_REJECT_${L}`
+  if (kind === 's1_noshow') return `S1_NOSHOW_${L}`
   if (kind === 's2_invite' || String(stage) === '2') return `S2_ONLINE_${L}`
   return `S1_${mode === '實體' ? 'OFFLINE' : 'ONLINE'}_${L}`
 }
@@ -42,6 +43,7 @@ const SUBJ = {
   S2_VI: '【Shih Chien University】Thông báo phỏng vấn vòng 2 第二階段面試通知 — {{中文姓名}}',
   S2_ID: '【Shih Chien University】Pemberitahuan Wawancara Tahap 2 第二階段面試通知 — {{中文姓名}}',
   S1_REJECT: '【Shih Chien University】Interview Result Notification 第一階段面試結果通知 — {{中文姓名}}',
+  S1_NOSHOW: '【Shih Chien University】Interview Reschedule Notice 第一階段面試改期通知 — {{中文姓名}}',
 }
 
 export const TEMPLATES = {
@@ -487,6 +489,93 @@ Hormat kami,
 感謝您參加本校「{{申請項目}}」第一階段面試。經審慎評估，很遺憾通知您，您此次未能進入下一階段甄選。
 
 感謝您對本校的興趣與用心準備，謹祝您未來一切順利、鵬程萬里。
+
+如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}{{聯絡電話中}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S1_NOSHOW_EN: { subject: SUBJ.S1_NOSHOW, body:
+`Dear {{英文姓名}},
+
+Thank you for applying to "{{申請項目EN}}" at Shih Chien University. We noticed that you were unable to attend your scheduled first-round interview.
+
+We would still be delighted to welcome you to Shih Chien University, and we hope you remain interested in studying with us. If so, we would be happy to arrange a new interview time for you.
+
+Please reply to this email by {{回覆期限}} to let us know whether you would like to reschedule, and we will arrange a new interview time as soon as possible.
+
+Should you have any questions, please contact {{承辦人}} at {{聯絡信箱}}{{聯絡電話外}}.
+
+Best regards,
+{{單位名稱}}, Shih Chien University
+
+────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+感謝您報名本校「{{申請項目}}」。本次第一階段面試我們未能與您見面，您並未到場參加。
+
+我們仍非常期待您加入實踐大學，也希望您對本校保有興趣。若是如此，我們很樂意為您安排改期面試。
+
+請於 {{回覆期限}} 前回覆本信，告知您是否希望另約面試時間，我們將儘速為您安排。
+
+如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}{{聯絡電話中}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S1_NOSHOW_VI: { subject: SUBJ.S1_NOSHOW, body:
+`Kính gửi bạn {{英文姓名}},
+
+Cảm ơn bạn đã đăng ký chương trình "{{申請項目EN}}" tại Đại học Thực Tiễn (Shih Chien University). Chúng tôi nhận thấy bạn đã không thể tham dự buổi phỏng vấn vòng một theo lịch.
+
+Chúng tôi vẫn rất mong được chào đón bạn đến với Đại học Thực Tiễn và hy vọng bạn vẫn quan tâm đến việc học tập tại trường. Nếu vậy, chúng tôi sẵn lòng sắp xếp một buổi phỏng vấn vào thời gian khác cho bạn.
+
+Vui lòng phản hồi email này trước ngày {{回覆期限}} để cho chúng tôi biết bạn có muốn dời lịch phỏng vấn hay không, và chúng tôi sẽ sắp xếp thời gian mới sớm nhất có thể.
+
+Nếu có thắc mắc, xin liên hệ {{承辦人}} qua email {{聯絡信箱}}{{聯絡電話外}}.
+
+Trân trọng,
+{{單位名稱}}, Đại học Thực Tiễn
+
+────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+感謝您報名本校「{{申請項目}}」。本次第一階段面試我們未能與您見面，您並未到場參加。
+
+我們仍非常期待您加入實踐大學，也希望您對本校保有興趣。若是如此，我們很樂意為您安排改期面試。
+
+請於 {{回覆期限}} 前回覆本信，告知您是否希望另約面試時間，我們將儘速為您安排。
+
+如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}{{聯絡電話中}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S1_NOSHOW_ID: { subject: SUBJ.S1_NOSHOW, body:
+`Kepada Yth. {{英文姓名}},
+
+Terima kasih telah mendaftar program "{{申請項目EN}}" di Shih Chien University. Kami memperhatikan bahwa Anda tidak dapat menghadiri wawancara tahap pertama yang telah dijadwalkan.
+
+Kami tetap akan dengan senang hati menyambut Anda di Shih Chien University dan berharap Anda masih berminat untuk berkuliah di sini. Jika demikian, kami dengan senang hati mengatur jadwal wawancara baru untuk Anda.
+
+Mohon balas email ini sebelum {{回覆期限}} untuk memberi tahu kami apakah Anda ingin menjadwalkan ulang wawancara, dan kami akan mengatur waktu wawancara baru sesegera mungkin.
+
+Jika ada pertanyaan, silakan hubungi {{承辦人}} melalui {{聯絡信箱}}{{聯絡電話外}}.
+
+Hormat kami,
+{{單位名稱}}, Shih Chien University
+
+────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+感謝您報名本校「{{申請項目}}」。本次第一階段面試我們未能與您見面，您並未到場參加。
+
+我們仍非常期待您加入實踐大學，也希望您對本校保有興趣。若是如此，我們很樂意為您安排改期面試。
+
+請於 {{回覆期限}} 前回覆本信，告知您是否希望另約面試時間，我們將儘速為您安排。
 
 如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}{{聯絡電話中}}）。
 
