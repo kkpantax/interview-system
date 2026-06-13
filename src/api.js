@@ -607,6 +607,49 @@ export async function setStage2Date(accounts, date) {
   }
 }
 
+// 整批指派但「只填還沒排日期的志願」（stage2_date IS NULL），不覆蓋已分天指派過的列。
+export async function fillStage2Date(accounts, date) {
+  const list = [...new Set((accounts || []).filter(Boolean))]
+  if (!list.length || !date) return
+  const BATCH = 50
+  for (let i = 0; i < list.length; i += BATCH) {
+    const inList = list.slice(i, i + BATCH).map((a) => encodeURIComponent(a)).join(',')
+    await callProxy(
+      `/rest/v1/applications?account=in.(${inList})&stage2_date=is.null`,
+      'PATCH', { stage2_date: date }, 'return=minimal',
+    )
+  }
+}
+
+// 依系所整批指派二階面試日：只動該系所的志願列。date 傳 ''/null 即移回未排程。
+export async function setStage2DateByDept(dept, date) {
+  if (!dept) return
+  await callProxy(
+    `/rest/v1/applications?department=eq.${encodeURIComponent(dept)}` +
+      '&stage1_passed_date=not.is.null&paper_passed=is.true',
+    'PATCH', { stage2_date: date || null }, 'return=minimal',
+  )
+}
+
+// 個別調整：單一（帳號＋系所）那一列的二階面試日。
+export async function setStage2DateForPref(account, dept, date) {
+  if (!account || !dept) return
+  await callProxy(
+    `/rest/v1/applications?account=eq.${encodeURIComponent(account)}` +
+      `&department=eq.${encodeURIComponent(dept)}`,
+    'PATCH', { stage2_date: date || null }, 'return=minimal',
+  )
+}
+
+// 分天指派用：所有二階資格者的「逐志願」清單（含各列目前 stage2_date）。
+export async function getStage2AllPrefs() {
+  return callProxy(
+    '/rest/v1/applications?select=id,account,name,name_english,department,preference_order,stage2_date' +
+      '&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc,preference_order.asc',
+    'GET',
+  )
+}
+
 // 某日所有報到／進度紀錄（department='' 為主會議室總報到，department=系名 為該系進度）。
 export async function getCheckins(date) {
   return callProxy(`/rest/v1/stage2_checkins?checkin_date=eq.${date}&select=*`, 'GET')

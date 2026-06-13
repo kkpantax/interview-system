@@ -6,6 +6,7 @@ import {
   getCheckins, upsertCheckin, deleteCheckin,
   getStage2NoShows, getCheckinsBefore, getStage2DateCounts,
   getStage1RecordsByAccounts, getDepartmentCampuses, getInfoLinks,
+  fillStage2Date, setStage2DateByDept, setStage2DateForPref, getStage2AllPrefs,
 } from '../api'
 import { writeXlsxMulti } from '../components/ExportBtn'
 import { DECISIONS_STAGE1, CAMPUS_OPTIONS, resolveCampus, deptShort, deptI18n } from '../constants'
@@ -156,6 +157,11 @@ export default function CheckinApp() {
   const [onlyUndone, setOnlyUndone]         = useState(false)
   const [picked, setPicked]   = useState({})        // 未排程勾選 { [account]: true }
   const [assignDate, setAssignDate] = useState(todayISO)
+  const [allPrefs, setAllPrefs]       = useState([])
+  const [splitDept, setSplitDept]     = useState('')
+  const [splitDeptDate, setSplitDeptDate] = useState(todayISO)
+  const [splitSearch, setSplitSearch] = useState('')
+  const [prefDates, setPrefDates]     = useState({})
   const [toast, setToast]     = useState(null)
   const [dateCounts, setDateCounts] = useState(null)   // 二階各日人數統計
   const [showGuide, setShowGuide] = useState(false)     // 操作說明
@@ -214,6 +220,11 @@ export default function CheckinApp() {
     }
   }, [showToast])
 
+  const loadAllPrefs = useCallback(async () => {
+    try { setAllPrefs(await getStage2AllPrefs() || []) }
+    catch (e) { showToast('載入志願清單失敗：' + e.message, 'error') }
+  }, [showToast])
+
   const loadNoShows = useCallback(async () => {
     try {
       const today = todayISO()
@@ -227,6 +238,7 @@ export default function CheckinApp() {
   useEffect(() => { load() }, [load])
   // 漏網之魚與未排程的人數徽章在任何分頁都常駐顯示，故一進頁就載入
   useEffect(() => { loadUnscheduled(); loadNoShows() }, [loadUnscheduled, loadNoShows])
+  useEffect(() => { if (tab === 'schedule') loadAllPrefs() }, [tab, loadAllPrefs])
 
   // 輪詢用的 state 鏡像：interval closure 會吃到舊的 loading/busy，改讀 ref 避免 stale closure
   const loadingRef = useRef(loading)
@@ -398,12 +410,33 @@ export default function CheckinApp() {
     if (!assignDate) { showToast('請選擇面試日期', 'warn'); return }
     setBusy(true)
     try {
-      await setStage2Date(accounts, assignDate)
+      await fillStage2Date(accounts, assignDate)
       showToast(`已指派 ${accounts.length} 位至 ${assignDate}`)
       setPicked({})
-      await loadUnscheduled()
-      await load()
+      await Promise.all([loadUnscheduled(), load(), loadAllPrefs(), loadDateCounts()])
     } catch (e) { showToast('指派失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+
+  const applyDeptSplit = async () => {
+    if (!splitDept) { showToast('請先選擇系所', 'warn'); return }
+    if (!splitDeptDate) { showToast('請選擇目標日期', 'warn'); return }
+    const cnt = allPrefs.filter((p) => p.department === splitDept).length
+    if (!window.confirm(`將「${splitDept}」共 ${cnt} 位的面試日改為 ${splitDeptDate}？（只動這個系所的志願）`)) return
+    setBusy(true)
+    try {
+      await setStage2DateByDept(splitDept, splitDeptDate)
+      showToast(`已將「${splitDept}」${cnt} 位改至 ${splitDeptDate}`)
+      await Promise.all([loadAllPrefs(), load(), loadUnscheduled(), loadDateCounts()])
+    } catch (e) { showToast('套用失敗：' + e.message, 'error') } finally { setBusy(false) }
+  }
+  const applyPrefSplit = async (row) => {
+    const next = (prefDates[row.id] ?? row.stage2_date ?? '').trim()
+    setBusy(true)
+    try {
+      await setStage2DateForPref(row.account, row.department, next || null)
+      showToast(next ? `已將 ${row.name}「${row.department}」改至 ${next}` : `已移回未排程`)
+      await Promise.all([loadAllPrefs(), load(), loadUnscheduled(), loadDateCounts()])
+    } catch (e) { showToast('套用失敗：' + e.message, 'error') } finally { setBusy(false) }
   }
 
   // ── 下載當日名單（多分頁：總表 + 各系分頁，含一階出席／平均分／建議）──────
@@ -994,6 +1027,82 @@ export default function CheckinApp() {
       ) : (
         // ── 未排程名單 ──────────────────────────────────────────────────────
         <>
+          {/* 分天指派：可依系所整批改期，或個別調整單一志願，不影響同一人的其他志願 */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardHead left="🔀 分天指派" right="依系所整批 · 或個別志願微調（不影響同一人的其他志願）" />
+            <div style={{ padding: '14px 16px' }}>
+              {/* 依系所整批 */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#444', marginBottom: 8 }}>依系所整批改期</div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select value={splitDept} onChange={(e) => setSplitDept(e.target.value)}
+                    style={{ ...s.input, width: 280, marginBottom: 0 }}>
+                    <option value="">— 選擇系所 —</option>
+                    {[...new Set(allPrefs.map((p) => p.department))].filter(Boolean).sort().map((dep) => {
+                      const n = allPrefs.filter((p) => p.department === dep).length
+                      return <option key={dep} value={dep}>{dep}（{n} 位）</option>
+                    })}
+                  </select>
+                  <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }}
+                    value={splitDeptDate} onChange={(e) => setSplitDeptDate(e.target.value)} />
+                  <Btn variant="primary" onClick={applyDeptSplit} disabled={busy}>套用至此系所</Btn>
+                </div>
+              </div>
+
+              {/* 個別志願微調 */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#444', marginBottom: 8 }}>個別志願微調</div>
+                <input style={{ ...s.input, width: 280, marginBottom: 10 }}
+                  placeholder="搜尋姓名 / 英文名 / 帳號 以列出該生各志願"
+                  value={splitSearch} onChange={(e) => setSplitSearch(e.target.value)} />
+                {splitSearch.trim() && (() => {
+                  const sq = splitSearch.trim().toLowerCase()
+                  const hits = allPrefs.filter((p) =>
+                    (p.account || '').toLowerCase().includes(sq) ||
+                    (p.name || '').toLowerCase().includes(sq) ||
+                    (p.name_english || '').toLowerCase().includes(sq))
+                  return (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                        <thead>
+                          <tr style={{ background: '#faf9f6' }}>
+                            {['姓名', '志願序', '系所', '目前面試日', '改至', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {hits.map((p) => (
+                            <tr key={p.id}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 500 }}>{p.name}</div>
+                                <div style={{ fontSize: 11, color: '#999' }}>{p.name_english}</div>
+                                <div style={{ fontSize: 11, color: '#bbb' }}>{p.account}</div>
+                              </td>
+                              <td style={td}>第 {p.preference_order ?? '?'} 志願</td>
+                              <td style={td}>{p.department}</td>
+                              <td style={{ ...td, color: p.stage2_date ? '#1e40af' : '#bbb' }}>{p.stage2_date || '未排程'}</td>
+                              <td style={td}>
+                                <input type="date"
+                                  value={prefDates[p.id] ?? p.stage2_date ?? ''}
+                                  onChange={(e) => setPrefDates((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                  style={{ ...s.input, width: 150, marginBottom: 0, padding: '5px 8px', fontSize: 12 }} />
+                              </td>
+                              <td style={td}>
+                                <Btn variant="primary" disabled={busy} onClick={() => applyPrefSplit(p)}>套用</Btn>
+                              </td>
+                            </tr>
+                          ))}
+                          {!hits.length && (
+                            <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>查無符合的學生</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          </Card>
+
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: '#555' }}>指派面試日</span>
             <input type="date" style={{ ...s.input, width: 160, marginBottom: 0 }} value={assignDate} onChange={(e) => setAssignDate(e.target.value)} />
