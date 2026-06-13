@@ -22,6 +22,16 @@ const shiftTime = (str, fromTz, toTz) => {
   })
 }
 
+// 日期格式化為 YYYY/MM/DD（用本地時間，避免 UTC 位移造成差一天）
+const fmtYmd = (d) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}/${m}/${day}`
+}
+const todayYmd = () => fmtYmd(new Date())
+const tomorrowYmd = () => fmtYmd(new Date(Date.now() + 86400000))
+
 // kind: 's1_invite' | 's2_invite' | 's1_reject'
 const PHONE_LABEL = { EN: 'Local contact number', VI: 'Số điện thoại liên hệ', ID: 'Nomor kontak lokal' }
 
@@ -32,17 +42,18 @@ export default function MailComposer({ kind, recipients, onClose, onToast }) {
   const title = isReject ? '寄送第一階段未通過通知'
     : isStage1Invite ? '寄送第一階段面試通知' : '寄送第二階段面試通知'
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     programZh: '國際專修部(1+4)',
     programEn: 'International Foundation Program (1+4)',
-    date: '', time: '', location: '', meetLink: '',
-    replyBy: '', contactPerson: '', contactEmail: '',
-    unitName: '國際事務處',
+    date: tomorrowYmd(), time: '09:00', location: '', meetLink: '',
+    replyBy: todayYmd(), contactPerson: '',
+    contactEmail: 'shihchien_ifp@g2.usc.edu.tw',
+    unitName: '國際事務處 Office of International Affairs',
     batchMode: '線上',
     tz: 'TW',
     dual: true,
     phone: '',
-  })
+  }))
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const baseRows = useMemo(() => (recipients || [])
