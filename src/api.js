@@ -469,25 +469,17 @@ export async function saveEvaluation(ev) {
   return callProxy('/rest/v1/evaluations', 'POST', ev, 'return=representation')
 }
 
-// 各系評分總覽：列出所有系所，並計每系（一階通過的學生）
-//   waiting=尚未有任何評分, evaluated=已有至少一筆評分, admitted=評分中有任一筆 recommendation=admit
+// 回傳系所清單與「逐志願列」明細（含 stage2_date 與該列 evaluations 的建議），
+// 由前端依選定面試日彙整每系 waiting/evaluated/admitted，並推導可選日期。
 export async function getStage2DeptSummary() {
   const [depts, rows] = await Promise.all([
     getDepartments(),
     callProxy(
-      '/rest/v1/applications?select=department,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true',
+      '/rest/v1/applications?select=department,stage2_date,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true',
       'GET',
     ),
   ])
-  const map = new Map(depts.map((d) => [d, { department: d, waiting: 0, evaluated: 0, admitted: 0 }]))
-  for (const r of (rows || [])) {
-    const m = map.get(r.department)
-    if (!m) continue
-    const evs = r.evaluations || []
-    if (evs.length === 0) m.waiting++
-    else { m.evaluated++; if (evs.some((e) => e.recommendation === 'admit')) m.admitted++ }
-  }
-  return depts.map((d) => map.get(d))
+  return { depts, rows: rows || [] }
 }
 
 // 二階各日人數：進二階者依 stage2_date 統計（以 account 去重；全志願皆未排者計入 unscheduled）

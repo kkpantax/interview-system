@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Card, CardHead, Btn, Modal, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
@@ -9,7 +9,7 @@ import TranslatorSOPModal from '../components/TranslatorSOPModal'
 import EvalDetailModal from '../components/EvalDetailModal'
 import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
-  getStage2List, getStage2Stats, saveEvaluation, deleteEvaluation,
+  getStage2List, saveEvaluation, deleteEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
   getAllCheckins, upsertCheckin, deleteCheckin, resetStage2CheckinDept, getInfoLinks,
   addStage2Translator, getStage2TranslatorsByDate,
@@ -22,6 +22,37 @@ const localToday = () => {
 }
 
 const EMPTY_STATS = { admit: 0, waitlist: 0, reject: 0, pending: 0 }
+
+// 面試日標籤：YYYY-MM-DD → MM/DD（週X）
+const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六']
+const dateLabel = (iso) => {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  const wd = WEEKDAY[new Date(y, m - 1, d).getDay()]
+  return `${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}（週${wd}）`
+}
+
+// 面試日篩選下拉：日期清單 + 「未排日期」（若有）+ 「全部日期」。
+// value：'all' | 'unscheduled' | YYYY-MM-DD
+function DateFilterSelect({ dates, value, onChange, hasUnscheduled = false, accent = '#15803d' }) {
+  const today = localToday()
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      style={{
+        fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, color: '#1a1a18',
+        padding: '7px 30px 7px 12px', borderRadius: 8, border: `1.5px solid ${accent}`,
+        background: '#fff', cursor: 'pointer', appearance: 'none',
+        backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2315803d\' stroke-width=\'3\'><path d=\'M6 9l6 6 6-6\'/></svg>")',
+        backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
+      }}>
+      {dates.map((d) => (
+        <option key={d} value={d}>{dateLabel(d)}{d === today ? '（今天）' : ''}</option>
+      ))}
+      {hasUnscheduled && <option value="unscheduled">未排日期</option>}
+      <option value="all">全部日期</option>
+    </select>
+  )
+}
 
 // 報到狀態 map：account → { arrived: 有主會議室總報到列, deptStatus: 本系那列的 status }
 // 報到列以「該學生自己的面試日」比對（行政端是按排定面試日記錄報到，不一定是今天），
@@ -63,20 +94,25 @@ const readRememberedTranslator = () => {
 const ghostBtn = { background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
 
 function DeptPicker() {
-  const [rows, setRows]       = useState([])
+  const [raw, setRaw]         = useState([])     // 逐志願列：{ department, stage2_date, evaluations:[{recommendation}] }
+  const [depts, setDepts]     = useState([])
+  const [quotas, setQuotas]   = useState({})
   const [campusMap, setCampusMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [err, setErr]         = useState('')
   const [showGuide, setShowGuide] = useState(false)
+  const [filterDate, setFilterDate] = useState(localToday())   // 預設只看今天的面試名單
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const [data, quotas, cm] = await Promise.all([getStage2DeptSummary(), getDepartmentQuotas(), getDepartmentCampuses()])
+        const [data, qs, cm] = await Promise.all([getStage2DeptSummary(), getDepartmentQuotas(), getDepartmentCampuses()])
         if (alive) {
+          setDepts(data?.depts || [])
+          setRaw(data?.rows || [])
+          setQuotas(qs || {})
           setCampusMap(cm || {})
-          setRows((data || []).map((r) => ({ ...r, quota: quotas[r.department] ?? null })))
         }
       } catch (e) {
         if (alive) setErr(e.message)
@@ -86,6 +122,31 @@ function DeptPicker() {
     })()
     return () => { alive = false }
   }, [])
+
+  const dates = useMemo(
+    () => [...new Set(raw.map((r) => r.stage2_date).filter(Boolean))].sort(),
+    [raw],
+  )
+  const hasUnscheduled = useMemo(() => raw.some((r) => !r.stage2_date), [raw])
+
+  const rows = useMemo(() => {
+    const inDate = (r) =>
+      filterDate === 'all' ? true :
+      filterDate === 'unscheduled' ? !r.stage2_date :
+      r.stage2_date === filterDate
+    const map = new Map(depts.map((d) => [d, { department: d, quota: quotas[d] ?? null, waiting: 0, evaluated: 0, admitted: 0 }]))
+    for (const r of raw) {
+      if (!inDate(r)) continue
+      const m = map.get(r.department)
+      if (!m) continue
+      const evs = r.evaluations || []
+      if (evs.length === 0) m.waiting++
+      else { m.evaluated++; if (evs.some((e) => e.recommendation === 'admit')) m.admitted++ }
+    }
+    return depts.map((d) => map.get(d))
+  }, [raw, depts, quotas, filterDate])
+
+  const totalWaiting = rows.reduce((a, r) => a + r.waiting, 0)
 
   const pick = (dept) => { window.location.hash = '#/stage2?dept=' + encodeURIComponent(dept) }
 
@@ -152,6 +213,24 @@ function DeptPicker() {
               style={{ background: '#15803d', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               查看操作說明
             </button>
+          </div>
+          {/* 面試日篩選：預設只看今天，避免新加入的待排考生造成「還有人沒評分」的錯覺 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            marginBottom: 20, padding: '12px 16px', background: '#fff',
+            border: '1px solid #e8e7e3', borderRadius: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a18' }}>面試日期</span>
+            <DateFilterSelect dates={dates} value={filterDate} onChange={setFilterDate} hasUnscheduled={hasUnscheduled} />
+            <span style={{ fontSize: 13, color: '#475569' }}>
+              {filterDate === 'all' ? '顯示全部日期'
+                : filterDate === 'unscheduled' ? '顯示未排面試日者'
+                : `此日待評分 `}
+              {filterDate !== 'all' && filterDate !== 'unscheduled' && (
+                <b style={{ color: totalWaiting > 0 ? '#1e40af' : '#15803d' }}>{totalWaiting} 位</b>
+              )}
+            </span>
+            {dates.length === 0 && (
+              <span style={{ fontSize: 12.5, color: '#b45309' }}>· 尚無已排面試日的考生，可改選「全部日期」或「未排日期」</span>
+            )}
           </div>
           {groups.map((g) => (
             <div key={g.name} style={{ marginBottom: 24 }}>
@@ -288,7 +367,6 @@ export default function Stage2App({ dept = '' }) {
 function Stage2Scoring({ dept }) {
   const [evaluator, setEvaluator] = useState(readEvaluatorSession)
   const [students, setStudents]   = useState([])
-  const [stats, setStats]         = useState(EMPTY_STATS)
   const [quota, setQuota]         = useState(null)
   const [checkinRows, setCheckinRows] = useState([])  // stage2_checkins 原始列，map 於 render 時依學生面試日推導
   const [search, setSearch]       = useState('')
@@ -301,6 +379,8 @@ function Stage2Scoring({ dept }) {
   const [showSOP, setShowSOP]     = useState(false)  // 翻譯工讀生須知
   const [infoLinks, setInfoLinks] = useState(null)   // info_links（首次開啟 SOP 時才載入）
   const [marking, setMarking]     = useState(null)   // 正在更新面試中標記的帳號
+  // 預設只看「評分老師當日工作階段的日期」，可手動切換
+  const [filterDate, setFilterDate] = useState(() => readEvaluatorSession()?.date || localToday())
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -329,11 +409,10 @@ function Stage2Scoring({ dept }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, st, quotas, checkins] = await Promise.all([
-        getStage2List(dept), getStage2Stats(dept), getDepartmentQuotas(), getAllCheckins(),
+      const [list, quotas, checkins] = await Promise.all([
+        getStage2List(dept), getDepartmentQuotas(), getAllCheckins(),
       ])
       setStudents(list || [])
-      setStats(st || EMPTY_STATS)
       setQuota(quotas?.[dept] ?? null)
       setCheckinRows(checkins || [])
     } catch (e) {
@@ -344,6 +423,8 @@ function Stage2Scoring({ dept }) {
   }, [dept, showToast])
 
   useEffect(() => { if (evaluator) load() }, [evaluator, load])
+  // 評分老師選定工作日期後，名單預設聚焦該日（之後仍可手動切換）
+  useEffect(() => { if (evaluator?.date) setFilterDate(evaluator.date) }, [evaluator?.date])
 
   // 輕量更新：只重抓報到列，不重載整個名單（失敗靜默）
   const refreshCheckins = useCallback(async () => {
@@ -418,8 +499,26 @@ function Stage2Scoring({ dept }) {
   // 報到狀態 map 於每次 render 依「各學生自己的面試日」即時推導
   const checkinMap = buildDeptCheckinMap(checkinRows, dept, students)
 
+  const dates = [...new Set(students.map((s) => s.stage2_date).filter(Boolean))].sort()
+  const hasUnscheduled = students.some((s) => !s.stage2_date)
+
+  const inDate = (stu) =>
+    filterDate === 'all' ? true :
+    filterDate === 'unscheduled' ? !stu.stage2_date :
+    stu.stage2_date === filterDate
+  const dateStudents = students.filter(inDate)
+
+  // 建議統計：依「本日考生」其 evaluations 計（多老師多輪不去重），與名單同範圍、不受搜尋影響
+  const stats = dateStudents.reduce((acc, stu) => {
+    for (const e of (stu.evaluations || [])) {
+      if (acc[e.recommendation] !== undefined) acc[e.recommendation]++
+      else acc.pending++
+    }
+    return acc
+  }, { ...EMPTY_STATS })
+
   const q = search.trim().toLowerCase()
-  const filtered = students.filter((stu) =>
+  const filtered = dateStudents.filter((stu) =>
     !q ||
     (stu.account || '').toLowerCase().includes(q) ||
     (stu.name || '').toLowerCase().includes(q),
@@ -549,8 +648,12 @@ function Stage2Scoring({ dept }) {
         <>
           {/* 工具列：搜尋＋報到狀態更新＋下載（從 header 移下來，header 只留主要動作） */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>面試日期</span>
+              <DateFilterSelect dates={dates} value={filterDate} onChange={setFilterDate} hasUnscheduled={hasUnscheduled} />
+            </div>
             <input
-              style={{ ...s.input, width: 220, marginBottom: 0 }}
+              style={{ ...s.input, width: 200, marginBottom: 0 }}
               placeholder="搜尋帳號 / 姓名"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -576,7 +679,10 @@ function Stage2Scoring({ dept }) {
           </div>
 
           <Card style={{ marginBottom: 16 }}>
-            <CardHead left={`${dept} · 待評分`} right={`${unscored.length} 位`} />
+            <CardHead
+              left={`${dept} · 待評分${filterDate === 'all' ? '（全部日期）' : filterDate === 'unscheduled' ? '（未排日期）' : `（${dateLabel(filterDate)}）`}`}
+              right={`${unscored.length} 位`}
+            />
             <Stage2List students={unscored} onOpen={setActive} loading={loading} checkinMap={checkinMap}
               onMarkInterview={markInterview} onCancelInterview={cancelInterview} markingAccount={marking} />
           </Card>
