@@ -593,7 +593,7 @@ export default function AdminApp() {
           </span>
         } />
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ minWidth: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
                 <th style={{ ...th, width: 32 }}>
@@ -618,7 +618,7 @@ export default function AdminApp() {
                       <td style={{ ...td, color: '#888' }}>{g.account}</td>
                       {(() => { const bi = batchInfo(g.account); return <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td> })()}
                       <td style={{ ...td, fontWeight: 500 }}>{g.rep.name}</td>
-                      <td style={{ ...td, color: '#777' }}>{g.rep.name_english}</td>
+                      <td style={{ ...td, color: '#777', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }} title={g.rep.name_english}>{g.rep.name_english}</td>
                       <td style={{ ...td, color: '#777' }}>{g.rep.passport_number}</td>
                       <td style={{ ...td, color: '#777' }}>{g.rep.birth_date || '—'}</td>
                       {(() => {
