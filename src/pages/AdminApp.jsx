@@ -599,7 +599,7 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '梯次', '中文姓名', '護照號碼', '年齡', '國籍', '中心', '第1志願系所', '志願', '書審', '面試日', '狀態', '操作'].map((h) => (
+                {['帳號', '梯次', '中文姓名', '護照號碼', '年齡', '國籍', '中心', '第1志願系所', '書審', '面試日', '狀態', '操作'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
@@ -647,16 +647,18 @@ export default function AdminApp() {
                           ))}
                         </select>
                       </td>
-                      <td style={{ ...td, color: '#555' }}>{g.rep.department}</td>
-                      <td style={td}>
-                        {extra > 0 ? (
-                          <button onClick={() => toggleExpand(g.key)}
-                            style={{ ...s.btn, ...s.btnSm, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#15803d' }}>
-                            {isOpen ? '▼ 收合' : `＋${extra} 個志願`}
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: 12, color: '#ccc' }}>單一志願</span>
-                        )}
+                      <td style={{ ...td, color: '#555' }}>
+                        <div>{g.rep.department}</div>
+                        <div style={{ marginTop: 3 }}>
+                          {extra > 0 ? (
+                            <button onClick={() => toggleExpand(g.key)}
+                              style={{ ...s.btn, ...s.btnSm, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#15803d' }}>
+                              {isOpen ? '▼ 收合' : `＋${extra} 個志願`}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#ccc' }}>單一志願</span>
+                          )}
+                        </div>
                       </td>
                       <td style={td}>
                         {(() => {
@@ -683,7 +685,7 @@ export default function AdminApp() {
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={13} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                        <td colSpan={12} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
                           <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願（取消勾選＝該系書審未通過，第二階段將不會出現）</div>
                           {g.apps.map((a) => (
                             <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
@@ -704,7 +706,7 @@ export default function AdminApp() {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={14} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={13} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '沒有資料，請先上傳報名名單'}
                 </td></tr>
               )}
