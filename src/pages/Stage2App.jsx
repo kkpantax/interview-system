@@ -11,6 +11,7 @@ import { SCORE_ITEMS, DECISIONS, CAMPUSES, resolveCampus } from '../constants'
 import {
   getStage2List, getStage2Stats, saveEvaluation, deleteEvaluation,
   getStage2DeptSummary, getStage2EvalsByDate, getDepartmentQuotas, getDepartmentCampuses,
+  getStage2DateCounts,
   getAllCheckins, upsertCheckin, deleteCheckin, resetStage2CheckinDept, getInfoLinks,
   addStage2Translator, getStage2TranslatorsByDate,
 } from '../api'
@@ -86,19 +87,41 @@ function DateFilterSelect({ dates, value, onChange, hasUnscheduled, counts }) {
 function DeptPicker() {
   const [rows, setRows]       = useState([])
   const [campusMap, setCampusMap] = useState({})
+  const [quotaMap, setQuotaMap]   = useState({})
+  const [dateMeta, setDateMeta]   = useState({ dates: [], m: {}, unscheduled: 0 })
+  const [filterDate, setFilterDate] = useState(null)  // null=尚未決定預設；決定後為 'all' | 'unscheduled' | ISO 日期
   const [loading, setLoading] = useState(true)
   const [err, setErr]         = useState('')
   const [showGuide, setShowGuide] = useState(false)
 
+  // 第一階段：撈日期清單 / 預計錄取 / 校區，並決定預設聚焦日（今天有排面試就用今天，否則看全部）
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const [data, quotas, cm] = await Promise.all([getStage2DeptSummary(), getDepartmentQuotas(), getDepartmentCampuses()])
-        if (alive) {
-          setCampusMap(cm || {})
-          setRows((data || []).map((r) => ({ ...r, quota: quotas[r.department] ?? null })))
-        }
+        const [dc, quotas, cm] = await Promise.all([getStage2DateCounts(), getDepartmentQuotas(), getDepartmentCampuses()])
+        if (!alive) return
+        setDateMeta(dc || { dates: [], m: {}, unscheduled: 0 })
+        setQuotaMap(quotas || {})
+        setCampusMap(cm || {})
+        const today = localToday()
+        setFilterDate((dc?.dates || []).includes(today) ? today : 'all')
+      } catch (e) {
+        if (alive) { setErr(e.message); setLoading(false) }
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  // 第二階段：依選定的面試日重撈各系統計（filterDate 改變即重撈）
+  useEffect(() => {
+    if (filterDate == null) return
+    let alive = true
+    setLoading(true)
+    ;(async () => {
+      try {
+        const data = await getStage2DeptSummary(filterDate)
+        if (alive) setRows((data || []).map((r) => ({ ...r, quota: quotaMap[r.department] ?? null })))
       } catch (e) {
         if (alive) setErr(e.message)
       } finally {
@@ -106,7 +129,7 @@ function DeptPicker() {
       }
     })()
     return () => { alive = false }
-  }, [])
+  }, [filterDate, quotaMap])
 
   const pick = (dept) => { window.location.hash = '#/stage2?dept=' + encodeURIComponent(dept) }
 
@@ -157,6 +180,24 @@ function DeptPicker() {
         </div>
       }
     >
+      {filterDate != null && !err && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          marginBottom: 16,
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>面試日期</span>
+          <DateFilterSelect
+            dates={dateMeta.dates}
+            value={filterDate}
+            onChange={setFilterDate}
+            hasUnscheduled={dateMeta.unscheduled > 0}
+            counts={dateMeta.m}
+          />
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>
+            下方各系「等待評分 / 已評選 / 建議錄取」皆為{filterDate === 'all' ? '全部日期' : filterDate === 'unscheduled' ? '未排日期' : dateLabel(filterDate)}的人數
+          </span>
+        </div>
+      )}
       {loading ? (
         <Card><div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 14 }}>載入中…</div></Card>
       ) : err ? (

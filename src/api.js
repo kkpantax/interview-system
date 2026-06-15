@@ -474,9 +474,14 @@ export async function saveEvaluation(ev) {
 //   abandoned=未評分但行政報到端已標記放棄該志願（不計入 waiting，避免行政誤以為還有人沒評到）。
 //   放棄比對沿用評分頁邏輯：報到列 status='abandoned' 且 checkin_date == 該生面試日（無排程退回今天）才算數，
 //   改期後舊日期的放棄列自動失效。
-export async function getStage2DeptSummary() {
+// dateFilter：'all'=全部日期（預設，向後相容）｜'unscheduled'=未排面試日｜ISO 日期=只計面試日為該日者
+export async function getStage2DeptSummary(dateFilter = 'all') {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const matchDate = (r) =>
+    dateFilter === 'all' ? true :
+    dateFilter === 'unscheduled' ? !r.stage2_date :
+    (r.stage2_date || '') === dateFilter
   const [depts, rows, abChecks] = await Promise.all([
     getDepartments(),
     callProxy(
@@ -495,6 +500,7 @@ export async function getStage2DeptSummary() {
   }
   const map = new Map(depts.map((d) => [d, { department: d, waiting: 0, evaluated: 0, admitted: 0, abandoned: 0 }]))
   for (const r of (rows || [])) {
+    if (!matchDate(r)) continue
     const m = map.get(r.department)
     if (!m) continue
     const evs = r.evaluations || []
@@ -1063,4 +1069,39 @@ export async function getMailLog(kind) {
     'GET',
   )
   return Object.fromEntries((rows || []).map((r) => [r.account, r]))
+}
+
+// ── 第四階段 · 學生端就讀確認（公開端點 /api/confirm，service key 驗 token）─────
+async function callConfirm(action, payload) {
+  const res = await fetch('/api/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) throw new Error(data.error || '確認服務請求失敗')
+  return data
+}
+// 學生開啟確認頁時讀取本人資訊（依 token）
+export async function confirmInfo(token) {
+  return callConfirm('info', { token })
+}
+// 學生送出選擇（decision: 'enrolled' | 'declined'）
+export async function confirmSubmit(token, decision) {
+  return callConfirm('submit', { token, decision })
+}
+
+// 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
+export async function setStage4Confirm(id, fields) {
+  return updateStage4Status(id, fields)
+}
+
+// 稽核軌跡（承辦查看：某帳號/系所的確認紀錄）
+export async function getStage4ConfirmLog() {
+  return callProxy(
+    '/rest/v1/stage4_confirm_log?select=*&order=created_at.desc',
+    'GET',
+  )
 }

@@ -15,6 +15,7 @@ export function templateKey({ kind, stage, mode, lang }) {
   const L = String(lang || 'EN').toUpperCase()
   if (kind === 's1_reject') return `S1_REJECT_${L}`
   if (kind === 's1_noshow') return `S1_NOSHOW_${L}`
+  if (kind === 's4_admit') return `S4_ADMIT_${L}`
   if (kind === 's2_invite' || String(stage) === '2') return `S2_ONLINE_${L}`
   return `S1_${mode === '實體' ? 'OFFLINE' : 'ONLINE'}_${L}`
 }
@@ -44,6 +45,9 @@ const SUBJ = {
   S2_ID: '【Shih Chien University】Pemberitahuan Wawancara Tahap 2 第二階段面試通知 — {{中文姓名}}',
   S1_REJECT: '【Shih Chien University】Interview Result Notification 第一階段面試結果通知 — {{中文姓名}}',
   S1_NOSHOW: '【Shih Chien University】Interview Reschedule Notice 第一階段面試改期通知 — {{中文姓名}}',
+  S4_ADMIT_EN: '【Shih Chien University】Admission Result & Enrollment Confirmation 預計錄取通知與就讀確認 — {{中文姓名}}',
+  S4_ADMIT_VI: '【Shih Chien University】Kết quả trúng tuyển & Xác nhận nhập học 預計錄取通知與就讀確認 — {{中文姓名}}',
+  S4_ADMIT_ID: '【Shih Chien University】Hasil Penerimaan & Konfirmasi Pendaftaran 預計錄取通知與就讀確認 — {{中文姓名}}',
 }
 
 export const TEMPLATES = {
@@ -578,6 +582,136 @@ Hormat kami,
 請於 {{回覆期限}} 前回覆本信，告知您是否希望另約面試時間，我們將儘速為您安排。
 
 如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}{{聯絡電話中}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  // ── 第四階段．預計錄取通知與就讀確認（含個人確認連結）──
+  S4_ADMIT_EN: { subject: SUBJ.S4_ADMIT_EN, body:
+`Dear {{英文姓名}},
+
+Congratulations! Following the interview process, you have been admitted to the following program at Shih Chien University:
+
+• Program: {{系所外}}
+• Result: {{類別外}}
+
+To secure your place, please confirm whether you will enroll by clicking your personal link below:
+
+{{確認連結}}
+
+▸ Please reply by: {{回覆期限}}
+▸ You may change your choice through the same link any time before the deadline.
+▸ This link is unique to you — please do not share it.
+
+If you do not respond by the deadline, your place may be released. If you have any questions, please contact {{承辦人}} at {{聯絡信箱}}.
+
+Best regards,
+{{單位名稱}}, Shih Chien University
+
+────────────────────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+恭喜您！經面試審查，您已獲本校以下學系預計錄取：
+
+▸ 錄取學系：{{系所中}}
+▸ 錄取結果：{{類別中}}
+
+為保留您的名額，請點選下方您的專屬連結，確認是否就讀：
+
+{{確認連結}}
+
+▸ 請於 {{回覆期限}} 前完成確認。
+▸ 期限前可透過同一連結隨時修改您的選擇。
+▸ 此連結為您個人專屬，請勿轉傳他人。
+
+逾期未回覆者，名額可能釋出。如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S4_ADMIT_VI: { subject: SUBJ.S4_ADMIT_VI, body:
+`Kính gửi bạn {{英文姓名}},
+
+Xin chúc mừng! Sau quá trình phỏng vấn, bạn đã trúng tuyển vào ngành sau đây tại Đại học Thực Tiễn (Shih Chien University):
+
+• Ngành: {{系所外}}
+• Kết quả: {{類別外}}
+
+Để giữ chỗ, vui lòng xác nhận bạn có nhập học hay không bằng cách nhấp vào liên kết cá nhân của bạn dưới đây:
+
+{{確認連結}}
+
+▸ Vui lòng phản hồi trước: {{回覆期限}}
+▸ Bạn có thể thay đổi lựa chọn qua cùng liên kết bất cứ lúc nào trước hạn chót.
+▸ Liên kết này là riêng của bạn — xin đừng chia sẻ cho người khác.
+
+Nếu bạn không phản hồi trước hạn chót, chỗ của bạn có thể bị hủy. Nếu có thắc mắc, xin liên hệ {{承辦人}} qua {{聯絡信箱}}.
+
+Trân trọng,
+{{單位名稱}}, Đại học Thực Tiễn
+
+────────────────────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+恭喜您！經面試審查，您已獲本校以下學系預計錄取：
+
+▸ 錄取學系：{{系所中}}
+▸ 錄取結果：{{類別中}}
+
+為保留您的名額，請點選下方您的專屬連結，確認是否就讀：
+
+{{確認連結}}
+
+▸ 請於 {{回覆期限}} 前完成確認。
+▸ 期限前可透過同一連結隨時修改您的選擇。
+▸ 此連結為您個人專屬，請勿轉傳他人。
+
+逾期未回覆者，名額可能釋出。如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
+
+順頌　時祺
+實踐大學 {{單位名稱}}` },
+
+  S4_ADMIT_ID: { subject: SUBJ.S4_ADMIT_ID, body:
+`Yth. {{英文姓名}},
+
+Selamat! Setelah proses wawancara, Anda telah diterima di program studi berikut di Shih Chien University:
+
+• Program studi: {{系所外}}
+• Hasil: {{類別外}}
+
+Untuk mengamankan tempat Anda, mohon konfirmasi apakah Anda akan mendaftar dengan mengeklik tautan pribadi Anda di bawah ini:
+
+{{確認連結}}
+
+▸ Mohon balas sebelum: {{回覆期限}}
+▸ Anda dapat mengubah pilihan melalui tautan yang sama kapan saja sebelum batas waktu.
+▸ Tautan ini khusus untuk Anda — mohon jangan dibagikan.
+
+Jika Anda tidak merespons sebelum batas waktu, tempat Anda dapat dilepaskan. Jika ada pertanyaan, silakan hubungi {{承辦人}} melalui {{聯絡信箱}}.
+
+Hormat kami,
+{{單位名稱}}, Shih Chien University
+
+────────────────────────────
+
+親愛的 {{中文姓名}} 同學，您好：
+
+恭喜您！經面試審查，您已獲本校以下學系預計錄取：
+
+▸ 錄取學系：{{系所中}}
+▸ 錄取結果：{{類別中}}
+
+為保留您的名額，請點選下方您的專屬連結，確認是否就讀：
+
+{{確認連結}}
+
+▸ 請於 {{回覆期限}} 前完成確認。
+▸ 期限前可透過同一連結隨時修改您的選擇。
+▸ 此連結為您個人專屬，請勿轉傳他人。
+
+逾期未回覆者，名額可能釋出。如有任何問題，歡迎與承辦人 {{承辦人}} 聯繫（{{聯絡信箱}}）。
 
 順頌　時祺
 實踐大學 {{單位名稱}}` },

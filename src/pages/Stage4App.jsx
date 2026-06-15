@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
-import { getStage4Data, syncStage4FromStage3, updateStage4Status } from '../api'
+import Stage4SummaryTable from '../components/Stage4SummaryTable'
+import AdmitMailComposer from '../components/AdmitMailComposer'
+import { getStage4Data, syncStage4FromStage3, updateStage4Status, getDepartmentQuotas, getDepartmentCampuses } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { batchInfo } from '../constants'
 
@@ -52,6 +54,12 @@ export default function Stage4App() {
   const [loading, setLoading] = useState(false)
   const [busy, setBusy]       = useState(false)
   const [toast, setToast]     = useState(null)
+  const [quotas, setQuotas]   = useState({})
+  const [campusOverrides, setCampusOverrides] = useState({})
+  const [showMail, setShowMail] = useState(false)
+  const [updatedAt, setUpdatedAt] = useState('')
+  const busyRef = useRef(false)
+  useEffect(() => { busyRef.current = busy }, [busy])
 
   // 守衛：只有 admin 能進（導向 stage4 專用登入，登入後會回到本頁）
   useEffect(() => { if (!teacher || (teacher.role !== 'superadmin')) window.location.hash = '#/login?stage=stage4' }, [teacher])
@@ -65,6 +73,7 @@ export default function Stage4App() {
     try {
       const rows = await getStage4Data()
       setData(rows || [])
+      setUpdatedAt(new Date().toLocaleTimeString('zh-TW', { hour12: false }))
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -73,6 +82,24 @@ export default function Stage4App() {
   }, [showToast])
 
   useEffect(() => { load() }, [load])
+
+  // 名額 / 校區對照（給各系統計表用），載入一次
+  useEffect(() => {
+    getDepartmentQuotas().then((q) => setQuotas(q || {})).catch(() => {})
+    getDepartmentCampuses().then((o) => setCampusOverrides(o || {})).catch(() => {})
+  }, [])
+
+  // 30 秒自動輪詢更新統計；分頁隱藏時暫停，載入／操作中略過
+  useEffect(() => {
+    const tick = () => {
+      if (document.hidden || loading || busyRef.current) return
+      load()
+    }
+    const timer = setInterval(tick, 30000)
+    const onVis = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis) }
+  }, [load, loading])
 
   const centers = useMemo(
     () => [...new Set(data.map((r) => r.center || '（未設定中心）'))].sort((a, b) => a.localeCompare(b, 'zh-TW')),
@@ -88,6 +115,15 @@ export default function Stage4App() {
   const rows = useMemo(
     () => data.filter((r) => centerOf(r) === center),
     [data, center],
+  )
+
+  // 預計錄取通知收件名單：正取、尚未回應、有 Email（v1 只寄正取）
+  const notifyRecipients = useMemo(
+    () => data.filter((r) =>
+      r.stage3_status === 'admitted' &&
+      r.contact_status === 'pending' &&
+      r.appInfo?.email),
+    [data],
   )
 
   // 本中心統計
@@ -243,6 +279,9 @@ export default function Stage4App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading && <span style={{ fontSize: 12, color: '#fde7d4' }}>載入中…</span>}
           <Btn style={headerBtn} disabled={busy} onClick={doSync}>從Stage3同步正取備取名單</Btn>
+          <Btn style={headerBtn} disabled={busy || !notifyRecipients.length} onClick={() => setShowMail(true)}>
+            ✉ 寄送預計錄取通知{notifyRecipients.length ? `（${notifyRecipients.length}）` : ''}
+          </Btn>
           <ExportMenu items={[
             { label: '⬇ 匯出最終就讀名單', onClick: exportEnrolled },
             { label: '⬇ 匯出就讀確認名單', onClick: exportNotifyEnrolled },
@@ -253,6 +292,9 @@ export default function Stage4App() {
         </div>
       }
     >
+      {/* 各系即時就讀確認統計（30 秒自動更新） */}
+      <Stage4SummaryTable data={data} quotas={quotas} overrides={campusOverrides} updatedAt={updatedAt} />
+
       {/* 中心 Tab */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {centers.map((c) => (
@@ -354,6 +396,14 @@ export default function Stage4App() {
         「放棄」（正取或候補）會自動遞補同中心同科系排名最前的備取生為「候補詢問中」，
         若該備取生已在他系確認則跳過（標為「已略過」）。「從Stage3同步」不會覆蓋進行中的資料。
       </div>
+
+      {showMail && (
+        <AdmitMailComposer
+          recipients={notifyRecipients}
+          onClose={() => { setShowMail(false); load() }}
+          onToast={showToast}
+        />
+      )}
     </PageShell>
   )
 }
