@@ -15,8 +15,9 @@ import DayBarChart from '../components/DayBarChart'
 import CenterMatchModal from '../components/CenterMatchModal'
 import InterviewDateModal from '../components/InterviewDateModal'
 import PassportBirthImportModal from '../components/PassportBirthImportModal'
+import MaterialsLinkImportModal from '../components/MaterialsLinkImportModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount, saveYearlySnapshot } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount, updateMaterialsUrlByAccount, saveYearlySnapshot } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
 import { STATUS, batchInfo } from '../constants'
@@ -81,6 +82,7 @@ export default function AdminApp() {
   const [showCenterMatch, setShowCenterMatch] = useState(false)
   const [showDateImport, setShowDateImport] = useState(false)
   const [showBirthImport, setShowBirthImport] = useState(false)
+  const [showLinkImport, setShowLinkImport] = useState(false)
   const [toast, setToast]         = useState(null)
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
@@ -136,6 +138,12 @@ export default function AdminApp() {
   const handleBirthPassportImport = async (rows, onProgress) => {
     const { updated, total } = await updateBirthPassportByAccount(rows, onProgress)
     showToast(`生日／護照匯入完成：更新 ${updated} 位（共比對 ${total} 位）`)
+    await load()
+  }
+
+  const handleMaterialsLinkImport = async (rows, onProgress) => {
+    const { updated, total } = await updateMaterialsUrlByAccount(rows, onProgress)
+    showToast(`書面資料連結匯入完成：更新 ${updated} 位（共比對 ${total} 位）`)
     await load()
   }
 
@@ -593,6 +601,7 @@ export default function AdminApp() {
               items={[
                 { label: '📅 上傳第一階段面試時間表', onClick: () => setShowDateImport(true) },
                 { label: '🪪 上傳學生生日／護照號碼', onClick: () => setShowBirthImport(true) },
+                { label: '📎 上傳書面資料雲端連結', onClick: () => setShowLinkImport(true) },
                 { label: '📋 上傳中心名單', onClick: () => setShowCenterMatch(true) },
               ]}
             />
@@ -743,6 +752,13 @@ export default function AdminApp() {
           groups={groups}
           onApply={handleBirthPassportImport}
           onClose={() => setShowBirthImport(false)}
+        />
+      )}
+      {showLinkImport && (
+        <MaterialsLinkImportModal
+          groups={groups}
+          onApply={handleMaterialsLinkImport}
+          onClose={() => setShowLinkImport(false)}
         />
       )}
       {editGroup && (

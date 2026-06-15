@@ -1,5 +1,5 @@
 import { Btn, Pill } from './UI'
-import { DECISIONS } from '../constants'
+import { DECISIONS, batchOf } from '../constants'
 
 const decInfo = (v) => DECISIONS.find((d) => d.v === v) || DECISIONS.find((d) => d.v === 'pending')
 
@@ -14,6 +14,19 @@ function PrefPill({ order }) {
       color: order === 1 ? '#15803d' : '#475569',
     }}>第 {order} 志願</span>
   )
+}
+
+// 書面資料狀態（三態，依梯次）：有連結→可點；二梯無連結→未上傳(橘)；其餘→非線上(灰，避免誤判未繳交)
+function MaterialsCell({ stu }) {
+  if (stu.materials_url) return (
+    <a href={stu.materials_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+      style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 9px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', textDecoration: 'none' }}
+    >📎 資料</a>
+  )
+  if (batchOf(stu.account) === 2) return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 9px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#fef3c7', color: '#b45309' }}>⚠ 未上傳</span>
+  )
+  return <span style={{ fontSize: 12, color: '#cbd5e1' }} title="第一梯次非線上繳交">非線上</span>
 }
 
 // 多筆評分取 eval_date 最新的一筆（多老師、多輪）
@@ -103,6 +116,7 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
                 <td style={td}>
                   {showEvalSummary ? (
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <MaterialsCell stu={stu} />
                       <Btn onClick={() => onView(stu)}>查看</Btn>
                       <Btn variant="primary" onClick={() => onOpen(stu)}>再次評分 →</Btn>
                     </div>
@@ -110,6 +124,7 @@ export default function Stage2List({ students, onOpen, onView = () => {}, loadin
                     <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>🚫 已放棄，無需評分</span>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <MaterialsCell stu={stu} />
                       {onMarkInterview && (() => {
                         const ds = checkinMap?.[stu.account]?.deptStatus
                         const busy = markingAccount === stu.account

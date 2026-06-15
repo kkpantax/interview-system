@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SCORE_ITEMS, DECISIONS, QUESTIONS_STAGE1, QUESTIONS_STAGE2 } from '../constants'
+import { SCORE_ITEMS, DECISIONS, QUESTIONS_STAGE1, QUESTIONS_STAGE2, batchOf } from '../constants'
 import { BackBtn, Card, CardHead, Btn, Modal, s } from './UI'
 
 const emptyScores = () => Object.fromEntries(SCORE_ITEMS.map((i) => [i.key, 0]))
@@ -52,6 +52,20 @@ export default function ScoreForm({ student, onSave, onBack, saving, evaluator }
         <span>{student.department}</span>
         <span>{student.nationality} · {student.gender}</span>
         {student.stage1_passed_date && <span style={{ color: '#15803d' }}>一階通過：{student.stage1_passed_date}</span>}
+        {(() => {
+          const base = { marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600 }
+          if (student.materials_url) return (
+            <a href={student.materials_url} target="_blank" rel="noopener noreferrer"
+              style={{ ...base, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#1d4ed8', color: '#fff', textDecoration: 'none' }}
+            >📎 查看書面資料</a>
+          )
+          if (batchOf(student.account) === 2) return (
+            <span style={{ ...base, background: '#fef3c7', color: '#b45309' }}>⚠ 尚未上傳書面資料</span>
+          )
+          return (
+            <span style={{ ...base, fontWeight: 500, background: '#f3f4f6', color: '#9ca3af' }}>書面資料：非線上繳交</span>
+          )
+        })()}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>

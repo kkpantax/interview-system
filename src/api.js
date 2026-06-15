@@ -226,6 +226,21 @@ export async function updateBirthPassportByAccount(updates, onProgress) {
   return { updated, total: updates.length }
 }
 
+// 批次以「帳號」寫入書面資料雲端連結（PATCH applications，沿用既有 UPDATE RLS）
+export async function updateMaterialsUrlByAccount(updates, onProgress) {
+  let done = 0, updated = 0
+  for (const u of updates) {
+    if (!u.account || !u.materials_url) { done++; onProgress?.(done, updates.length); continue }
+    const res = await callProxy(
+      `/rest/v1/applications?account=eq.${encodeURIComponent(u.account)}`,
+      'PATCH', { materials_url: u.materials_url }, 'return=representation',
+    )
+    if (Array.isArray(res) && res.length) updated++
+    done++; onProgress?.(done, updates.length)
+  }
+  return { updated, total: updates.length }
+}
+
 // ── Centers（面試中心，由行政人員動態管理）─────────────────────────────────
 export async function getCenters() {
   return callProxy('/rest/v1/centers?select=*&order=sort_order.asc,name.asc', 'GET')
