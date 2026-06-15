@@ -398,21 +398,21 @@ export default function StatsApp() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={th}>系所</th><th style={thNum}>第一志願</th><th style={thNum}>總志願</th>
+                    <th style={th}>系所</th><th style={thNum}>各系預計招收名額</th><th style={thNum}>第一志願</th><th style={thNum}>總志願</th>
                     <th style={thNum}>正取</th><th style={thNum}>備取</th><th style={thNum}>就讀</th>
-                    <th style={thNum}>名額</th><th style={thNum}>達成率</th>
+                    <th style={thNum}>達成率</th>
                   </tr>
                 </thead>
                 <tbody>
                   {deptData.map((d) => (
                     <tr key={d.dept}>
                       <td style={td}>{d.dept}</td>
+                      <td style={tdNum}>{d.quota || '—'}</td>
                       <td style={tdNum}><strong>{d.p1}</strong></td>
                       <td style={tdNum}>{d.total}</td>
                       <td style={tdNum}>{d.admitted}</td>
                       <td style={tdNum}>{d.waitlisted}</td>
                       <td style={tdNum}>{d.enrolled}</td>
-                      <td style={tdNum}>{d.quota || '—'}</td>
                       <td style={{ ...tdNum, fontWeight: 700, color: d.rate == null ? '#999' : rateColor(d.rate) }}>{d.rate != null ? d.rate + '%' : '—'}</td>
                     </tr>
                   ))}
