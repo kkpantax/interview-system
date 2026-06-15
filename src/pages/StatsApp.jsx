@@ -10,7 +10,7 @@ import {
   getAllApplications, getDepartmentQuotas, getDepartmentCampuses,
   getYearlyStats, getDashboardData,
 } from '../api'
-import { CAMPUS_OPTIONS, deptShort } from '../constants'
+import { CAMPUS_OPTIONS, deptShort, batchInfo, BATCHES } from '../constants'
 import { buildDashboard, AGE_BUCKETS } from '../statsCompute'
 import { getTeacher } from '../auth'
 
@@ -142,6 +142,14 @@ export default function StatsApp() {
   const genderData = useMemo(() => (dash ? Object.entries(dash.genderStats).map(([name, value]) => ({ name, value })) : []), [dash])
   const ageData = useMemo(() => (dash ? AGE_BUCKETS.map((b) => ({ name: b, value: dash.ageStats[b] || 0 })) : []), [dash])
 
+  // ── 梯次對照（第一梯 / 第二梯加報，同漏斗口徑、受校區篩選連動）──
+  const batchCmp = useMemo(() => {
+    const bf = dash?.batchFunnel
+    if (!bf) return []
+    const defs = [['報名', 'applicants'], ['一階報到', 'stage1'], ['二階報到', 'stage2'], ['正取', 'admitted'], ['備取', 'waitlisted'], ['確定就讀', 'enrolled']]
+    return defs.map(([name, k]) => ({ name, b1: bf[1][k], b2: bf[2][k] }))
+  }, [dash])
+
   // ── 歷年趨勢（機構層級，不受校區篩選影響）──
   const trendData = useMemo(() => {
     const rows = [...yearly].sort((a, b) => a.year - b.year).map((y) => ({
@@ -168,6 +176,14 @@ export default function StatsApp() {
       ['匯出時間', new Date().toLocaleString('zh-TW')],
     ]), '招生漏斗')
 
+    const bf = dashAll.batchFunnel
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['梯次', '報名', '一階報到', '二階報到', '正取', '備取', '確定就讀'],
+      ['第一梯', bf[1].applicants, bf[1].stage1, bf[1].stage2, bf[1].admitted, bf[1].waitlisted, bf[1].enrolled],
+      ['第二梯（加報）', bf[2].applicants, bf[2].stage1, bf[2].stage2, bf[2].admitted, bf[2].waitlisted, bf[2].enrolled],
+      ['合計', af.applicants, af.stage1, af.stage2, af.admitted, af.waitlisted, af.enrolled],
+    ]), '梯次對照')
+
     const dAoa = [['校區', '系所', '第一志願', '總志願', '正取', '備取', '確定就讀', '名額', '達成率']]
     for (const d of [...dashAll.deptRows].sort((a, b) => CAMPUS_OPTIONS.indexOf(a.campus) - CAMPUS_OPTIONS.indexOf(b.campus))) {
       const quota = quotas[d.dept] || 0
@@ -189,9 +205,9 @@ export default function StatsApp() {
     for (const r of trendData) yAoa.push([r.year, r.報名, r.正取, r.就讀])
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(yAoa), '歷年趨勢')
 
-    const cols = [['account', '帳號'], ['name', '中文姓名'], ['name_english', '英文姓名'], ['department', '系所'], ['preference_order', '志願序'], ['nationality', '國籍'], ['gender', '性別'], ['birth_date', '生日'], ['passport_number', '護照號碼'], ['phone', '行動電話'], ['email', 'Email'], ['high_school', '畢業學校'], ['graduation_year', '畢業年'], ['status', '狀態']]
+    const cols = [['account', '帳號'], ['__batch', '梯次'], ['name', '中文姓名'], ['name_english', '英文姓名'], ['department', '系所'], ['preference_order', '志願序'], ['nationality', '國籍'], ['gender', '性別'], ['birth_date', '生日'], ['passport_number', '護照號碼'], ['phone', '行動電話'], ['email', 'Email'], ['high_school', '畢業學校'], ['graduation_year', '畢業年'], ['status', '狀態']]
     const detail = [cols.map((c) => c[1])]
-    for (const r of apps) detail.push(cols.map((c) => r[c[0]] ?? ''))
+    for (const r of apps) detail.push(cols.map((c) => (c[0] === '__batch' ? batchInfo(r.account).label : (r[c[0]] ?? ''))))
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), '報名明細')
 
     XLSX.writeFile(wb, `招生統計報表_${new Date().toISOString().slice(0, 10)}.xlsx`)
@@ -239,6 +255,50 @@ export default function StatsApp() {
             <Kpi label="報到率" value={enrollRate} sub="就讀 ÷ 正取" color={C.green} />
             <Kpi label="名額達成率" value={quotaRate} sub={`就讀 ${f.enrolled} ÷ 名額 ${totalQuota || '—'}`} color={C.amber} />
           </div>
+
+          {/* 梯次對照 */}
+          <Card style={{ marginBottom: 20 }}>
+            <CardHead left="梯次對照（第一梯 ╱ 第二梯加報）" right="同漏斗口徑、依帳號區分；放榜仍與第一梯合併計算" />
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ width: '100%', height: 230 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={batchCmp} margin={{ left: -18, right: 8, top: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0efeb" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#888' }} axisLine={false} tickLine={false} interval={0} />
+                    <YAxis tick={{ fontSize: 10, fill: '#aaa' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip cursor={{ fill: '#f7f6f3' }} content={<ChartTip />} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="b1" name="第一梯" fill={BATCHES[0].color} radius={[4, 4, 0, 0]} barSize={18} isAnimationActive={false} />
+                    <Bar dataKey="b2" name="第二梯（加報）" fill={BATCHES[1].color} radius={[4, 4, 0, 0]} barSize={18} isAnimationActive={false} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>梯次</th>
+                      {batchCmp.map((c) => <th key={c.name} style={thNum}>{c.name}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ ...td, color: BATCHES[0].color, fontWeight: 600 }}>第一梯</td>
+                      {batchCmp.map((c) => <td key={c.name} style={tdNum}>{c.b1}</td>)}
+                    </tr>
+                    <tr>
+                      <td style={{ ...td, color: BATCHES[1].color, fontWeight: 600 }}>第二梯（加報）</td>
+                      {batchCmp.map((c) => <td key={c.name} style={tdNum}>{c.b2}</td>)}
+                    </tr>
+                    <tr>
+                      <td style={{ ...td, fontWeight: 700 }}>合計</td>
+                      {batchCmp.map((c) => <td key={c.name} style={{ ...tdNum, fontWeight: 700 }}>{c.b1 + c.b2}</td>)}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </Card>
 
           {/* 漏斗 */}
           <Card style={{ marginBottom: 20 }}>
@@ -423,7 +483,7 @@ export default function StatsApp() {
           </Card>
 
           <div style={{ fontSize: 12, color: '#aaa', textAlign: 'center', marginTop: 8 }}>
-            含護照、聯絡方式等個資的完整名單請用右上角「下載完整統計報表」匯出（招生漏斗／各系產出／國籍／年齡／歷年／報名明細六分頁，為全校資料）。
+            含護照、聯絡方式等個資的完整名單請用右上角「下載完整統計報表」匯出（招生漏斗／梯次對照／各系產出／國籍／年齡／歷年／報名明細七分頁，為全校資料）。
           </div>
         </>
       )}

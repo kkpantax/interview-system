@@ -5,6 +5,7 @@ import { writeXlsx } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
 import { getStage4Data, syncStage4FromStage3, updateStage4Status } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
+import { batchInfo } from '../constants'
 
 const ACCENT = '#7c2d12'
 
@@ -35,6 +36,7 @@ const canAct = (row) =>
 
 const EXPORT_COLS = [
   { key: 'account',          label: '帳號' },
+  { key: 'batch_label',      label: '梯次' },
   { key: 'name',             label: '中文姓名' },
   { key: 'name_english',     label: '英文姓名' },
   { key: 'department',       label: '科系' },
@@ -173,6 +175,7 @@ export default function Stage4App() {
       .filter((r) => r.contact_status === 'enrolled')
       .map((r) => ({
         account:          r.account ?? '',
+        batch_label:      batchInfo(r.account).label,
         name:             r.appInfo?.name ?? '',
         name_english:     r.appInfo?.name_english ?? '',
         department:       r.department ?? '',
@@ -287,7 +290,7 @@ export default function Stage4App() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['姓名', '帳號', '科系', '志願序', '二階分數', '類別', '聯繫狀態', '備注', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '帳號', '梯次', '科系', '志願序', '二階分數', '類別', '聯繫狀態', '備注', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -303,6 +306,7 @@ export default function Stage4App() {
                       </div>
                     </td>
                     <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
+                    {(() => { const bi = batchInfo(r.account); return <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td> })()}
                     <td style={td}>{r.department || '—'}</td>
                     <td style={td}>{r.preference_order ?? '—'}</td>
                     <td style={td}>{r.stage2_score ?? '—'}</td>
@@ -336,7 +340,7 @@ export default function Stage4App() {
                 )
               })}
               {!rows.length && (
-                <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '本中心尚無資料'}
                 </td></tr>
               )}

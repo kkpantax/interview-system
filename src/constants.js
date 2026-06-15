@@ -172,3 +172,21 @@ export const CAMPUS_OPTIONS = ['台北校區', '高雄校區', '其他']
 // 未設定者回退關鍵字判斷（campusOf）。overrides 由 department_campus 載入。
 export const resolveCampus = (dept = '', overrides = {}) =>
   (overrides && overrides[dept]) || campusOf(dept)
+
+// ── 報名梯次（由帳號第 4 碼判定）──────────────────────────────────────────────
+// 帳號格式＝民國年(3) + 梯次(1) + 流水號(4)。
+//   11510001 → 115 年「第一梯」、11520001 → 115 年「第二梯（加報）」。
+// 第二梯為加報者，最終與第一梯一起放榜、共用同一系所名額；此處僅作「看得出來是哪一梯」的區分，
+// 不影響任何評分、預計錄取或正/備取排序邏輯。第 4 碼非 1/2（或無帳號）回傳 0＝未分梯。
+export const batchOf = (account) => {
+  const d = String(account ?? '')[3]
+  return d === '1' ? 1 : d === '2' ? 2 : 0
+}
+export const BATCHES = [
+  { v: 1, label: '第一梯',       short: '一梯', color: '#1e40af', bg: '#dbeafe' },
+  { v: 2, label: '第二梯（加報）', short: '二梯', color: '#c2410c', bg: '#ffedd5' },
+  { v: 0, label: '未分梯',       short: '未分', color: '#6b7280', bg: '#f3f4f6' },
+]
+// 取得某帳號的梯次資訊物件（含顏色 / 標籤），查無回退「未分梯」
+export const batchInfo = (account) =>
+  BATCHES.find((b) => b.v === batchOf(account)) || BATCHES[2]

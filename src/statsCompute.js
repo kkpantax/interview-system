@@ -1,7 +1,7 @@
 // ── 統計儀表板純計算 ──────────────────────────────────────────────────────
 // 把 getDashboardData() 撈回的原始資料壓成漏斗 / 各系產出 / 國籍 / 性別 / 年齡，
 // 並可依校區（全部 / 台北校區 / 高雄校區 / 其他）篩選。純函式、無 React，方便單測。
-import { resolveCampus } from './constants'
+import { resolveCampus, batchOf } from './constants'
 import { calcAge } from './utils'
 
 const sizeOf = (arr) => new Set((arr || []).filter(Boolean)).size
@@ -62,6 +62,19 @@ export function buildDashboard(data, campusMap = {}, campusFilter = '全部') {
     enrolled: sizeOf(pick(s4.filter((r) => r.contact_status === 'enrolled'))),
   }
 
+  // ── 梯次對照（同漏斗口徑，再依帳號第 4 碼分第一梯 / 第二梯）──────────────────
+  const batchPick = (rows, b) =>
+    (rows || []).map((r) => r.account).filter((a) => a && inFilter(a) && batchOf(a) === b)
+  const batchFunnelFor = (b) => ({
+    applicants: sizeOf(batchPick(apps, b)),
+    stage1: sizeOf(batchPick(data?.stage1, b)),
+    stage2: sizeOf(batchPick(data?.stage2, b)),
+    admitted: sizeOf(batchPick(fa.filter((r) => r.final_status === 'admitted'), b)),
+    waitlisted: sizeOf(batchPick(fa.filter((r) => r.final_status === 'waitlisted'), b)),
+    enrolled: sizeOf(batchPick(s4.filter((r) => r.contact_status === 'enrolled'), b)),
+  })
+  const batchFunnel = { 1: batchFunnelFor(1), 2: batchFunnelFor(2) }
+
   // ── 各系產出（一律以系所自身校區歸屬；校區篩選只決定顯示哪些系）──────────────
   const dm = {}
   const ensure = (d) => (dm[d] || (dm[d] = {
@@ -97,5 +110,5 @@ export function buildDashboard(data, campusMap = {}, campusFilter = '全部') {
   const genderStats = tally(people, (p) => (p.gender || '未填').trim() || '未填')
   const ageStats = tally(people, (p) => ageBucket(p.birth_date))
 
-  return { funnel, deptRows, people, totalPeople: people.length, natStats, genderStats, ageStats }
+  return { funnel, batchFunnel, deptRows, people, totalPeople: people.length, natStats, genderStats, ageStats }
 }

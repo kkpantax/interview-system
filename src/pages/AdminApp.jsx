@@ -19,7 +19,7 @@ import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount, saveYearlySnapshot } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
-import { STATUS } from '../constants'
+import { STATUS, batchInfo } from '../constants'
 
 const localToday = () => {
   const d = new Date()
@@ -34,6 +34,7 @@ const statusInfo = (st) => ({
 
 const FINAL_COLS = [
   { key: 'account',            label: '帳號' },
+  { key: 'batch_label',        label: '梯次' },
   { key: 'name',               label: '中文姓名' },
   { key: 'name_english',       label: '英文姓名' },
   { key: 'department',         label: '科系' },
@@ -144,6 +145,7 @@ export default function AdminApp() {
       if (!evals.length) { showToast('目前沒有建議錄取的學生', 'warn'); return }
       const rows = evals.map((e) => ({
         account:            e.applications?.account ?? '',
+        batch_label:        batchInfo(e.applications?.account).label,
         name:               e.applications?.name ?? '',
         name_english:       e.applications?.name_english ?? '',
         department:         e.department ?? e.applications?.department ?? '',
@@ -597,7 +599,7 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '中文姓名', '英文姓名', '護照號碼', '生日', '年齡', '國籍', '中心', '第1志願系所', '志願', '書審', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
+                {['帳號', '梯次', '中文姓名', '英文姓名', '護照號碼', '生日', '年齡', '國籍', '中心', '第1志願系所', '志願', '書審', '面試日', '狀態', '通過一階日', '操作'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
@@ -614,6 +616,7 @@ export default function AdminApp() {
                         <input type="checkbox" checked={selected.has(g.key)} onChange={() => toggle(g.key)} />
                       </td>
                       <td style={{ ...td, color: '#888' }}>{g.account}</td>
+                      {(() => { const bi = batchInfo(g.account); return <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td> })()}
                       <td style={{ ...td, fontWeight: 500 }}>{g.rep.name}</td>
                       <td style={{ ...td, color: '#777' }}>{g.rep.name_english}</td>
                       <td style={{ ...td, color: '#777' }}>{g.rep.passport_number}</td>
@@ -677,7 +680,7 @@ export default function AdminApp() {
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={15} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                        <td colSpan={16} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
                           <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願（取消勾選＝該系書審未通過，第二階段將不會出現）</div>
                           {g.apps.map((a) => (
                             <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
@@ -698,7 +701,7 @@ export default function AdminApp() {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={14} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={15} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '沒有資料，請先上傳報名名單'}
                 </td></tr>
               )}
