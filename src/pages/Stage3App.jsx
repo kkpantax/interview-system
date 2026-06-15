@@ -3,7 +3,7 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
-import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3 } from '../api'
+import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3, getAllApplications, getDepartmentQuotas } from '../api'
 import { DECISIONS, batchInfo } from '../constants'
 import EvalDetailModal from '../components/EvalDetailModal'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -94,6 +94,8 @@ export default function Stage3App() {
   const [rawEvals, setRawEvals] = useState([])   // 未去重的全部評分（供「查看評分紀錄」逐筆顯示）
   const [viewing, setViewing]   = useState(null)  // 正在檢視評分紀錄的學生（account+dept）
   const [finals, setFinals]     = useState(() => new Map())   // key(account__dept) → final row
+  const [apps, setApps]         = useState([])
+  const [quotas, setQuotas]     = useState({})
   const [dept, setDept]         = useState('')
   const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
   const [selectedCenter, setSelectedCenter] = useState('')
@@ -111,10 +113,17 @@ export default function Stage3App() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [ev, fa] = await Promise.all([getStage3Data(), getFinalAdmissions()])
+      const [ev, fa, ap, qz] = await Promise.all([
+        getStage3Data(),
+        getFinalAdmissions(),
+        getAllApplications().catch(() => []),
+        getDepartmentQuotas().catch(() => ({})),
+      ])
       setRawEvals(ev || [])
       setEvals(dedupeEvals(ev))
       setFinals(new Map((fa || []).map((r) => [`${r.account}__${r.department}`, r])))
+      setApps(ap || [])
+      setQuotas(qz || {})
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -228,6 +237,19 @@ export default function Stage3App() {
     return [...byCenter.values()].sort((x, y) => x.center.localeCompare(y.center, 'zh-TW'))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evals, finals])
+
+  // 各中心報名人數（以 applications 為準，依中心分組計不重複帳號）
+  const appliedByCenter = useMemo(() => {
+    const m = new Map()  // center → Set(account)
+    for (const a of apps) {
+      const center = a.center || '（未設定中心）'
+      if (!m.has(center)) m.set(center, new Set())
+      m.get(center).add(a.account || `__noacc_${a.id}`)
+    }
+    const out = {}
+    for (const [c, set] of m) out[c] = set.size
+    return out
+  }, [apps])
 
   const rows = evals.filter((e) => deptOf(e) === dept)
 
@@ -461,6 +483,9 @@ export default function Stage3App() {
               <span style={{ color: '#d97706' }}>備 {su.waitlisted}</span> ·{' '}
               <span style={{ color: '#aaa' }}>共 {su.total}</span>
             </div>
+            <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
+              預計錄取 <b style={{ color: '#0f766e' }}>{quotas[su.dept] ?? '—'}</b>
+            </div>
           </button>
         ))}
         {!summary.length && (
@@ -502,6 +527,9 @@ export default function Stage3App() {
                 <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                   <span style={{ color: '#6b7280' }}>待定 {cs.pending}</span> ·{' '}
                   <span style={{ color: '#aaa' }}>共 {cs.total}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
+                  共報名 <b style={{ color: '#0f766e' }}>{appliedByCenter[cs.center] ?? '—'}</b> 人
                 </div>
               </button>
             ))}
