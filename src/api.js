@@ -470,22 +470,42 @@ export async function saveEvaluation(ev) {
 }
 
 // 各系評分總覽：列出所有系所，並計每系（一階通過的學生）
-//   waiting=尚未有任何評分, evaluated=已有至少一筆評分, admitted=評分中有任一筆 recommendation=admit
+//   waiting=尚未評分且未放棄, evaluated=已有至少一筆評分, admitted=評分中有任一筆 recommendation=admit,
+//   abandoned=未評分但行政報到端已標記放棄該志願（不計入 waiting，避免行政誤以為還有人沒評到）。
+//   放棄比對沿用評分頁邏輯：報到列 status='abandoned' 且 checkin_date == 該生面試日（無排程退回今天）才算數，
+//   改期後舊日期的放棄列自動失效。
 export async function getStage2DeptSummary() {
-  const [depts, rows] = await Promise.all([
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const [depts, rows, abChecks] = await Promise.all([
     getDepartments(),
     callProxy(
-      '/rest/v1/applications?select=department,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true',
+      '/rest/v1/applications?select=account,department,stage2_date,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true',
       'GET',
     ),
+    callProxy('/rest/v1/stage2_checkins?select=account,department,checkin_date&status=eq.abandoned', 'GET'),
   ])
-  const map = new Map(depts.map((d) => [d, { department: d, waiting: 0, evaluated: 0, admitted: 0 }]))
+  // 放棄面試查找表：account|department → Set(checkin_date)
+  const abMap = new Map()
+  for (const c of (abChecks || [])) {
+    if (!c.department) continue
+    const k = c.account + '|' + c.department
+    if (!abMap.has(k)) abMap.set(k, new Set())
+    abMap.get(k).add(c.checkin_date)
+  }
+  const map = new Map(depts.map((d) => [d, { department: d, waiting: 0, evaluated: 0, admitted: 0, abandoned: 0 }]))
   for (const r of (rows || [])) {
     const m = map.get(r.department)
     if (!m) continue
     const evs = r.evaluations || []
-    if (evs.length === 0) m.waiting++
-    else { m.evaluated++; if (evs.some((e) => e.recommendation === 'admit')) m.admitted++ }
+    if (evs.length > 0) {
+      m.evaluated++
+      if (evs.some((e) => e.recommendation === 'admit')) m.admitted++
+      continue
+    }
+    const ab = abMap.get(r.account + '|' + r.department)
+    if (ab && ab.has(r.stage2_date || today)) m.abandoned++
+    else m.waiting++
   }
   return depts.map((d) => map.get(d))
 }

@@ -62,6 +62,27 @@ const readRememberedTranslator = () => {
 
 const ghostBtn = { background: 'none', border: '1px solid #ffffff33', color: '#f5f4f0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
 
+// ISO 日期 → 「M/D」短標籤（給下拉與卡片標題用）
+const dateLabel = (iso) => {
+  if (!iso) return ''
+  const [, m, d] = iso.split('-')
+  return `${Number(m)}/${Number(d)}`
+}
+
+// 面試日期篩選下拉：全部日期 / 各已排日期（含當日人數）/ 未排日期
+function DateFilterSelect({ dates, value, onChange, hasUnscheduled, counts }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      style={{ ...s.input, width: 'auto', minWidth: 150, marginBottom: 0, cursor: 'pointer' }}>
+      <option value="all">全部日期</option>
+      {dates.map((d) => (
+        <option key={d} value={d}>{dateLabel(d)}{counts?.[d] != null ? `（${counts[d]} 人）` : ''}</option>
+      ))}
+      {hasUnscheduled && <option value="unscheduled">未排日期</option>}
+    </select>
+  )
+}
+
 function DeptPicker() {
   const [rows, setRows]       = useState([])
   const [campusMap, setCampusMap] = useState({})
@@ -120,6 +141,9 @@ function DeptPicker() {
           </div>
         ))}
       </div>
+      {r.abandoned > 0 && (
+        <div style={{ fontSize: 11, color: '#9ca3af' }}>🚫 另有 {r.abandoned} 位放棄面試（不計入等待評分）</div>
+      )}
     </button>
   )
 
@@ -290,6 +314,7 @@ function Stage2Scoring({ dept }) {
   const [students, setStudents]   = useState([])
   const [stats, setStats]         = useState(EMPTY_STATS)
   const [quota, setQuota]         = useState(null)
+  const [filterDate, setFilterDate] = useState(() => readEvaluatorSession()?.date || localToday())  // 名單聚焦的面試日（預設老師工作日/今天）；上排建議錄取等統計仍為全系累計
   const [checkinRows, setCheckinRows] = useState([])  // stage2_checkins 原始列，map 於 render 時依學生面試日推導
   const [search, setSearch]       = useState('')
   const [active, setActive]       = useState(null)
@@ -344,6 +369,9 @@ function Stage2Scoring({ dept }) {
   }, [dept, showToast])
 
   useEffect(() => { if (evaluator) load() }, [evaluator, load])
+
+  // 老師在 Gate 選定工作日期後，名單預設聚焦該日（之後仍可手動切換日期）
+  useEffect(() => { if (evaluator?.date) setFilterDate(evaluator.date) }, [evaluator?.date])
 
   // 輕量更新：只重抓報到列，不重載整個名單（失敗靜默）
   const refreshCheckins = useCallback(async () => {
@@ -418,8 +446,23 @@ function Stage2Scoring({ dept }) {
   // 報到狀態 map 於每次 render 依「各學生自己的面試日」即時推導
   const checkinMap = buildDeptCheckinMap(checkinRows, dept, students)
 
+  // 面試日期清單與當日人數（以人去重；同帳號在本系即一列，account 已唯一）
+  const dates = [...new Set(students.map((s) => s.stage2_date).filter(Boolean))].sort()
+  const hasUnscheduled = students.some((s) => !s.stage2_date)
+  const dateCounts = students.reduce((acc, s) => {
+    if (s.stage2_date) acc[s.stage2_date] = (acc[s.stage2_date] || 0) + 1
+    return acc
+  }, {})
+  const inDate = (stu) =>
+    filterDate === 'all' ? true :
+    filterDate === 'unscheduled' ? !stu.stage2_date :
+    stu.stage2_date === filterDate
+  // 名單依選定面試日篩選，避免其他天剛通過一階的人灌進尚未評分造成錯覺。
+  // 上排「建議錄取/備取/不建議/待定」仍用 stats（全系累計，與預計錄取對比）。
+  const dateStudents = students.filter(inDate)
+
   const q = search.trim().toLowerCase()
-  const filtered = students.filter((stu) =>
+  const filtered = dateStudents.filter((stu) =>
     !q ||
     (stu.account || '').toLowerCase().includes(q) ||
     (stu.name || '').toLowerCase().includes(q),
@@ -429,14 +472,19 @@ function Stage2Scoring({ dept }) {
   const abandoned = filtered.filter((stu) => (!stu.evaluations || stu.evaluations.length === 0) && isAbandonedDept(stu))
   const unscored  = filtered.filter((stu) => (!stu.evaluations || stu.evaluations.length === 0) && !isAbandonedDept(stu))
 
+  const dateSuffix =
+    filterDate === 'all' ? '（全部日期）' :
+    filterDate === 'unscheduled' ? '（未排日期）' :
+    `（${dateLabel(filterDate)}）`
+
   const statCards = [
     { label: '預計錄取',   n: quota == null ? '—' : quota, bg: '#ecfdf5', color: '#047857', target: true },
     { label: '建議錄取',   n: stats.admit,    bg: '#dcfce7', color: '#15803d' },
     { label: '備取',       n: stats.waitlist, bg: '#fef3c7', color: '#b45309' },
     { label: '不建議錄取', n: stats.reject,   bg: '#fee2e2', color: '#dc2626' },
     { label: '待定',       n: stats.pending,  bg: '#f3f4f6', color: '#6b7280' },
-    { label: '尚未評分',   n: unscored.length, bg: '#eff6ff', color: '#1e40af' },
-    ...(abandoned.length > 0 ? [{ label: '放棄面試', n: abandoned.length, bg: '#fafafa', color: '#9ca3af' }] : []),
+    { label: '尚未評分' + dateSuffix, n: unscored.length, bg: '#eff6ff', color: '#1e40af' },
+    ...(abandoned.length > 0 ? [{ label: '放棄面試' + dateSuffix, n: abandoned.length, bg: '#fafafa', color: '#9ca3af' }] : []),
   ]
 
   const handleSave = async (payload) => {
@@ -547,10 +595,12 @@ function Stage2Scoring({ dept }) {
         <ScoreForm student={active} evaluator={evaluator} onSave={handleSave} onBack={() => setActive(null)} saving={saving} />
       ) : (
         <>
-          {/* 工具列：搜尋＋報到狀態更新＋下載（從 header 移下來，header 只留主要動作） */}
+          {/* 工具列：面試日期＋搜尋＋報到狀態更新＋下載（從 header 移下來，header 只留主要動作） */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>面試日期</span>
+            <DateFilterSelect dates={dates} value={filterDate} onChange={setFilterDate} hasUnscheduled={hasUnscheduled} counts={dateCounts} />
             <input
-              style={{ ...s.input, width: 220, marginBottom: 0 }}
+              style={{ ...s.input, width: 200, marginBottom: 0 }}
               placeholder="搜尋帳號 / 姓名"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -576,19 +626,19 @@ function Stage2Scoring({ dept }) {
           </div>
 
           <Card style={{ marginBottom: 16 }}>
-            <CardHead left={`${dept} · 待評分`} right={`${unscored.length} 位`} />
+            <CardHead left={`${dept} · 待評分${dateSuffix}`} right={`${unscored.length} 位`} />
             <Stage2List students={unscored} onOpen={setActive} loading={loading} checkinMap={checkinMap}
               onMarkInterview={markInterview} onCancelInterview={cancelInterview} markingAccount={marking} />
           </Card>
 
           <Card>
-            <CardHead left={`${dept} · 已評分`} right={`${scored.length} 位`} />
+            <CardHead left={`${dept} · 已評分${dateSuffix}`} right={`${scored.length} 位`} />
             <Stage2List students={scored} onOpen={setActive} onView={setViewing} loading={loading} showEvalSummary />
           </Card>
 
           {abandoned.length > 0 && (
             <Card style={{ marginTop: 16 }}>
-              <CardHead left={`${dept} · 放棄面試`} right={`${abandoned.length} 位 · 由行政報到端標記，無需評分`} />
+              <CardHead left={`${dept} · 放棄面試${dateSuffix}`} right={`${abandoned.length} 位 · 由行政報到端標記，無需評分`} />
               <Stage2List students={abandoned} onOpen={setActive} loading={loading} checkinMap={checkinMap} abandoned />
             </Card>
           )}
