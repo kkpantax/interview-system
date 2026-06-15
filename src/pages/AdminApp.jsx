@@ -497,6 +497,12 @@ export default function AdminApp() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { label: '報名人數', value: groups.length },
+          { label: '梯次報名', value: (
+            <div style={{ fontSize: 15, lineHeight: 1.35 }}>
+              <div><span style={{ color: '#1e40af', fontWeight: 700 }}>{groups.filter((g) => batchInfo(g.account).v === 1).length}</span> <span style={{ fontSize: 11, color: '#aaa', fontWeight: 400 }}>一梯</span></div>
+              <div><span style={{ color: '#c2410c', fontWeight: 700 }}>{groups.filter((g) => batchInfo(g.account).v === 2).length}</span> <span style={{ fontSize: 11, color: '#aaa', fontWeight: 400 }}>二梯</span></div>
+            </div>
+          ) },
           { label: '志願總數', value: apps.length },
           { label: '已排面試', value: groups.filter((g) => g.interview_date).length },
           { label: '通過一階', value: groups.filter((g) => g.status === 'stage1_passed').length },
