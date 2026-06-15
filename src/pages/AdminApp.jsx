@@ -599,7 +599,7 @@ export default function AdminApp() {
                 <th style={{ ...th, width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
-                {['帳號', '梯次', '中文姓名', '護照號碼', '年齡', '國籍', '中心', '第1志願系所', '書審', '面試日', '狀態', '操作'].map((h) => (
+                {['帳號', '梯次', '基本資料', '護照/身分證', '中心', '第1志願系所', '面試日', '狀態', '操作'].map((h) => (
                   <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
@@ -620,20 +620,21 @@ export default function AdminApp() {
                       <td style={td}>
                         <div style={{ fontWeight: 500 }}>{g.rep.name}</div>
                         <div style={{ color: '#999', fontSize: 12, whiteSpace: 'normal', maxWidth: 200 }}>{g.rep.name_english}</div>
+                        {(() => {
+                          const age = calcAge(g.rep.birth_date)
+                          const old = age != null && age > 22
+                          return (
+                            <div style={{ fontSize: 12, color: '#777', marginTop: 2 }}>
+                              {g.rep.nationality || '—'}
+                              {age != null && <span style={old ? { color: '#dc2626', fontWeight: 700 } : undefined}>{` · ${age}歲${old ? ' ⚠' : ''}`}</span>}
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td style={td}>
                         <div style={{ color: '#555' }}>{g.rep.passport_number || '—'}</div>
                         <div style={{ color: '#999', fontSize: 12 }}>{g.rep.birth_date || '—'}</div>
                       </td>
-                      {(() => {
-                        const age = calcAge(g.rep.birth_date)
-                        return (
-                          <td style={age != null && age > 22 ? { ...td, color: '#dc2626', fontWeight: 700 } : td}>
-                            {age != null ? `${age}${age > 22 ? ' ⚠' : ''}` : '—'}
-                          </td>
-                        )
-                      })()}
-                      <td style={td}>{g.rep.nationality}</td>
                       <td style={td}>
                         <select
                           style={{ ...s.sel, padding: '5px 8px' }}
@@ -649,6 +650,12 @@ export default function AdminApp() {
                       </td>
                       <td style={{ ...td, color: '#555' }}>
                         <div>{g.rep.department}</div>
+                        {(() => {
+                          const failed = g.apps.filter((a) => a.paper_passed === false)
+                          return failed.length > 0 ? (
+                            <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600, marginTop: 2 }}>✗ {failed.length} 系書審未過</div>
+                          ) : null
+                        })()}
                         <div style={{ marginTop: 3 }}>
                           {extra > 0 ? (
                             <button onClick={() => toggleExpand(g.key)}
@@ -660,22 +667,6 @@ export default function AdminApp() {
                           )}
                         </div>
                       </td>
-                      <td style={td}>
-                        {(() => {
-                          const failed = g.apps.filter((a) => a.paper_passed === false)
-                          return failed.length === 0 ? (
-                            <button onClick={() => toggleExpand(g.key)}
-                              style={{ ...s.btn, ...s.btnSm, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#15803d' }}>
-                              全通過 ▾
-                            </button>
-                          ) : (
-                            <button onClick={() => toggleExpand(g.key)}
-                              style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', borderColor: '#fecaca', color: '#b91c1c' }}>
-                              ✗ {failed.length} 系未過 ▾
-                            </button>
-                          )
-                        })()}
-                      </td>
                       <td style={{ ...td, color: g.interview_date ? '#1e40af' : '#ccc' }}>{g.interview_date || '—'}</td>
                       <td style={td}><Pill color={si.color} bg={si.bg}>{si.label}</Pill></td>
                       <td style={td}>
@@ -685,7 +676,7 @@ export default function AdminApp() {
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={12} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
+                        <td colSpan={9} style={{ padding: '4px 10px 12px', background: '#fafafa' }}>
                           <div style={{ fontSize: 11, color: '#aaa', margin: '4px 0 6px' }}>該帳號全部志願（取消勾選＝該系書審未通過，第二階段將不會出現）</div>
                           {g.apps.map((a) => (
                             <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0efeb', fontSize: 13 }}>
@@ -706,7 +697,7 @@ export default function AdminApp() {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={13} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
                   {loading ? '載入中…' : '沒有資料，請先上傳報名名單'}
                 </td></tr>
               )}
