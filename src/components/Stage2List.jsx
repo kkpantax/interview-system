@@ -26,7 +26,7 @@ function MaterialsCell({ stu }) {
   if (batchOf(stu.account) === 2) return (
     <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 9px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#fef3c7', color: '#b45309' }}>⚠ 未上傳</span>
   )
-  return <span style={{ fontSize: 12, color: '#cbd5e1' }} title="第一梯次非線上繳交">非線上</span>
+  return <span style={{ fontSize: 12, color: '#cbd5e1' }} title="第一梯次非線上繳交">資料請查閱書審系統</span>
 }
 
 // 多筆評分取 eval_date 最新的一筆（多老師、多輪）

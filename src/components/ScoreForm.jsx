@@ -63,7 +63,7 @@ export default function ScoreForm({ student, onSave, onBack, saving, evaluator }
             <span style={{ ...base, background: '#fef3c7', color: '#b45309' }}>⚠ 尚未上傳書面資料</span>
           )
           return (
-            <span style={{ ...base, fontWeight: 500, background: '#f3f4f6', color: '#9ca3af' }}>書面資料：非線上繳交</span>
+            <span style={{ ...base, fontWeight: 500, background: '#f3f4f6', color: '#9ca3af' }}>資料請查閱書審系統</span>
           )
         })()}
       </div>
