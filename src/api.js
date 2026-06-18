@@ -1041,6 +1041,19 @@ export async function clearAllData(username, password) {
   return data
 }
 
+// 硬刪除某帳號的整位考生與其所有關聯資料（走 server-side /api/delete-student，service key + superadmin 驗證）。
+export async function deleteStudentByAccount(account, username, password) {
+  const res = await fetch('/api/delete-student', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, username, password }),
+  })
+  let data = {}
+  try { data = await res.json() } catch { /* 非 JSON 回應 */ }
+  if (!res.ok) throw new Error(data.error || '刪除失敗')
+  return data
+}
+
 // ── 追加到 src/api.js 末端 ──────────────────────────────────────────────────
 // 面試通知信：草稿服務 + 寄送記錄
 

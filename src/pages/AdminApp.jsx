@@ -383,6 +383,7 @@ export default function AdminApp() {
           {loading && <span style={{ fontSize: 12, color: '#aaa' }}>載入中…</span>}
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={() => { window.location.hash = '#/intl' }}>← 國際事務處</Btn>
           <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>＋ 上傳名單</Btn>
+          <Btn style={{ background: 'none', borderColor: '#3a6', color: '#7c5' }} onClick={() => setEditGroup({ key: '__new__', account: '', rep: {}, apps: [], __new: true })}>＋ 新增考生</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={exportFinal}>⬇ 匯出最終名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#999' }}>{teacher.display_name || teacher.username}</span>
