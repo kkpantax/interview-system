@@ -20,7 +20,7 @@ import { writeXlsx } from '../components/ExportBtn'
 import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount, updateMaterialsUrlByAccount, saveYearlySnapshot } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
-import { STATUS, batchInfo } from '../constants'
+import { STATUS, batchInfo, batchOf } from '../constants'
 
 const localToday = () => {
   const d = new Date()
@@ -89,6 +89,7 @@ export default function AdminApp() {
   const [statusFilter, setStatusFilter] = useState('')
   const [centerFilter, setCenterFilter] = useState('')
   const [nationalityFilter, setNationalityFilter] = useState('')
+  const [batchFilter, setBatchFilter] = useState('')       // 梯次篩選：'' 全部 / '1' 一梯 / '2' 二梯
   const [paperFilter, setPaperFilter] = useState(false)   // 僅顯示書審未全過
   const [selected, setSelected]   = useState(() => new Set())  // 選取的帳號群組 key
   const [expanded, setExpanded]   = useState(() => new Set())  // 展開的帳號群組 key
@@ -243,6 +244,7 @@ export default function AdminApp() {
       if (g.center !== centerFilter) return false
     }
     if (nationalityFilter && g.rep.nationality !== nationalityFilter) return false
+    if (batchFilter && String(batchOf(g.account)) !== batchFilter) return false
     if (paperFilter && !g.apps.some((a) => a.paper_passed === false)) return false
     if (kw) {
       const q = kw.toLowerCase()
@@ -545,6 +547,11 @@ export default function AdminApp() {
         <select style={s.sel} value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
           <option value="">全部國籍</option>
           {nationalities.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <select style={s.sel} value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)}>
+          <option value="">全部梯次</option>
+          <option value="1">僅第一梯</option>
+          <option value="2">僅第二梯</option>
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: paperFilter ? '#dc2626' : '#666', alignSelf: 'center', cursor: 'pointer' }}>
           <input type="checkbox" checked={paperFilter} onChange={(e) => setPaperFilter(e.target.checked)} />

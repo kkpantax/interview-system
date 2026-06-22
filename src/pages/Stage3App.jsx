@@ -4,7 +4,7 @@ import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
 import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3, getAllApplications, getDepartmentQuotas } from '../api'
-import { DECISIONS, batchInfo } from '../constants'
+import { DECISIONS, batchInfo, batchOf } from '../constants'
 import EvalDetailModal from '../components/EvalDetailModal'
 import { getTeacher, logoutTeacher } from '../auth'
 
@@ -99,6 +99,7 @@ export default function Stage3App() {
   const [dept, setDept]         = useState('')
   const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
   const [selectedCenter, setSelectedCenter] = useState('')
+  const [batchFilter, setBatchFilter]     = useState('')       // 梯次篩選：'' 全部 / '1' 一梯 / '2' 二梯
   const [loading, setLoading]   = useState(false)
   const [savingKey, setSavingKey] = useState(null)
   const [toast, setToast]       = useState(null)
@@ -252,6 +253,7 @@ export default function Stage3App() {
   }, [apps])
 
   const rows = evals.filter((e) => deptOf(e) === dept)
+    .filter((e) => !batchFilter || String(batchOf(acctOf(e))) === batchFilter)
 
   const setStatus = async (e, final_status) => {
     const account = acctOf(e), department = deptOf(e)
@@ -281,6 +283,7 @@ export default function Stage3App() {
   const centerLabelOf = (e) => e.applications?.center || '（未設定中心）'
   const centerRows = useMemo(() => {
     const inCenter = evals.filter((e) => centerLabelOf(e) === selectedCenter)
+      .filter((e) => !batchFilter || String(batchOf(acctOf(e))) === batchFilter)
     // 以帳號為單位，算出每人在該中心的最佳狀態（admitted > waitlisted > rejected > pending）
     const bestByAcct = new Map()
     for (const e of inCenter) {
@@ -305,7 +308,7 @@ export default function Stage3App() {
         return (b.total_score || 0) - (a.total_score || 0)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evals, selectedCenter, finals])
+  }, [evals, selectedCenter, finals, batchFilter])
 
   // 設定欄共用的最終狀態按鈕組（科系檢視與中心檢視共用）
   const statusButtons = (e) => {
@@ -468,6 +471,21 @@ export default function Stage3App() {
           ))}
         </div>
       )}
+
+      {/* 梯次篩選 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: '#6b21a8', fontWeight: 600 }}>梯次篩選</span>
+        <select style={s.sel} value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)}>
+          <option value="">全部梯次</option>
+          <option value="1">僅第一梯</option>
+          <option value="2">僅第二梯</option>
+        </select>
+        {batchFilter && (
+          <span style={{ fontSize: 12, color: '#c2410c' }}>
+            目前僅顯示{batchFilter === '2' ? '第二梯（加報）' : '第一梯'}學生
+          </span>
+        )}
+      </div>
 
       {/* 各系總覽 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
