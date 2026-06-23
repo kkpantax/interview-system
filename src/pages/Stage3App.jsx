@@ -235,36 +235,66 @@ export default function Stage3App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [deptList, evals, finals])
 
+  // 每位帳號固定歸到「最高志願（preference_order 最小）」那筆的面試中心，
+  // 讓卡片統計、明細表、依中心匯出三邊用同一套中心口徑（同一人不會被算進多個中心）。
+  const acctCanonCenter = useMemo(() => {
+    const best = new Map()   // account → { pref, center }
+    for (const e of evals) {
+      const a = acctOf(e); if (!a) continue
+      const pref = e.applications?.preference_order ?? 99
+      const center = e.applications?.center || '（未設定中心）'
+      const prev = best.get(a)
+      if (!prev || pref < prev.pref ||
+          (pref === prev.pref && prev.center === '（未設定中心）' && center !== '（未設定中心）')) {
+        best.set(a, { pref, center })
+      }
+    }
+    const m = new Map()
+    for (const [a, v] of best) m.set(a, v.center)
+    return m
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals])
+  const canonCenterOf = (e) => acctCanonCenter.get(acctOf(e)) || '（未設定中心）'
+
   // 各中心錄取統計（以帳號為單位：每個帳號取優先序最高的最終狀態，再依中心分組計數）
   const centerSummary = useMemo(() => {
     const PRIORITY = { admitted: 0, waitlisted: 1, rejected: 2, pending: 3 }
-    const acctCenter = new Map()      // account → center
-    const acctBestStatus = new Map()  // account → 優先序最高的 final_status
+    const acctBestStatus = new Map()  // account → 全部志願裡優先序最高的 final_status
     for (const e of evals) {
       const a = acctOf(e); if (!a) continue
-      if (!acctCenter.has(a)) acctCenter.set(a, e.applications?.center || '（未設定中心）')
       const st = statusOf(e)
       const prev = acctBestStatus.get(a)
       if (prev === undefined || PRIORITY[st] < PRIORITY[prev]) acctBestStatus.set(a, st)
     }
     const byCenter = new Map()
-    for (const [a, center] of acctCenter) {
+    for (const [a, st] of acctBestStatus) {
+      const center = acctCanonCenter.get(a) || '（未設定中心）'
       if (!byCenter.has(center)) byCenter.set(center, { center, admitted: 0, waitlisted: 0, rejected: 0, pending: 0, total: 0 })
       const g = byCenter.get(center)
-      g[acctBestStatus.get(a) || 'pending']++
+      g[st || 'pending']++
       g.total++
     }
     return [...byCenter.values()].sort((x, y) => x.center.localeCompare(y.center, 'zh-TW'))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evals, finals])
+  }, [evals, finals, acctCanonCenter])
 
-  // 各中心報名人數（以 applications 為準，依中心分組計不重複帳號）
+  // 各中心報名人數（以 applications 為準；每位申請人歸到最高志願的中心，計不重複帳號）
   const appliedByCenter = useMemo(() => {
-    const m = new Map()  // center → Set(account)
+    const best = new Map()   // account → { pref, center }
     for (const a of apps) {
+      const acc = a.account || `__noacc_${a.id}`
+      const pref = a.preference_order ?? 99
       const center = a.center || '（未設定中心）'
-      if (!m.has(center)) m.set(center, new Set())
-      m.get(center).add(a.account || `__noacc_${a.id}`)
+      const prev = best.get(acc)
+      if (!prev || pref < prev.pref ||
+          (pref === prev.pref && prev.center === '（未設定中心）' && center !== '（未設定中心）')) {
+        best.set(acc, { pref, center })
+      }
+    }
+    const m = new Map()  // center → Set(account)
+    for (const [acc, v] of best) {
+      if (!m.has(v.center)) m.set(v.center, new Set())
+      m.get(v.center).add(acc)
     }
     const out = {}
     for (const [c, set] of m) out[c] = set.size
@@ -339,9 +369,8 @@ export default function Stage3App() {
 
   // 中心檢視：該中心所有評分（不去重，同帳號多科系各列獨立顯示），
   // 依最終狀態（正→備→不錄→待定）、志願序 asc、二階分數 desc 排序
-  const centerLabelOf = (e) => e.applications?.center || '（未設定中心）'
   const centerRows = useMemo(() => {
-    const inCenter = evals.filter((e) => centerLabelOf(e) === selectedCenter)
+    const inCenter = evals.filter((e) => canonCenterOf(e) === selectedCenter)
       .filter((e) => !batchFilter || String(batchOf(acctOf(e))) === batchFilter)
     // 以帳號為單位，算出每人在該中心的最佳狀態（admitted > waitlisted > rejected > pending）
     const bestByAcct = new Map()
@@ -367,7 +396,7 @@ export default function Stage3App() {
         return (b.total_score || 0) - (a.total_score || 0)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evals, selectedCenter, finals, batchFilter])
+  }, [evals, selectedCenter, finals, batchFilter, acctCanonCenter])
 
   // 設定欄共用的最終狀態按鈕組（科系檢視與中心檢視共用）
   const statusButtons = (e) => {
@@ -436,7 +465,7 @@ export default function Stage3App() {
     for (const e of evals) {
       const st = statusOf(e)
       if (st !== 'admitted' && st !== 'waitlisted') continue
-      const center = e.applications?.center || '未指定'
+      const center = canonCenterOf(e)
       if (!groups.has(center)) groups.set(center, [])
       groups.get(center).push({
         center,
@@ -611,7 +640,7 @@ export default function Stage3App() {
                 </div>
                 <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                   <span style={{ color: '#6b7280' }}>待定 {cs.pending}</span> ·{' '}
-                  <span style={{ color: '#aaa' }}>共 {cs.total}</span>
+                  <span style={{ color: '#aaa' }}>共 {cs.total} 人</span>
                 </div>
                 <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
                   共報名 <b style={{ color: '#0f766e' }}>{appliedByCenter[cs.center] ?? '—'}</b> 人
@@ -675,7 +704,7 @@ export default function Stage3App() {
       </Card>
       ) : (
       <Card>
-        <CardHead left={`${selectedCenter} · 正備取名單`} right={`${centerRows.length} 筆（每人取最優狀態顯示）`} />
+        <CardHead left={`${selectedCenter} · 正備取名單`} right={`${new Set(centerRows.map((e) => acctOf(e)).filter(Boolean)).size} 人 / ${centerRows.length} 筆`} />
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
