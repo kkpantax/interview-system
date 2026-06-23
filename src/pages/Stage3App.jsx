@@ -102,6 +102,7 @@ export default function Stage3App() {
   const [batchFilter, setBatchFilter]     = useState('')       // 梯次篩選：'' 全部 / '1' 一梯 / '2' 二梯
   const [loading, setLoading]   = useState(false)
   const [savingKey, setSavingKey] = useState(null)
+  const [resolving, setResolving] = useState(false)
   const [toast, setToast]       = useState(null)
 
   // 守衛：只有 admin 能進
@@ -163,18 +164,36 @@ export default function Stage3App() {
     })
   }
 
-  // 已確認重複正取：同帳號在多個系 final_status = 'admitted'（真正需要處理的問題）
-  const confirmedConflicts = useMemo(() => {
-    const byAcct = new Map()
+  // 需釋出志願衝突：學生在某系已「正取」，其餘志願（不論正取或備取）須一併釋出為「不錄取」。
+  // 贏家＝志願序最高（preference_order 最小，同序以二階分數高者）的那筆正取；待定（pending）不動。
+  const resolvable = useMemo(() => {
+    const byAcct = new Map()   // account → eval[]（該帳號各志願，已去重）
     for (const e of evals) {
-      if (statusOf(e) !== 'admitted') continue
       const a = acctOf(e); if (!a) continue
-      if (!byAcct.has(a)) byAcct.set(a, { name: e.applications?.name, depts: new Set() })
-      byAcct.get(a).depts.add(deptOf(e))
+      if (!byAcct.has(a)) byAcct.set(a, [])
+      byAcct.get(a).push(e)
     }
-    return [...byAcct.entries()]
-      .filter(([, v]) => v.depts.size >= 2)
-      .map(([account, v]) => ({ account, name: v.name, depts: [...v.depts] }))
+    const out = []
+    for (const [account, list] of byAcct) {
+      const admitted = list.filter((e) => statusOf(e) === 'admitted')
+      if (!admitted.length) continue
+      const winner = [...admitted].sort((x, y) => {
+        const px = x.applications?.preference_order ?? 99
+        const py = y.applications?.preference_order ?? 99
+        if (px !== py) return px - py
+        return (y.total_score || 0) - (x.total_score || 0)
+      })[0]
+      const losers = list.filter((e) => e !== winner && (statusOf(e) === 'admitted' || statusOf(e) === 'waitlisted'))
+      if (!losers.length) continue
+      out.push({
+        account,
+        name: winner.applications?.name || list[0].applications?.name || '',
+        winnerDept: deptOf(winner),
+        winnerPref: winner.applications?.preference_order ?? null,
+        losers: losers.map((e) => ({ e, dept: deptOf(e), status: statusOf(e), pref: e.applications?.preference_order ?? null })),
+      })
+    }
+    return out.sort((a, b) => String(a.account).localeCompare(String(b.account)))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evals, finals])
 
@@ -182,7 +201,7 @@ export default function Stage3App() {
   // 且這些系的 final_status 仍為 pending / waitlisted（尚未 admitted / rejected）。
   // 已確認只有一系正取（其餘 rejected / waitlisted）→ 不在此列。
   const pendingWarnings = useMemo(() => {
-    const confirmedSet = new Set(confirmedConflicts.map((c) => c.account))
+    const confirmedSet = new Set(resolvable.map((c) => c.account))
     const byAcct = new Map()
     for (const e of evals) {
       if (e.recommendation !== 'admit') continue
@@ -196,12 +215,12 @@ export default function Stage3App() {
       .filter(([account, v]) => v.depts.size >= 2 && !confirmedSet.has(account))
       .map(([account, v]) => ({ account, name: v.name, depts: [...v.depts] }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evals, finals, confirmedConflicts])
+  }, [evals, finals, resolvable])
 
   // 衝突帳號集合（兩類聯集）：表格內這些學生的名字旁標註「第 N 志願」
   const conflictAccts = useMemo(
-    () => new Set([...confirmedConflicts, ...pendingWarnings].map((c) => c.account)),
-    [confirmedConflicts, pendingWarnings],
+    () => new Set([...resolvable, ...pendingWarnings].map((c) => c.account)),
+    [resolvable, pendingWarnings],
   )
 
   // 各系正/備取總覽
@@ -275,6 +294,46 @@ export default function Stage3App() {
       showToast('設定失敗：' + err.message, 'error')
     } finally {
       setSavingKey(null)
+    }
+  }
+
+  // 一鍵解決志願衝突：對每位已正取的學生，保留志願序最高的那筆正取，
+  // 其餘正取與備取一律改「不錄取」（待定不動）。逐筆 upsert，最後一次更新 finals。
+  const resolveConflicts = async () => {
+    const losers = resolvable.flatMap((r) => r.losers.map((l) => ({ ...l, account: r.account })))
+    if (!losers.length) { showToast('目前沒有需要釋出的志願衝突'); return }
+    if (!window.confirm(
+      `即將為 ${resolvable.length} 位已正取的學生，釋出其餘 ${losers.length} 筆志願（改為「不錄取」）。\n` +
+      `每位學生只保留志願序最高的那筆正取，其餘正取與備取一律改不錄取。\n確定執行？`
+    )) return
+    setResolving(true)
+    try {
+      const updates = new Map()
+      let ok = 0
+      for (const l of losers) {
+        const e = l.e
+        const row = {
+          account: l.account,
+          department: l.dept,
+          final_status: 'rejected',
+          stage2_score: e.total_score ?? null,
+          stage2_recommendation: e.recommendation ?? null,
+          confirmed_at: new Date().toISOString(),
+        }
+        try {
+          const res = await upsertFinalAdmission(row)
+          const saved = (Array.isArray(res) ? res[0] : res) || row
+          updates.set(keyOf(e), saved)
+          ok++
+        } catch { /* 單筆失敗略過，繼續其餘 */ }
+      }
+      if (updates.size) setFinals((prev) => { const m = new Map(prev); for (const [k, v] of updates) m.set(k, v); return m })
+      showToast(
+        `已釋出 ${ok} 筆志願為「不錄取」` + (ok < losers.length ? `（${losers.length - ok} 筆失敗）` : ''),
+        ok < losers.length ? 'warn' : 'ok',
+      )
+    } finally {
+      setResolving(false)
     }
   }
 
@@ -445,14 +504,22 @@ export default function Stage3App() {
       }
     >
       {/* 已確認重複正取（紅）：同一人被多系正取，需擇一保留 */}
-      {confirmedConflicts.length > 0 && (
+      {resolvable.length > 0 && (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', marginBottom: 8 }}>
-            ⚠ 重複正取（{confirmedConflicts.length} 人）— 同一人被多系正取，請擇一保留
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c' }}>
+              ⚠ 志願衝突（{resolvable.length} 人）— 已正取者須釋出其餘志願（含備取）為「不錄取」
+            </div>
+            <button onClick={resolveConflicts} disabled={resolving}
+              style={{ ...s.btn, ...s.btnSm, background: '#b91c1c', color: '#fff', borderColor: '#b91c1c', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {resolving ? '處理中…' : '🔧 一鍵解決志願衝突'}
+            </button>
           </div>
-          {confirmedConflicts.map((c) => (
+          {resolvable.map((c) => (
             <div key={c.account} style={{ fontSize: 13, color: '#7f1d1d', padding: '3px 0' }}>
-              帳號 <b>{c.account}</b>（{c.name || '—'}）已被以下科系同時正取：{c.depts.join('、')}
+              帳號 <b>{c.account}</b>（{c.name || '—'}）保留正取：<b>{c.winnerDept}</b>
+              {c.winnerPref != null ? `（第${c.winnerPref}志願）` : ''}
+              ；釋出：{c.losers.map((l) => `${l.dept}（${l.status === 'admitted' ? '正取' : '備取'}${l.pref != null ? `·第${l.pref}志願` : ''}）`).join('、')}
             </div>
           ))}
         </div>
