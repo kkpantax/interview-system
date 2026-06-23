@@ -591,6 +591,19 @@ export default function Stage3App() {
               ...s.card, padding: '10px 14px', minWidth: 150, textAlign: 'left', cursor: 'pointer',
               border: dept === su.dept ? '2px solid #7e22ce' : '1px solid #e8e7e3', fontFamily: 'inherit',
             }}>
+            {(() => {
+              const q = quotas[su.dept]
+              if (q == null || q === '') return null
+              const diff = Number(q) - su.admitted
+              const txt = diff > 0 ? `尚可錄取 ${diff}` : diff === 0 ? '已達預計' : `超收 ${-diff}`
+              const color = diff > 0 ? '#0f766e' : diff === 0 ? '#6b7280' : '#dc2626'
+              const bg = diff > 0 ? '#ecfdf5' : diff === 0 ? '#f3f4f6' : '#fee2e2'
+              return (
+                <div style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, color, background: bg, borderRadius: 6, padding: '2px 8px', marginBottom: 6 }}>
+                  {txt}（預計 {q}／正取 {su.admitted}）
+                </div>
+              )
+            })()}
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{su.dept}</div>
             <div style={{ fontSize: 12, color: '#666' }}>
               <span style={{ color: '#16a34a' }}>正 {su.admitted}</span> ·{' '}
