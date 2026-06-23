@@ -3,8 +3,8 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
-import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3, getAllApplications, getDepartmentQuotas } from '../api'
-import { DECISIONS, batchInfo, batchOf } from '../constants'
+import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3, getAllApplications, getDepartmentQuotas, getDepartmentCampuses } from '../api'
+import { DECISIONS, batchInfo, batchOf, resolveCampus } from '../constants'
 import EvalDetailModal from '../components/EvalDetailModal'
 import { getTeacher, logoutTeacher } from '../auth'
 
@@ -96,6 +96,7 @@ export default function Stage3App() {
   const [finals, setFinals]     = useState(() => new Map())   // key(account__dept) → final row
   const [apps, setApps]         = useState([])
   const [quotas, setQuotas]     = useState({})
+  const [campusOv, setCampusOv] = useState({})   // department_campus 覆寫
   const [dept, setDept]         = useState('')
   const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
   const [selectedCenter, setSelectedCenter] = useState('')
@@ -115,17 +116,19 @@ export default function Stage3App() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [ev, fa, ap, qz] = await Promise.all([
+      const [ev, fa, ap, qz, cc] = await Promise.all([
         getStage3Data(),
         getFinalAdmissions(),
         getAllApplications().catch(() => []),
         getDepartmentQuotas().catch(() => ({})),
+        getDepartmentCampuses().catch(() => ({})),
       ])
       setRawEvals(ev || [])
       setEvals(dedupeEvals(ev))
       setFinals(new Map((fa || []).map((r) => [`${r.account}__${r.department}`, r])))
       setApps(ap || [])
       setQuotas(qz || {})
+      setCampusOv(cc || {})
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
@@ -300,6 +303,52 @@ export default function Stage3App() {
     for (const [c, set] of m) out[c] = set.size
     return out
   }, [apps])
+
+  // 各校區正取人數（以「人」計：每位帳號取其正取系所的校區，計不重複帳號）
+  const campusAdmitted = useMemo(() => {
+    const seen = new Map()   // account → 校區（取第一筆正取的校區；定案後每人僅一個正取）
+    for (const e of evals) {
+      if (statusOf(e) !== 'admitted') continue
+      const a = acctOf(e); if (!a) continue
+      if (!seen.has(a)) seen.set(a, resolveCampus(deptOf(e), campusOv))
+    }
+    const out = {}
+    for (const camp of seen.values()) out[camp] = (out[camp] || 0) + 1
+    return out
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals, finals, campusOv])
+
+  // 各中心「一階淘汰」人數（未通過一階＝任一志願有 status='rejected' 且無 stage1_passed_date）。
+  // 這些人不在 evals 內，故以 applications 為來源、每人歸到最高志願的中心計數。
+  const stage1RejectedByCenter = useMemo(() => {
+    const acc = new Map()   // account → { passed, hasRej, center, pref }
+    for (const a of apps) {
+      const id = a.account; if (!id) continue
+      const cur = acc.get(id) || { passed: false, hasRej: false, center: '（未設定中心）', pref: 99 }
+      if (a.stage1_passed_date) cur.passed = true
+      if (a.status === 'rejected') cur.hasRej = true
+      const pref = a.preference_order ?? 99
+      if (pref < cur.pref ||
+          (pref === cur.pref && cur.center === '（未設定中心）' && a.center)) {
+        cur.center = a.center || '（未設定中心）'
+        cur.pref = pref
+      }
+      acc.set(id, cur)
+    }
+    const out = {}
+    for (const v of acc.values()) if (!v.passed && v.hasRej) out[v.center] = (out[v.center] || 0) + 1
+    return out
+  }, [apps])
+
+  // 中心卡片清單：合併「有進放榜評分的中心」與「只有一階淘汰的中心」，確保每個中心都出現
+  const centerCards = useMemo(() => {
+    const m = new Map()
+    for (const cs of centerSummary) m.set(cs.center, { ...cs })
+    for (const center of Object.keys(stage1RejectedByCenter)) {
+      if (!m.has(center)) m.set(center, { center, admitted: 0, waitlisted: 0, rejected: 0, pending: 0, total: 0 })
+    }
+    return [...m.values()].sort((x, y) => x.center.localeCompare(y.center, 'zh-TW'))
+  }, [centerSummary, stage1RejectedByCenter])
 
   const rows = evals.filter((e) => deptOf(e) === dept)
     .filter((e) => !batchFilter || String(batchOf(acctOf(e))) === batchFilter)
@@ -532,6 +581,19 @@ export default function Stage3App() {
         </div>
       }
     >
+      {/* 各校區正取總人數 */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {['台北校區', '高雄校區', ...(campusAdmitted['其他'] ? ['其他'] : [])].map((camp) => (
+          <div key={camp} style={{ ...s.card, padding: '12px 18px', minWidth: 150 }}>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>{camp}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', lineHeight: 1.1 }}>
+              {campusAdmitted[camp] || 0}
+              <span style={{ fontSize: 13, fontWeight: 400, color: '#888' }}> 人正取</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* 已確認重複正取（紅）：同一人被多系正取，需擇一保留 */}
       {resolvable.length > 0 && (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
@@ -634,11 +696,11 @@ export default function Stage3App() {
       )}
 
       {/* 各中心錄取統計 */}
-      {centerSummary.length > 0 && (
+      {centerCards.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
-          <CardHead left="各中心錄取統計" right={`${centerSummary.length} 個中心`} />
+          <CardHead left="各中心錄取統計" right={`${centerCards.length} 個中心`} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 14 }}>
-            {centerSummary.map((cs) => (
+            {centerCards.map((cs) => (
               <button key={cs.center}
                 onClick={() => { setViewMode('center'); setSelectedCenter(cs.center) }}
                 style={{
@@ -657,6 +719,9 @@ export default function Stage3App() {
                 </div>
                 <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
                   共報名 <b style={{ color: '#0f766e' }}>{appliedByCenter[cs.center] ?? '—'}</b> 人
+                  {stage1RejectedByCenter[cs.center] ? (
+                    <span style={{ color: '#b45309' }}>　一階淘汰 <b>{stage1RejectedByCenter[cs.center]}</b></span>
+                  ) : null}
                 </div>
               </button>
             ))}
