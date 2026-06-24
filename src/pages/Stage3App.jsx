@@ -17,6 +17,14 @@ const FINAL_STATUSES = [
 ]
 const statusInfo = (v) => FINAL_STATUSES.find((x) => x.v === v) || FINAL_STATUSES[3]
 const recInfo    = (v) => DECISIONS.find((x) => x.v === v) || DECISIONS[3]
+// 志願序顏色：1 綠 / 2 藍 / 3 橘 / 4↑ 灰
+const prefInfo = (p) => {
+  const n = Number(p)
+  if (n === 1) return { color: '#15803d', bg: '#dcfce7' }
+  if (n === 2) return { color: '#1d4ed8', bg: '#dbeafe' }
+  if (n === 3) return { color: '#b45309', bg: '#fef3c7' }
+  return { color: '#475569', bg: '#f1f5f9' }
+}
 
 // 中心檢視排序優先序：正取 → 備取 → 不錄取 → 待定
 const CENTER_SORT_PRIORITY = { admitted: 0, waitlisted: 1, rejected: 2, pending: 3 }
@@ -736,7 +744,7 @@ export default function Stage3App() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#faf9f6' }}>
-                {['中文姓名', '帳號', '梯次', '國籍', '性別', '一階', '二階分數', '評分紀錄', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['中文姓名', '帳號', '梯次', '國籍／性別', '一階', '志願序', '二階分數', '評分紀錄', '老師建議', '最終狀態', '設定'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -756,9 +764,13 @@ export default function Stage3App() {
                     </td>
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
                     {(() => { const bi = batchInfo(acctOf(e)); return <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td> })()}
-                    <td style={td}>{e.applications?.nationality || '—'}</td>
-                    <td style={td}>{e.applications?.gender || '—'}</td>
+                    <td style={td}>{[e.applications?.nationality, e.applications?.gender].filter(Boolean).join('／') || '—'}</td>
                     <td style={td}>{passed ? <span style={{ color: '#15803d' }}>通過</span> : '—'}</td>
+                    <td style={td}>
+                      {e.applications?.preference_order != null
+                        ? <Pill {...prefInfo(e.applications.preference_order)}>第 {e.applications.preference_order} 志願</Pill>
+                        : '—'}
+                    </td>
                     <td style={td}>{e.total_score ?? '—'}</td>
                     <td style={td}>
                       <Btn onClick={() => openRecords(e)} style={{ padding: '3px 10px', fontSize: 12 }}>
