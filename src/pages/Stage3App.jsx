@@ -109,6 +109,7 @@ export default function Stage3App() {
   const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
   const [selectedCenter, setSelectedCenter] = useState('')
   const [batchFilter, setBatchFilter]     = useState('')       // 梯次篩選：'' 全部 / '1' 一梯 / '2' 二梯
+  const [statusFilter, setStatusFilter]   = useState('')       // 科系視角狀態篩選：'' 全部 / admitted / waitlisted / rejected / pending
   const [loading, setLoading]   = useState(false)
   const [savingKey, setSavingKey] = useState(null)
   const [resolving, setResolving] = useState(false)
@@ -360,6 +361,7 @@ export default function Stage3App() {
 
   const rows = evals.filter((e) => deptOf(e) === dept)
     .filter((e) => !batchFilter || String(batchOf(acctOf(e))) === batchFilter)
+    .filter((e) => !statusFilter || statusOf(e) === statusFilter)
 
   const setStatus = async (e, final_status) => {
     const account = acctOf(e), department = deptOf(e)
@@ -740,6 +742,26 @@ export default function Stage3App() {
       {viewMode === 'dept' ? (
       <Card>
         <CardHead left={dept ? `${dept} · 通過兩階段名單` : '請選擇科系'} right={`${rows.length} 位`} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', flexWrap: 'wrap', borderBottom: '1px solid #f0efea' }}>
+          <span style={{ fontSize: 13, color: '#6b21a8', fontWeight: 600, marginRight: 2 }}>狀態篩選</span>
+          {[
+            { v: '', label: '全部' },
+            { v: 'admitted', label: '正取' },
+            { v: 'waitlisted', label: '備取' },
+            { v: 'rejected', label: '不錄取' },
+            { v: 'pending', label: '待定' },
+          ].map((o) => (
+            <button key={o.v} onClick={() => setStatusFilter(o.v)}
+              style={{
+                ...s.btn, ...s.btnSm, fontWeight: 600,
+                background: statusFilter === o.v ? '#7e22ce' : '#fff',
+                color: statusFilter === o.v ? '#fff' : '#555',
+                borderColor: statusFilter === o.v ? '#7e22ce' : '#ddd',
+              }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
