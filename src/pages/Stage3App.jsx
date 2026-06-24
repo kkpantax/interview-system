@@ -110,6 +110,20 @@ const DEPT_EXPORT_COLS = [
   { key: 'status_label', label: '最終狀態' },
 ]
 
+// 全校總名單匯出欄位（每人一列，不分系）
+const SCHOOL_EXPORT_COLS = [
+  { key: 'name',        label: '中文姓名' },
+  { key: 'account',     label: '帳號' },
+  { key: 'batch_label', label: '梯次' },
+  { key: 'nationality', label: '國籍' },
+  { key: 'gender',      label: '性別' },
+  { key: 'campus',      label: '校區' },
+  { key: 'dept',        label: '科系' },
+  { key: 'pref',        label: '志願序' },
+  { key: 'score',       label: '二階分數' },
+  { key: 'note',        label: '備註' },
+]
+
 export default function Stage3App() {
   const teacher = getTeacher()
   const [evals, setEvals]       = useState([])
@@ -124,6 +138,8 @@ export default function Stage3App() {
   const [selectedCenter, setSelectedCenter] = useState('')
   const [batchFilter, setBatchFilter]     = useState('')       // 梯次篩選：'' 全部 / '1' 一梯 / '2' 二梯
   const [statusFilter, setStatusFilter]   = useState('')       // 科系視角狀態篩選：'' 全部 / admitted / waitlisted / rejected / pending
+  const [allTab, setAllTab]               = useState('admitted') // 全校總名單分頁：admitted / waitlisted / rejected
+  const [allCampus, setAllCampus]         = useState('')        // 全校總名單校區篩選：'' 全部 / 台北校區 / 高雄校區 / 其他
   const [centersOpen, setCentersOpen]     = useState(false)     // 各中心錄取統計區塊是否展開（預設摺疊以節省版面）
   const [loading, setLoading]   = useState(false)
   const [savingKey, setSavingKey] = useState(null)
@@ -378,6 +394,81 @@ export default function Stage3App() {
     .filter((e) => !batchFilter || String(batchOf(acctOf(e))) === batchFilter)
     .filter((e) => !statusFilter || statusOf(e) === statusFilter)
 
+  // 全校總名單（不分系，每人一列）：依最終身分歸到 正取／備取／不錄取（待定者另計，不入榜）。
+  //   · 正取：取最高志願（preference_order 最小、同序分數高）那筆正取的系所與校區。
+  //   · 備取：無正取、有備取 → 取最高志願的備取系，另計其他備取系數（顯示「另備取 N 系」）。
+  //   · 不錄取：全部志願皆已定案且無正取／備取／待定；科系欄顯示其最高志願「報考系」作參考。
+  //   · 待定：尚有任一志願為 pending 且無正取／備取 → 不列入三榜，只計數提示。
+  const schoolRoster = useMemo(() => {
+    const byAcct = new Map()   // account → eval[]（已去重，套用梯次篩選）
+    for (const e of evals) {
+      if (batchFilter && String(batchOf(acctOf(e))) !== batchFilter) continue
+      const a = acctOf(e); if (!a) continue
+      if (!byAcct.has(a)) byAcct.set(a, [])
+      byAcct.get(a).push(e)
+    }
+    const pickTop = (list) => [...list].sort((x, y) => {
+      const px = x.applications?.preference_order ?? 99
+      const py = y.applications?.preference_order ?? 99
+      if (px !== py) return px - py
+      return (y.total_score || 0) - (x.total_score || 0)
+    })[0]
+    const admitted = [], waitlisted = [], rejected = []
+    let pendingCount = 0
+    for (const [account, list] of byAcct) {
+      const adm = list.filter((e) => statusOf(e) === 'admitted')
+      const wai = list.filter((e) => statusOf(e) === 'waitlisted')
+      const hasPending = list.some((e) => statusOf(e) === 'pending')
+      const base = list[0]
+      const common = {
+        account,
+        name:         base.applications?.name ?? '',
+        name_english: base.applications?.name_english ?? '',
+        nationality:  base.applications?.nationality ?? '',
+        gender:       base.applications?.gender ?? '',
+      }
+      const rowOf = (w, extra = {}) => ({
+        ...common,
+        dept:   deptOf(w),
+        campus: resolveCampus(deptOf(w), campusOv),
+        pref:   w.applications?.preference_order ?? null,
+        score:  w.total_score ?? null,
+        ...extra,
+      })
+      if (adm.length) {
+        admitted.push(rowOf(pickTop(adm), { status: 'admitted', otherCount: 0 }))
+      } else if (wai.length) {
+        const otherCount = new Set(wai.map(deptOf)).size - 1
+        waitlisted.push(rowOf(pickTop(wai), { status: 'waitlisted', otherCount }))
+      } else if (hasPending) {
+        pendingCount++
+      } else {
+        rejected.push(rowOf(pickTop(list), { status: 'rejected', otherCount: 0 }))
+      }
+    }
+    const byCampusDept = (a, b) =>
+      a.campus.localeCompare(b.campus, 'zh-TW') ||
+      a.dept.localeCompare(b.dept, 'zh-TW') ||
+      (a.pref ?? 99) - (b.pref ?? 99) ||
+      (b.score ?? -Infinity) - (a.score ?? -Infinity) ||
+      String(a.account).localeCompare(String(b.account))
+    admitted.sort(byCampusDept)
+    waitlisted.sort(byCampusDept)
+    rejected.sort((a, b) => String(a.account).localeCompare(String(b.account)))
+    return { admitted, waitlisted, rejected, pendingCount }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evals, finals, campusOv, batchFilter])
+
+  // 套用校區篩選後的當前分頁列，與各分頁人數（人數同步反映校區篩選）
+  const countFor = (tab) => {
+    const arr = schoolRoster[tab] || []
+    return allCampus ? arr.filter((r) => r.campus === allCampus).length : arr.length
+  }
+  const allRows = (() => {
+    const arr = schoolRoster[allTab] || []
+    return allCampus ? arr.filter((r) => r.campus === allCampus) : arr
+  })()
+
   const setStatus = async (e, final_status) => {
     const account = acctOf(e), department = deptOf(e)
     if (!account) { showToast('此筆缺少帳號，無法設定', 'warn'); return }
@@ -592,6 +683,34 @@ export default function Stage3App() {
     showToast(`已匯出 ${dept} 名單（正取 ${adm.length}／備取 ${wai.length}／不錄取 ${rej.length}）`)
   }
 
+  // 匯出全校總名單：正取／備取／不錄取 分三個分頁，每人一列、不分系（不受畫面校區篩選影響，整份匯出）
+  const exportSchoolRoster = () => {
+    const toRow = (r) => ({
+      name:         r.name,
+      account:      r.account,
+      batch_label:  batchInfo(r.account).label,
+      nationality:  r.nationality,
+      gender:       r.gender,
+      campus:       r.campus,
+      dept:         r.dept,
+      pref:         r.pref ?? '',
+      score:        r.score ?? '',
+      note:         r.status === 'waitlisted' && r.otherCount > 0 ? `另備取 ${r.otherCount} 系` : '',
+    })
+    const adm = schoolRoster.admitted.map(toRow)
+    const wai = schoolRoster.waitlisted.map(toRow)
+    const rej = schoolRoster.rejected.map(toRow)
+    if (!adm.length && !wai.length && !rej.length) {
+      showToast('目前沒有可匯出的名單', 'warn'); return
+    }
+    writeXlsxMulti([
+      { name: '正取',   columns: SCHOOL_EXPORT_COLS, rows: adm },
+      { name: '備取',   columns: SCHOOL_EXPORT_COLS, rows: wai },
+      { name: '不錄取', columns: SCHOOL_EXPORT_COLS, rows: rej },
+    ], '第三階段_全校總名單.xlsx')
+    showToast(`已匯出全校總名單（正取 ${adm.length}／備取 ${wai.length}／不錄取 ${rej.length}）`)
+  }
+
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
 
@@ -607,6 +726,7 @@ export default function Stage3App() {
             { label: '⬇ 匯出正取名單', onClick: exportAdmitted },
             { label: '⬇ 匯出備取名單', onClick: exportWaitlisted },
             { label: '⬇ 匯出依中心名單', onClick: exportByCenter },
+            { label: '⬇ 匯出全校總名單（正/備/不錄取）', onClick: exportSchoolRoster },
           ]} />
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#e9d5ff' }}>{teacher.display_name || teacher.username}</span>
@@ -624,6 +744,29 @@ export default function Stage3App() {
               <span style={{ fontSize: 13, fontWeight: 400, color: '#888' }}> 人正取</span>
             </div>
           </div>
+        ))}
+      </div>
+
+      {/* 檢視切換：科系 / 中心 / 全校總名單 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {[
+          { v: 'dept',   label: '科系檢視' },
+          { v: 'center', label: '中心檢視' },
+          { v: 'all',    label: '全校總名單' },
+        ].map((o) => (
+          <button key={o.v}
+            onClick={() => {
+              if (o.v === 'center' && !selectedCenter && centerCards[0]) setSelectedCenter(centerCards[0].center)
+              setViewMode(o.v)
+            }}
+            style={{
+              ...s.btn, fontWeight: 600,
+              background:  viewMode === o.v ? '#7e22ce' : '#fff',
+              color:       viewMode === o.v ? '#fff' : '#555',
+              borderColor: viewMode === o.v ? '#7e22ce' : '#ddd',
+            }}>
+            {o.label}
+          </button>
         ))}
       </div>
 
@@ -770,7 +913,83 @@ export default function Stage3App() {
         </Card>
       )}
 
-      {viewMode === 'dept' ? (
+      {viewMode === 'all' ? (
+      <Card>
+        <CardHead left="全校總名單 · 不分系（每人一列）" right={`${allRows.length} 人`} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', flexWrap: 'wrap', borderBottom: '1px solid #f0efea' }}>
+          {[
+            { v: 'admitted',   label: '正取' },
+            { v: 'waitlisted', label: '備取' },
+            { v: 'rejected',   label: '不錄取' },
+          ].map((o) => (
+            <button key={o.v} onClick={() => setAllTab(o.v)}
+              style={{
+                ...s.btn, ...s.btnSm, fontWeight: 600,
+                background:  allTab === o.v ? '#7e22ce' : '#fff',
+                color:       allTab === o.v ? '#fff' : '#555',
+                borderColor: allTab === o.v ? '#7e22ce' : '#ddd',
+              }}>
+              {o.label} {countFor(o.v)}
+            </button>
+          ))}
+          <span style={{ width: 1, height: 18, background: '#e8e7e3', margin: '0 4px' }} />
+          <select style={s.sel} value={allCampus} onChange={(e) => setAllCampus(e.target.value)}>
+            <option value="">全部校區</option>
+            <option value="台北校區">台北校區</option>
+            <option value="高雄校區">高雄校區</option>
+            <option value="其他">其他</option>
+          </select>
+          {schoolRoster.pendingCount > 0 && (
+            <span style={{ fontSize: 12, color: '#6b7280' }}>待定 {schoolRoster.pendingCount} 人（未列入榜單）</span>
+          )}
+          <button onClick={exportSchoolRoster}
+            style={{ ...s.btn, ...s.btnSm, fontWeight: 600, marginLeft: 'auto', background: '#581c87', color: '#fff', borderColor: '#581c87' }}>
+            ⬇ 下載全校總名單（正/備/不錄取）
+          </button>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#faf9f6' }}>
+                {['中文姓名', '帳號', '梯次', '國籍', '性別', '校區', allTab === 'rejected' ? '報考系' : '錄取系', '志願序', '二階分數'].map((h) => <th key={h} style={th}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {allRows.map((r) => {
+                const bi = batchInfo(r.account)
+                return (
+                  <tr key={r.account}>
+                    <td style={{ ...td, fontWeight: 500 }}>{r.name || '—'}</td>
+                    <td style={{ ...td, color: '#888' }}>{r.account}</td>
+                    <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
+                    <td style={td}>{r.nationality || '—'}</td>
+                    <td style={td}>{r.gender || '—'}</td>
+                    <td style={td}>{r.campus || '—'}</td>
+                    <td style={td}>
+                      {r.dept || '—'}
+                      {allTab === 'waitlisted' && r.otherCount > 0 && (
+                        <span style={{ ...s.pill, marginLeft: 6, background: '#fef3c7', color: '#b45309' }}>另備取 {r.otherCount} 系</span>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {r.pref != null
+                        ? <Pill {...prefInfo(r.pref)}>第 {r.pref} 志願</Pill>
+                        : '—'}
+                    </td>
+                    <td style={td}>{r.score ?? '—'}</td>
+                  </tr>
+                )
+              })}
+              {!allRows.length && (
+                <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 32 }}>
+                  {loading ? '載入中…' : '此分頁目前沒有名單'}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      ) : viewMode === 'dept' ? (
       <Card>
         <CardHead left={dept ? `${dept} · 通過兩階段名單` : '請選擇科系'} right={`${rows.length} 位`} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', flexWrap: 'wrap', borderBottom: '1px solid #f0efea' }}>
