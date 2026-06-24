@@ -734,8 +734,20 @@ export default function Stage3App() {
         </div>
       }
     >
-      {/* 各校區正取總人數 */}
+      {/* 各校區正取總人數（含全校總額） */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {(() => {
+          const total = ['台北校區', '高雄校區', '其他'].reduce((sum, c) => sum + (campusAdmitted[c] || 0), 0)
+          return (
+            <div style={{ ...s.card, padding: '12px 18px', minWidth: 150, borderColor: '#d8b4fe', background: '#faf5ff' }}>
+              <div style={{ fontSize: 13, color: '#6b21a8', marginBottom: 2, fontWeight: 600 }}>全校</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#7e22ce', lineHeight: 1.1 }}>
+                {total}
+                <span style={{ fontSize: 13, fontWeight: 400, color: '#888' }}> 人正取</span>
+              </div>
+            </div>
+          )
+        })()}
         {['台北校區', '高雄校區', ...(campusAdmitted['其他'] ? ['其他'] : [])].map((camp) => (
           <div key={camp} style={{ ...s.card, padding: '12px 18px', minWidth: 150 }}>
             <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>{camp}</div>
@@ -806,57 +818,58 @@ export default function Stage3App() {
         </div>
       )}
 
-      {/* 梯次篩選 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: '#6b21a8', fontWeight: 600 }}>梯次篩選</span>
-        <select style={s.sel} value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)}>
-          <option value="">全部梯次</option>
-          <option value="1">僅第一梯</option>
-          <option value="2">僅第二梯</option>
-        </select>
-        {batchFilter && (
-          <span style={{ fontSize: 12, color: '#c2410c' }}>
-            目前僅顯示{batchFilter === '2' ? '第二梯（加報）' : '第一梯'}學生
-          </span>
-        )}
-      </div>
-
-      {/* 各系總覽 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {summary.map((su) => (
-          <button key={su.dept} onClick={() => setDept(su.dept)}
-            style={{
-              ...s.card, padding: '10px 14px', minWidth: 150, textAlign: 'left', cursor: 'pointer',
-              border: dept === su.dept ? '2px solid #7e22ce' : '1px solid #e8e7e3', fontFamily: 'inherit',
-            }}>
-            {(() => {
-              const q = quotas[su.dept]
-              if (q == null || q === '') return null
-              const diff = Number(q) - su.admitted
-              const txt = diff > 0 ? `尚可錄取 ${diff}` : diff === 0 ? '已達預計' : `超收 ${-diff}`
-              const color = diff > 0 ? '#0f766e' : diff === 0 ? '#6b7280' : '#dc2626'
-              const bg = diff > 0 ? '#ecfdf5' : diff === 0 ? '#f3f4f6' : '#fee2e2'
-              return (
-                <div style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, color, background: bg, borderRadius: 6, padding: '2px 8px', marginBottom: 6 }}>
-                  {txt}（預計 {q}／正取 {su.admitted}）
-                </div>
-              )
-            })()}
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{su.dept}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>
-              <span style={{ color: '#16a34a' }}>正 {su.admitted}</span> ·{' '}
-              <span style={{ color: '#d97706' }}>備 {su.waitlisted}</span> ·{' '}
-              <span style={{ color: '#aaa' }}>共 {su.total}</span>
+      {/* 各系總覽（依校區分組：台北 → 高雄 → 其他，便於區隔兩校區） */}
+      {summary.length ? (() => {
+        const CAMP_ORDER = { '台北校區': 0, '高雄校區': 1, '其他': 2 }
+        const groups = new Map()
+        for (const su of summary) {
+          const camp = resolveCampus(su.dept, campusOv)
+          if (!groups.has(camp)) groups.set(camp, [])
+          groups.get(camp).push(su)
+        }
+        const camps = [...groups.keys()].sort((a, b) => (CAMP_ORDER[a] ?? 9) - (CAMP_ORDER[b] ?? 9) || a.localeCompare(b, 'zh-TW'))
+        return camps.map((camp) => (
+          <div key={camp} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#6b21a8', marginBottom: 6 }}>
+              {camp}<span style={{ fontSize: 11.5, fontWeight: 400, color: '#aaa' }}>　{groups.get(camp).length} 系</span>
             </div>
-            <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
-              預計錄取 <b style={{ color: '#0f766e' }}>{quotas[su.dept] ?? '—'}</b>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {groups.get(camp).map((su) => (
+                <button key={su.dept} onClick={() => setDept(su.dept)}
+                  style={{
+                    ...s.card, padding: '10px 14px', minWidth: 150, textAlign: 'left', cursor: 'pointer',
+                    border: dept === su.dept ? '2px solid #7e22ce' : '1px solid #e8e7e3', fontFamily: 'inherit',
+                  }}>
+                  {(() => {
+                    const q = quotas[su.dept]
+                    if (q == null || q === '') return null
+                    const diff = Number(q) - su.admitted
+                    const txt = diff > 0 ? `尚可錄取 ${diff}` : diff === 0 ? '已達預計' : `超收 ${-diff}`
+                    const color = diff > 0 ? '#0f766e' : diff === 0 ? '#6b7280' : '#dc2626'
+                    const bg = diff > 0 ? '#ecfdf5' : diff === 0 ? '#f3f4f6' : '#fee2e2'
+                    return (
+                      <div style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, color, background: bg, borderRadius: 6, padding: '2px 8px', marginBottom: 6 }}>
+                        {txt}（預計 {q}／正取 {su.admitted}）
+                      </div>
+                    )
+                  })()}
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{su.dept}</div>
+                  <div style={{ fontSize: 12, color: '#666' }}>
+                    <span style={{ color: '#16a34a' }}>正 {su.admitted}</span> ·{' '}
+                    <span style={{ color: '#d97706' }}>備 {su.waitlisted}</span> ·{' '}
+                    <span style={{ color: '#aaa' }}>共 {su.total}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
+                    預計錄取 <b style={{ color: '#0f766e' }}>{quotas[su.dept] ?? '—'}</b>
+                  </div>
+                </button>
+              ))}
             </div>
-          </button>
-        ))}
-        {!summary.length && (
-          <div style={{ fontSize: 13, color: '#aaa' }}>{loading ? '載入中…' : '尚無第二階段評分資料'}</div>
-        )}
-      </div>
+          </div>
+        ))
+      })() : (
+        <div style={{ fontSize: 13, color: '#aaa', marginBottom: 16 }}>{loading ? '載入中…' : '尚無第二階段評分資料'}</div>
+      )}
 
       {/* 檢視模式切換提示 */}
       {viewMode === 'center' && (
@@ -942,8 +955,14 @@ export default function Stage3App() {
           {schoolRoster.pendingCount > 0 && (
             <span style={{ fontSize: 12, color: '#6b7280' }}>待定 {schoolRoster.pendingCount} 人（未列入榜單）</span>
           )}
+          <span style={{ marginLeft: 'auto', fontSize: 13, color: '#6b21a8', fontWeight: 600 }}>梯次</span>
+          <select style={s.sel} value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)}>
+            <option value="">全部梯次</option>
+            <option value="1">僅第一梯</option>
+            <option value="2">僅第二梯</option>
+          </select>
           <button onClick={exportSchoolRoster}
-            style={{ ...s.btn, ...s.btnSm, fontWeight: 600, marginLeft: 'auto', background: '#581c87', color: '#fff', borderColor: '#581c87' }}>
+            style={{ ...s.btn, ...s.btnSm, fontWeight: 600, background: '#581c87', color: '#fff', borderColor: '#581c87' }}>
             ⬇ 下載全校總名單（正/備/不錄取）
           </button>
         </div>
