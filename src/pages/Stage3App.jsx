@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
-import { writeXlsx } from '../components/ExportBtn'
+import { writeXlsx, writeXlsxMulti } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
-import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getNotifyStage3, getAllApplications, getDepartmentQuotas, getDepartmentCampuses } from '../api'
+import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getAllApplications, getDepartmentQuotas, getDepartmentCampuses } from '../api'
 import { DECISIONS, batchInfo, batchOf, resolveCampus } from '../constants'
 import EvalDetailModal from '../components/EvalDetailModal'
 import { getTeacher, logoutTeacher } from '../auth'
@@ -93,6 +93,20 @@ const CENTER_EXPORT_COLS = [
   { key: 'batch_label',  label: '梯次' },
   { key: 'name',         label: '中文姓名' },
   { key: 'name_english', label: '英文姓名' },
+  { key: 'status_label', label: '最終狀態' },
+]
+
+// 各系匯出欄位（與科系視角名單顯示一致；不含「查看評分紀錄」「設定」等操作欄）
+const DEPT_EXPORT_COLS = [
+  { key: 'name',         label: '中文姓名' },
+  { key: 'account',      label: '帳號' },
+  { key: 'batch_label',  label: '梯次' },
+  { key: 'nationality',  label: '國籍' },
+  { key: 'gender',       label: '性別' },
+  { key: 'stage1_label', label: '一階' },
+  { key: 'pref',         label: '志願序' },
+  { key: 'score',        label: '二階分數' },
+  { key: 'rec_label',    label: '老師建議' },
   { key: 'status_label', label: '最終狀態' },
 ]
 
@@ -548,25 +562,34 @@ export default function Stage3App() {
     showToast(`已匯出依中心名單（${centers.length} 個中心）`)
   }
 
-  // 匯出錄取通知寄信名單（admitted，含 Email、一人一列）
-  const exportNotify = async () => {
-    try {
-      const rows = await getNotifyStage3()
-      if (!rows.length) { showToast('目前沒有正取的學生', 'warn'); return }
-      writeXlsx(
-        [
-          { key: 'name', label: '中文姓名' },
-          { key: 'name_english', label: '英文姓名' },
-          { key: 'email', label: 'Email' },
-          { key: 'department', label: '錄取系所' },
-        ],
-        rows,
-        '三階錄取通知.xlsx',
-      )
-      showToast(`已匯出 ${rows.length} 筆錄取通知名單`)
-    } catch (e) {
-      showToast('匯出失敗：' + e.message, 'error')
+  // 匯出目前選取科系名單：正取／備取／不錄取 分三個分頁，只含本系學生
+  const exportDept = () => {
+    if (!dept) { showToast('請先選擇科系', 'warn'); return }
+    const inDept = evals.filter((e) => deptOf(e) === dept)
+    const toRow = (e) => ({
+      name:         e.applications?.name ?? '',
+      account:      acctOf(e) ?? '',
+      batch_label:  batchInfo(acctOf(e)).label,
+      nationality:  e.applications?.nationality ?? '',
+      gender:       e.applications?.gender ?? '',
+      stage1_label: e.applications?.stage1_passed_date ? '通過' : '',
+      pref:         e.applications?.preference_order ?? '',
+      score:        e.total_score ?? '',
+      rec_label:    recInfo(e.recommendation).label,
+      status_label: statusInfo(statusOf(e)).label,
+    })
+    const adm = inDept.filter((e) => statusOf(e) === 'admitted').map(toRow)
+    const wai = inDept.filter((e) => statusOf(e) === 'waitlisted').map(toRow)
+    const rej = inDept.filter((e) => statusOf(e) === 'rejected').map(toRow)
+    if (!adm.length && !wai.length && !rej.length) {
+      showToast('本系目前沒有正取／備取／不錄取的學生', 'warn'); return
     }
+    writeXlsxMulti([
+      { name: '正取',   columns: DEPT_EXPORT_COLS, rows: adm },
+      { name: '備取',   columns: DEPT_EXPORT_COLS, rows: wai },
+      { name: '不錄取', columns: DEPT_EXPORT_COLS, rows: rej },
+    ], `第三階段_${dept}_名單.xlsx`)
+    showToast(`已匯出 ${dept} 名單（正取 ${adm.length}／備取 ${wai.length}／不錄取 ${rej.length}）`)
   }
 
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
@@ -584,7 +607,6 @@ export default function Stage3App() {
             { label: '⬇ 匯出正取名單', onClick: exportAdmitted },
             { label: '⬇ 匯出備取名單', onClick: exportWaitlisted },
             { label: '⬇ 匯出依中心名單', onClick: exportByCenter },
-            { label: '⬇ 匯出錄取通知名單', onClick: exportNotify },
           ]} />
           <Btn style={{ background: 'none', borderColor: '#ffffff44', color: '#f3e8ff' }} onClick={load}>↻</Btn>
           <span style={{ fontSize: 12, color: '#e9d5ff' }}>{teacher.display_name || teacher.username}</span>
@@ -770,6 +792,10 @@ export default function Stage3App() {
               {o.label}
             </button>
           ))}
+          <button onClick={exportDept}
+            style={{ ...s.btn, ...s.btnSm, fontWeight: 600, marginLeft: 'auto', background: '#581c87', color: '#fff', borderColor: '#581c87' }}>
+            ⬇ 下載本系名單（正/備/不錄取）
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
