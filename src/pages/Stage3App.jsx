@@ -110,6 +110,7 @@ export default function Stage3App() {
   const [selectedCenter, setSelectedCenter] = useState('')
   const [batchFilter, setBatchFilter]     = useState('')       // 梯次篩選：'' 全部 / '1' 一梯 / '2' 二梯
   const [statusFilter, setStatusFilter]   = useState('')       // 科系視角狀態篩選：'' 全部 / admitted / waitlisted / rejected / pending
+  const [centersOpen, setCentersOpen]     = useState(false)     // 各中心錄取統計區塊是否展開（預設摺疊以節省版面）
   const [loading, setLoading]   = useState(false)
   const [savingKey, setSavingKey] = useState(null)
   const [resolving, setResolving] = useState(false)
@@ -708,7 +709,14 @@ export default function Stage3App() {
       {/* 各中心錄取統計 */}
       {centerCards.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
-          <CardHead left="各中心錄取統計" right={`${centerCards.length} 個中心`} />
+          <button onClick={() => setCentersOpen((v) => !v)}
+            style={{ ...s.cardHead, width: '100%', background: 'none', border: 'none', borderBottom: centersOpen ? '1px solid #f0efeb' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <span>{centersOpen ? '▾' : '▸'} 各中心錄取統計</span>
+            <span style={{ fontSize: 13, fontWeight: 400, color: '#888' }}>
+              {centerCards.length} 個中心{centersOpen ? '' : '（點此展開）'}
+            </span>
+          </button>
+          {centersOpen && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 14 }}>
             {centerCards.map((cs) => (
               <button key={cs.center}
@@ -736,6 +744,7 @@ export default function Stage3App() {
               </button>
             ))}
           </div>
+          )}
         </Card>
       )}
 
