@@ -198,6 +198,63 @@ export default function Stage4App() {
     showToast(`已匯出 ${out.length} 筆就讀名單`)
   }
 
+  // ── 備取頁資料 ──
+  const waitRows = useMemo(
+    () => data.filter((r) => r.stage3_status === 'waitlisted' && inBatch(r)),
+    [data, inBatch],
+  )
+  // 各系備取統計 + 可遞補缺額（缺額 = 正取放棄數 − 已詢問 − 已遞補就讀）
+  const waitSummary = useMemo(() => {
+    const m = {}
+    const ensure = (dept) => (m[dept] ||= { dept, total: 0, negotiating: 0, enrolled: 0, declined: 0, pending: 0, declinesAdmit: 0, openSlots: 0 })
+    for (const r of waitRows) {
+      const x = ensure(r.department); x.total += 1
+      if (r.contact_status === 'negotiating') x.negotiating += 1
+      else if (r.contact_status === 'enrolled') x.enrolled += 1
+      else if (r.contact_status === 'declined') x.declined += 1
+      else x.pending += 1
+    }
+    for (const r of admitRows) { if (r.contact_status === 'declined') ensure(r.department).declinesAdmit += 1 }
+    for (const x of Object.values(m)) { x.openSlots = Math.max(0, x.declinesAdmit - x.negotiating - x.enrolled) }
+    return Object.values(m).sort((a, b) => a.dept.localeCompare(b.dept, 'zh-TW'))
+  }, [waitRows, admitRows])
+
+  const waitByCampus = useMemo(() => {
+    const g = {}
+    for (const su of waitSummary) { const camp = resolveCampus(su.dept, campusOv); (g[camp] ||= []).push(su) }
+    return Object.entries(g).sort((a, b) => (CAMP_ORDER[a[0]] ?? 9) - (CAMP_ORDER[b[0]] ?? 9))
+  }, [waitSummary, campusOv])
+
+  const totalOpenSlots = useMemo(() => waitSummary.reduce((n, x) => n + x.openSlots, 0), [waitSummary])
+
+  // 展開系所的備取生（依 standby_rank）
+  const selWaitRows = useMemo(
+    () => waitRows.filter((r) => r.department === selDept)
+      .sort((a, b) => (a.standby_rank || 99) - (b.standby_rank || 99)),
+    [waitRows, selDept],
+  )
+  const selOpenSlots = useMemo(() => waitSummary.find((x) => x.dept === selDept)?.openSlots || 0, [waitSummary, selDept])
+  // 可遞補候選 id：pending 中名次最前的 openSlots 位
+  const eligibleIds = useMemo(() => {
+    const pend = selWaitRows.filter((r) => r.contact_status === 'pending')
+    return new Set(pend.slice(0, selOpenSlots).map((r) => r.id))
+  }, [selWaitRows, selOpenSlots])
+
+  // 遞補通知：先轉 negotiating（佔住缺額），再開 s4_promote 寄信視窗
+  const promoteNotify = async (rows) => {
+    const withEmail = rows.filter((r) => r.appInfo?.email)
+    if (!withEmail.length) { showToast('這些備取生沒有 Email，無法寄送', 'warn'); return }
+    setBusy(true)
+    try {
+      for (const r of withEmail.filter((r) => r.contact_status === 'pending')) {
+        await updateStage4Status(r.id, { contact_status: 'negotiating' })
+      }
+      await load()
+      setMail({ kind: 's4_promote', recipients: withEmail.map((r) => ({ ...r, contact_status: 'negotiating' })), batch: settingsBatch })
+    } catch (e) { showToast('遞補通知失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
   if (!teacher || teacher.role !== 'superadmin') return null
   const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fde7d4' }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
@@ -352,8 +409,111 @@ export default function Stage4App() {
         </>
       )}
 
+      {/* ── 備取頁 ── */}
+      {tab === 'wait' && (
+        <>
+          {totalOpenSlots > 0 && (
+            <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '10px 16px', marginBottom: 12, fontSize: 13, color: '#9a3412', fontWeight: 600 }}>
+              ⚠ 目前共有 {totalOpenSlots} 位備取生「可遞補待通知」，請至對應系所逐一或批次寄送遞補通知。
+            </div>
+          )}
+
+          {waitByCampus.map(([camp, list]) => (
+            <div key={camp} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#7c2d12', marginBottom: 8 }}>
+                {camp}<span style={{ color: '#bbb', fontWeight: 400 }}> · {list.reduce((s2, x) => s2 + x.total, 0)} 位備取</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+                {list.map((su) => {
+                  const open = selDept === su.dept
+                  return (
+                    <button key={su.dept} onClick={() => setSelDept(open ? '' : su.dept)}
+                      style={{ textAlign: 'left', cursor: 'pointer', background: open ? '#fff7ed' : 'white',
+                        border: '1px solid ' + (open ? ACCENT : '#e8e7e3'), borderRadius: 12, padding: 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{deptShort(su.dept)}</span>
+                        {su.openSlots > 0 && <Pill color="#b91c1c" bg="#fee2e2">可遞補 {su.openSlots}</Pill>}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
+                        備取 <b>{su.total}</b> · <span style={{ color: '#1e40af' }}>已詢問 {su.negotiating}</span>
+                        {' · '}<span style={{ color: '#15803d' }}>已遞補就讀 {su.enrolled}</span>
+                        {su.declined ? <> · <span style={{ color: '#dc2626' }}>放棄 {su.declined}</span></> : null}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          {!waitSummary.length && (
+            <div style={{ fontSize: 13, color: '#aaa', padding: 24, textAlign: 'center' }}>
+              {loading ? '載入中…' : '尚無備取資料'}
+            </div>
+          )}
+
+          {selDept && (
+            <Card>
+              <CardHead left={`${selDept}`}
+                right={
+                  <Btn style={{ ...s.btn, ...s.btnSm }} disabled={busy || !eligibleIds.size}
+                    onClick={() => promoteNotify(selWaitRows.filter((r) => eligibleIds.has(r.id)))}>
+                    ✉ 通知可遞補者{eligibleIds.size ? `（${eligibleIds.size}）` : ''}
+                  </Btn>
+                } />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#faf9f6' }}>
+                      {['備取序', '姓名', '帳號', '梯次', '二階分數', '狀態', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selWaitRows.map((r) => {
+                      const cs = r.contact_status
+                      const eligible = cs === 'pending' && eligibleIds.has(r.id)
+                      const st = cs === 'enrolled' ? { t: '✓ 已遞補就讀', c: '#15803d', b: '#dcfce7' }
+                        : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
+                        : cs === 'negotiating' ? { t: '遞補詢問中', c: '#1e40af', b: '#dbeafe' }
+                        : eligible ? { t: '可遞補', c: '#b91c1c', b: '#fee2e2' }
+                        : { t: '備取待機', c: '#6b7280', b: '#f3f4f6' }
+                      const bi = batchInfo(r.account)
+                      return (
+                        <tr key={r.id}>
+                          <td style={td}>備取 {r.standby_rank ?? '—'}</td>
+                          <td style={td}><div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div></td>
+                          <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
+                          <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
+                          <td style={td}>{r.stage2_score ?? '—'}</td>
+                          <td style={td}><Pill color={st.c} bg={st.b}>{st.t}</Pill></td>
+                          <td style={td}>
+                            {eligible ? (
+                              <button onClick={() => promoteNotify([r])} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '' : '無 Email'}
+                                style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>遞補通知</button>
+                            ) : cs === 'negotiating' ? (
+                              <button onClick={() => setMail({ kind: 's4_promote', recipients: [r], batch: settingsBatch })} disabled={busy || !r.appInfo?.email}
+                                style={{ ...s.btn, ...s.btnSm }}>重寄通知</button>
+                            ) : (
+                              <span style={{ color: '#ccc' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {!selWaitRows.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無備取資料</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
+            說明：「可遞補 N」＝該系正取放棄數 − 已詢問 − 已遞補就讀；系統只「顯示」可遞補者，由承辦逐一或批次按「遞補通知」才寄送（寄出即轉「遞補詢問中」並寫入確認連結）。被詢問的備取生於落地頁表達意願；若放棄，缺額會重新開放給下一位。不自動遞補、不自動寄信。
+          </div>
+        </>
+      )}
+
       {/* ── 其餘分頁（後續階段建置） ── */}
-      {tab !== 'admit' && (
+      {['declined', 'reject', 'tools'].includes(tab) && (
         <div style={{ background: 'white', border: '1px dashed #e0ddd6', borderRadius: 12, padding: 48, textAlign: 'center', color: '#aaa' }}>
           「{TABS.find((t) => t.key === tab)?.label}」分頁建置中。
         </div>
