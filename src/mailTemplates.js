@@ -598,7 +598,7 @@ Hormat kami,
   S4_ADMIT_EN: { subject: SUBJ.S4_ADMIT_EN, body:
 `Dear {{英文姓名}},
 
-Thank you for taking part in the admissions selection for the 1+4 International Preparatory Program at Shih Chien University ({{系所外}}). Following the interview evaluation, your preliminary result is as follows:
+Thank you for taking part in the admissions selection for the International Foundation Program (1+4) at Shih Chien University ({{系所外}}). Following the interview evaluation, your preliminary result is as follows:
 
 • Preliminary program: {{系所外}}
 • Preliminary result: {{類別外}}
@@ -646,7 +646,7 @@ Best regards,
   S4_ADMIT_VI: { subject: SUBJ.S4_ADMIT_VI, body:
 `Kính gửi bạn {{英文姓名}},
 
-Cảm ơn bạn đã tham gia kỳ tuyển sinh Chương trình Dự bị Quốc tế 1+4 tại Đại học Thực Tiễn (Shih Chien University) ({{系所外}}). Sau khi đánh giá phỏng vấn, kết quả sơ bộ của bạn như sau:
+Cảm ơn bạn đã tham gia kỳ tuyển sinh International Foundation Program (1+4) tại Đại học Thực Tiễn (Shih Chien University) ({{系所外}}). Sau khi đánh giá phỏng vấn, kết quả sơ bộ của bạn như sau:
 
 • Ngành dự kiến: {{系所外}}
 • Kết quả sơ bộ: {{類別外}}
@@ -694,7 +694,7 @@ Trân trọng,
   S4_ADMIT_ID: { subject: SUBJ.S4_ADMIT_ID, body:
 `Yth. {{英文姓名}},
 
-Terima kasih telah mengikuti seleksi penerimaan Program Persiapan Internasional 1+4 di Shih Chien University ({{系所外}}). Setelah evaluasi wawancara, hasil sementara Anda adalah sebagai berikut:
+Terima kasih telah mengikuti seleksi penerimaan International Foundation Program (1+4) di Shih Chien University ({{系所外}}). Setelah evaluasi wawancara, hasil sementara Anda adalah sebagai berikut:
 
 • Program sementara: {{系所外}}
 • Hasil sementara: {{類別外}}
@@ -744,7 +744,7 @@ Hormat kami,
   S4_PROMOTE_EN: { subject: SUBJ.S4_PROMOTE_EN, body:
 `Dear {{英文姓名}},
 
-Thank you for taking part in the admissions selection for the 1+4 International Preparatory Program at Shih Chien University ({{系所外}}). You were placed on the waitlist ({{類別外}}) for this program. A place has now become available, and we would like to ask whether you are willing to take it.
+Thank you for taking part in the admissions selection for the International Foundation Program (1+4) at Shih Chien University ({{系所外}}). You were placed on the waitlist ({{類別外}}) for this program. A place has now become available, and we would like to ask whether you are willing to take it.
 
 ※ This message is a Preliminary Admission Intent Survey, not a formal admission notice. If you indicate that you are willing to be admitted from the waitlist, your admission will be confirmed at the official announcement according to the available places and ranking.
 
@@ -786,7 +786,7 @@ Best regards,
   S4_PROMOTE_VI: { subject: SUBJ.S4_PROMOTE_VI, body:
 `Kính gửi bạn {{英文姓名}},
 
-Cảm ơn bạn đã tham gia kỳ tuyển sinh Chương trình Dự bị Quốc tế 1+4 tại Đại học Thực Tiễn (Shih Chien University) ({{系所外}}). Bạn thuộc danh sách dự bị ({{類別外}}) của ngành này. Hiện đã có một suất trống, và chúng tôi muốn hỏi bạn có sẵn lòng nhận suất này hay không.
+Cảm ơn bạn đã tham gia kỳ tuyển sinh International Foundation Program (1+4) tại Đại học Thực Tiễn (Shih Chien University) ({{系所外}}). Bạn thuộc danh sách dự bị ({{類別外}}) của ngành này. Hiện đã có một suất trống, và chúng tôi muốn hỏi bạn có sẵn lòng nhận suất này hay không.
 
 ※ Thông báo này là Khảo sát nguyện vọng trúng tuyển sơ bộ, không phải thông báo trúng tuyển chính thức. Nếu bạn cho biết sẵn lòng được trúng tuyển bổ sung từ danh sách dự bị, việc trúng tuyển sẽ được xác nhận khi công bố chính thức theo số suất trống và thứ hạng.
 
@@ -828,7 +828,7 @@ Trân trọng,
   S4_PROMOTE_ID: { subject: SUBJ.S4_PROMOTE_ID, body:
 `Yth. {{英文姓名}},
 
-Terima kasih telah mengikuti seleksi penerimaan Program Persiapan Internasional 1+4 di Shih Chien University ({{系所外}}). Anda berada dalam daftar tunggu ({{類別外}}) untuk program ini. Saat ini tersedia satu tempat, dan kami ingin menanyakan apakah Anda bersedia menerimanya.
+Terima kasih telah mengikuti seleksi penerimaan International Foundation Program (1+4) di Shih Chien University ({{系所外}}). Anda berada dalam daftar tunggu ({{類別外}}) untuk program ini. Saat ini tersedia satu tempat, dan kami ingin menanyakan apakah Anda bersedia menerimanya.
 
 ※ Pemberitahuan ini adalah Survei Minat Penerimaan Awal, bukan pemberitahuan penerimaan resmi. Jika Anda menyatakan bersedia diterima dari daftar tunggu, penerimaan Anda akan dikonfirmasi pada pengumuman resmi sesuai tempat yang tersedia dan peringkat.
 
@@ -872,7 +872,7 @@ Hormat kami,
   S4_DECLINE_EN: { subject: SUBJ.S4_DECLINE, body:
 `Dear {{英文姓名}},
 
-Thank you for responding to the enrollment intent survey for the 1+4 International Preparatory Program ({{系所外}}) at Shih Chien University. We have received your reply and fully respect your decision.
+Thank you for responding to the enrollment intent survey for the International Foundation Program (1+4) ({{系所外}}) at Shih Chien University. We have received your reply and fully respect your decision.
 
 We are sorry that we will not have the chance to welcome you to Shih Chien this time, and we sincerely thank you for your interest and trust in our university.
 
@@ -900,7 +900,7 @@ With best wishes for your success,
   S4_DECLINE_VI: { subject: SUBJ.S4_DECLINE, body:
 `Kính gửi bạn {{英文姓名}},
 
-Cảm ơn bạn đã phản hồi khảo sát nguyện vọng nhập học của Chương trình Dự bị Quốc tế 1+4 ({{系所外}}) tại Đại học Thực Tiễn (Shih Chien University). Chúng tôi đã nhận được phản hồi của bạn và hoàn toàn tôn trọng quyết định của bạn.
+Cảm ơn bạn đã phản hồi khảo sát nguyện vọng nhập học của International Foundation Program (1+4) ({{系所外}}) tại Đại học Thực Tiễn (Shih Chien University). Chúng tôi đã nhận được phản hồi của bạn và hoàn toàn tôn trọng quyết định của bạn.
 
 Rất tiếc lần này chúng tôi chưa có cơ hội được chào đón bạn đến với Thực Tiễn, và chúng tôi chân thành cảm ơn sự quan tâm cùng tin tưởng của bạn dành cho trường.
 
@@ -928,7 +928,7 @@ Kính chúc bạn mọi sự thành công,
   S4_DECLINE_ID: { subject: SUBJ.S4_DECLINE, body:
 `Yth. {{英文姓名}},
 
-Terima kasih telah menanggapi survei minat pendaftaran Program Persiapan Internasional 1+4 ({{系所外}}) di Shih Chien University. Kami telah menerima balasan Anda dan sepenuhnya menghormati keputusan Anda.
+Terima kasih telah menanggapi survei minat pendaftaran International Foundation Program (1+4) ({{系所外}}) di Shih Chien University. Kami telah menerima balasan Anda dan sepenuhnya menghormati keputusan Anda.
 
 Kami menyayangkan bahwa kali ini kami belum berkesempatan menyambut Anda di Shih Chien, dan kami dengan tulus berterima kasih atas minat serta kepercayaan Anda kepada universitas kami.
 
@@ -958,7 +958,7 @@ Dengan harapan terbaik untuk kesuksesan Anda,
   S4_REJECT_EN: { subject: SUBJ.S4_REJECT, body:
 `Dear {{英文姓名}},
 
-Thank you for applying to and taking part in the admissions selection for the 1+4 International Preparatory Program at Shih Chien University. After careful evaluation, we regret to inform you that you have not been admitted this time.
+Thank you for applying to and taking part in the admissions selection for the International Foundation Program (1+4) at Shih Chien University. After careful evaluation, we regret to inform you that you have not been admitted this time.
 
 We understand the considerable effort you put into your application, and we sincerely appreciate your dedication and your interest in our university.
 
@@ -986,7 +986,7 @@ Best regards,
   S4_REJECT_VI: { subject: SUBJ.S4_REJECT, body:
 `Kính gửi bạn {{英文姓名}},
 
-Cảm ơn bạn đã đăng ký và tham gia kỳ tuyển sinh Chương trình Dự bị Quốc tế 1+4 tại Đại học Thực Tiễn (Shih Chien University). Sau khi đánh giá kỹ lưỡng, chúng tôi rất tiếc phải thông báo rằng bạn chưa trúng tuyển lần này.
+Cảm ơn bạn đã đăng ký và tham gia kỳ tuyển sinh International Foundation Program (1+4) tại Đại học Thực Tiễn (Shih Chien University). Sau khi đánh giá kỹ lưỡng, chúng tôi rất tiếc phải thông báo rằng bạn chưa trúng tuyển lần này.
 
 Chúng tôi hiểu rằng bạn đã dành nhiều tâm huyết cho hồ sơ của mình, và chân thành cảm ơn sự nỗ lực cùng quan tâm của bạn dành cho trường.
 
@@ -1014,7 +1014,7 @@ Trân trọng,
   S4_REJECT_ID: { subject: SUBJ.S4_REJECT, body:
 `Yth. {{英文姓名}},
 
-Terima kasih telah mendaftar dan mengikuti seleksi penerimaan Program Persiapan Internasional 1+4 di Shih Chien University. Setelah evaluasi yang saksama, dengan menyesal kami sampaikan bahwa Anda belum diterima kali ini.
+Terima kasih telah mendaftar dan mengikuti seleksi penerimaan International Foundation Program (1+4) di Shih Chien University. Setelah evaluasi yang saksama, dengan menyesal kami sampaikan bahwa Anda belum diterima kali ini.
 
 Kami memahami besarnya usaha yang Anda curahkan dalam pendaftaran ini, dan kami dengan tulus menghargai dedikasi serta minat Anda kepada universitas kami.
 
