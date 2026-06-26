@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
-import { writeXlsx } from '../components/ExportBtn'
+import { writeXlsx, writeXlsxMulti } from '../components/ExportBtn'
 import AdmitMailComposer from '../components/AdmitMailComposer'
+import { buildMessage } from '../mailTemplates'
 import {
   getStage4Data, getStage4Rejected, syncStage4FromStage3, updateStage4Status,
   getDepartmentQuotas, getDepartmentCampuses,
   getStage4Settings, saveStage4Settings, getMailLog,
+  upsertStage4TestRow, createDrafts, sendDraftBatch,
 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
-import { batchInfo, batchOf, deptShort, resolveCampus } from '../constants'
+import { batchInfo, batchOf, deptShort, deptI18n, resolveCampus } from '../constants'
 
 const ACCENT = '#7c2d12'
 const CAMP_ORDER = { '台北校區': 0, '高雄校區': 1, '其他': 2 }
@@ -38,6 +40,35 @@ const settingsFromForm = (f) => ({
   unit_name:      f.unitName || '',
 })
 
+// 工具頁用
+const KIND_LABEL = {
+  s4_admit: '預錄取意願調查（正取・含連結）',
+  s4_promote: '備取遞補意願調查（含連結）',
+  s4_admit_declined: '放棄後感謝信（單向）',
+  s4_reject: '不錄取感謝信（單向）',
+}
+const CS_LABEL = {
+  pending: '未回應', enrolled: '就讀/遞補就讀', declined: '放棄',
+  negotiating: '遞補詢問中', settled_elsewhere: '已確認他系', passed: '已略過', standby: '備取待機',
+}
+const TEST_ACCOUNT = 'S4TEST0001'
+const TEST_DEPT = '測試系所(專)'
+const genTestToken = () => ('s4test' + (crypto?.randomUUID?.().replace(/-/g, '') || Math.random().toString(36).slice(2) + Date.now().toString(36))).slice(0, 40)
+const sampleMailData = (kind, lang) => {
+  const il = { EN: 'en', VI: 'vi', ID: 'id' }[lang] || 'en'
+  const isPromote = kind === 's4_promote'
+  return {
+    中文姓名: '測試 同學', 英文姓名: 'Test Student',
+    系所中: '資訊管理學系(專)', 系所外: deptI18n('資訊管理學系(專)', il),
+    類別中: isPromote ? '備取1' : '正取', 類別外: isPromote ? 'Waitlist No. 1' : 'Admitted',
+    確認連結: `${window.location.origin}/#/confirm?t=（測試占位）`,
+    回覆期限: '2026/07/20', 正式放榜日期: '2026/07/25',
+    自訂中: '（自訂段落：本校其他學程／下一梯次仍在招生…）',
+    自訂外: '(Custom block: our other program is still open for the next intake…)',
+    承辦人: '測試承辦', 聯絡信箱: 'shihchien_ifp@g2.usc.edu.tw', 單位名稱: '國際事務處 Office of International Affairs',
+  }
+}
+
 export default function Stage4App() {
   const teacher = getTeacher()
   const [tab, setTab]         = useState('admit')
@@ -50,6 +81,13 @@ export default function Stage4App() {
   const [settings, setSettings] = useState({})       // { '1': {...}, '2': {...} }
   const [rejectedData, setRejectedData] = useState([]) // 不錄取（即時計算，扁平列）
   const [mailLogs, setMailLogs] = useState({})         // { 's4_admit_declined': {acct:{status}}, 's4_reject': {...} }
+  // 工具頁狀態
+  const [testForm, setTestForm] = useState({ cat: 'admitted', rank: 1, status: 'pending', deadline: '', expired: false })
+  const [testLink, setTestLink] = useState('')
+  const testTokenRef = useRef('')
+  const [pvKind, setPvKind] = useState('s4_admit')
+  const [pvLang, setPvLang] = useState('EN')
+  const [selfEmail, setSelfEmail] = useState('shihchien_ifp@g2.usc.edu.tw')
   const [batchFilter, setBatchFilter] = useState('') // '' 全部 / '1' / '2'
   const [selDept, setSelDept] = useState('')         // 展開中的系所（正取頁）
   const [mail, setMail]       = useState(null)        // { kind, recipients, batch }
@@ -213,6 +251,83 @@ export default function Stage4App() {
     showToast(`已匯出 ${out.length} 筆就讀名單`)
   }
 
+  // ── 工具頁處理器 ──
+  const createTestRow = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (!testTokenRef.current) testTokenRef.current = genTestToken()
+      const deadlineIso = testForm.expired
+        ? '2000-01-01T23:59:59+08:00'
+        : (testForm.deadline ? `${testForm.deadline.replace(/\//g, '-')}T23:59:59+08:00` : null)
+      const row = {
+        account: TEST_ACCOUNT, department: TEST_DEPT, center: '測試中心',
+        stage3_status: testForm.cat,
+        standby_rank: testForm.cat === 'waitlisted' ? Number(testForm.rank || 1) : null,
+        contact_status: testForm.status,
+        confirm_token: testTokenRef.current,
+        confirm_deadline: deadlineIso,
+      }
+      const saved = await upsertStage4TestRow(row)
+      const token = saved?.confirm_token || testTokenRef.current
+      testTokenRef.current = token
+      setTestLink(`${window.location.origin}/#/confirm?t=${token}`)
+      showToast('測試帳號已建立/更新，可開啟下方連結檢視落地頁')
+    } catch (e) { showToast('建立測試帳號失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const sendSelf = async () => {
+    if (!selfEmail.trim()) { showToast('請填收件信箱', 'warn'); return }
+    if (busy) return
+    setBusy(true)
+    try {
+      const m = buildMessage({ kind: pvKind, lang: pvLang, data: sampleMailData(pvKind, pvLang) })
+      const res = await createDrafts([{ to: selfEmail.trim(), subject: m.subject, body: m.body }])
+      const id = res.drafts?.[0]?.draftId
+      if (!id) throw new Error('草稿建立失敗')
+      await sendDraftBatch([id])
+      showToast(`已寄出測試信到 ${selfEmail.trim()}`)
+    } catch (e) { showToast('寄送失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const exportAll = () => {
+    const main = data.map((r) => ({
+      account: r.account ?? '', batch: batchInfo(r.account).label,
+      name: r.appInfo?.name ?? '', name_english: r.appInfo?.name_english ?? '', email: r.appInfo?.email ?? '',
+      department: r.department ?? '', center: r.center ?? '',
+      stage3: r.stage3_status === 'admitted' ? '正取' : r.stage3_status === 'waitlisted' ? `備取${r.standby_rank ?? ''}` : (r.stage3_status ?? ''),
+      contact: CS_LABEL[r.contact_status] || r.contact_status || '',
+      score: r.stage2_score ?? '', preference: r.preference_order ?? '',
+      confirmed_at: r.confirmed_at ?? '', deadline: r.confirm_deadline ?? '', note: r.admin_note ?? '',
+    }))
+    const rej = (rejectedData || []).map((r) => ({
+      account: r.account, batch: batchInfo(r.account).label,
+      name: r.name, name_english: r.name_english, email: r.email,
+      department: r.department, center: r.center,
+    }))
+    const mainCols = [
+      { key: 'account', label: '帳號' }, { key: 'batch', label: '梯次' },
+      { key: 'name', label: '中文姓名' }, { key: 'name_english', label: '英文姓名' }, { key: 'email', label: 'Email' },
+      { key: 'department', label: '系所' }, { key: 'center', label: '中心' },
+      { key: 'stage3', label: '放榜身分' }, { key: 'contact', label: '回應狀態' },
+      { key: 'score', label: '二階分數' }, { key: 'preference', label: '志願序' },
+      { key: 'confirmed_at', label: '回覆時間' }, { key: 'deadline', label: '回覆期限' }, { key: 'note', label: '備注' },
+    ]
+    const rejCols = [
+      { key: 'account', label: '帳號' }, { key: 'batch', label: '梯次' },
+      { key: 'name', label: '中文姓名' }, { key: 'name_english', label: '英文姓名' }, { key: 'email', label: 'Email' },
+      { key: 'department', label: '最高志願系所' }, { key: 'center', label: '中心' },
+    ]
+    if (!main.length && !rej.length) { showToast('目前沒有可匯出的資料', 'warn'); return }
+    writeXlsxMulti([
+      { name: '第四階段全名單', columns: mainCols, rows: main },
+      { name: '不錄取名單', columns: rejCols, rows: rej },
+    ], '第四階段全部資料.xlsx')
+    showToast(`已匯出（正取備取 ${main.length} 筆、不錄取 ${rej.length} 筆）`)
+  }
+
   // ── 備取頁資料 ──
   const waitRows = useMemo(
     () => data.filter((r) => r.stage3_status === 'waitlisted' && inBatch(r)),
@@ -292,6 +407,7 @@ export default function Stage4App() {
   const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fde7d4' }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
+  const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 3 }
 
   // 名額徽章
   const quotaBadge = (dept, admittedN) => {
@@ -635,10 +751,97 @@ export default function Stage4App() {
       {tab === 'declined' && renderThanksTab(declinedItems, 's4_admit_declined', '目前沒有放棄錄取的學生')}
       {tab === 'reject' && renderThanksTab(rejectedItems, 's4_reject', '目前沒有不錄取名單')}
 
-      {/* ── 工具頁（後續階段建置） ── */}
+      {/* ── 工具頁 ── */}
       {tab === 'tools' && (
-        <div style={{ background: 'white', border: '1px dashed #e0ddd6', borderRadius: 12, padding: 48, textAlign: 'center', color: '#aaa' }}>
-          「工具」分頁建置中。
+        <div style={{ display: 'grid', gap: 16 }}>
+          {/* 1. 測試帳號 */}
+          <Card>
+            <CardHead left="測試帳號 · 落地頁檢視" />
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+                建立一筆測試列（is_test，不進任何正式統計）。切換類別／狀態／期限後開啟連結，即可檢視學生落地頁在各情境的樣式；落地頁右上角可自行切換語言。
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={lbl}>類別</label>
+                  <select style={s.sel} value={testForm.cat} onChange={(e) => setTestForm((f) => ({ ...f, cat: e.target.value }))}>
+                    <option value="admitted">正取</option><option value="waitlisted">備取</option>
+                  </select>
+                </div>
+                {testForm.cat === 'waitlisted' && (
+                  <div><label style={lbl}>備取序</label>
+                    <input style={{ ...s.input, marginBottom: 0 }} type="number" min="1" value={testForm.rank} onChange={(e) => setTestForm((f) => ({ ...f, rank: e.target.value }))} />
+                  </div>
+                )}
+                <div>
+                  <label style={lbl}>狀態</label>
+                  <select style={s.sel} value={testForm.status} onChange={(e) => setTestForm((f) => ({ ...f, status: e.target.value }))}>
+                    <option value="pending">未回應</option><option value="enrolled">就讀</option>
+                    <option value="declined">放棄</option><option value="negotiating">遞補詢問中</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>回覆期限</label>
+                  <input style={{ ...s.input, marginBottom: 0 }} placeholder="2026/07/20" value={testForm.deadline}
+                    disabled={testForm.expired} onChange={(e) => setTestForm((f) => ({ ...f, deadline: e.target.value }))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <label style={{ fontSize: 12, color: '#666', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="checkbox" checked={testForm.expired} onChange={(e) => setTestForm((f) => ({ ...f, expired: e.target.checked }))} /> 設為已過期
+                  </label>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Btn variant="primary" disabled={busy} onClick={createTestRow}>建立 / 更新測試帳號</Btn>
+                {testLink && <Btn onClick={() => window.open(testLink, '_blank')}>開啟落地頁 ↗</Btn>}
+              </div>
+              {testLink && <div style={{ fontSize: 11, color: '#999', marginTop: 8, wordBreak: 'break-all' }}>{testLink}</div>}
+            </div>
+          </Card>
+
+          {/* 2. 信件預覽 / 寄給自己 */}
+          <Card>
+            <CardHead left="信件預覽 · 寄給自己" />
+            <div style={{ padding: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <div><label style={lbl}>信件種類</label>
+                  <select style={s.sel} value={pvKind} onChange={(e) => setPvKind(e.target.value)}>
+                    {Object.entries(KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>語言</label>
+                  <select style={s.sel} value={pvLang} onChange={(e) => setPvLang(e.target.value)}>
+                    <option value="EN">中英</option><option value="VI">中越</option><option value="ID">中印尼</option>
+                  </select>
+                </div>
+                <div><label style={lbl}>寄給自己（測試信箱）</label>
+                  <input style={{ ...s.input, marginBottom: 0 }} value={selfEmail} onChange={(e) => setSelfEmail(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <Btn disabled={busy} onClick={sendSelf}>寄一封給自己</Btn>
+                </div>
+              </div>
+              {(() => {
+                const m = buildMessage({ kind: pvKind, lang: pvLang, data: sampleMailData(pvKind, pvLang) })
+                return (
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{m?.subject}</div>
+                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12.5, background: '#faf9f6', padding: 14, borderRadius: 8, margin: 0, maxHeight: '40vh', overflow: 'auto' }}>{m?.body}</pre>
+                  </div>
+                )
+              })()}
+              <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>※ 預覽用範例資料填入變數；自訂段落為占位示意。</div>
+            </div>
+          </Card>
+
+          {/* 3. 匯出 */}
+          <Card>
+            <CardHead left="匯出 · 第四階段全部資料" />
+            <div style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <Btn variant="primary" onClick={exportAll}>⬇ 匯出全部資料（含不錄取）</Btn>
+              <span style={{ fontSize: 12, color: '#888' }}>正取備取 {data.length} 筆 · 不錄取 {rejectedData.length} 筆（測試列已排除）</span>
+            </div>
+          </Card>
         </div>
       )}
 

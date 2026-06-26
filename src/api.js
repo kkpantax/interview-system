@@ -1208,6 +1208,17 @@ export async function saveStage4Settings(batch, fields) {
   )
 }
 
+// 建立/更新測試列（工具頁用；強制 is_test=true，永不進正式統計）
+// 回傳 upsert 後的列（含 id 與 confirm_token），by (account, department) 去重
+export async function upsertStage4TestRow(row) {
+  const res = await callProxy(
+    '/rest/v1/stage4_confirmations?on_conflict=account,department',
+    'POST', [{ ...row, is_test: true }],
+    'resolution=merge-duplicates,return=representation',
+  )
+  return Array.isArray(res) ? res[0] : res
+}
+
 // 稽核軌跡（承辦查看：某帳號/系所的確認紀錄）
 export async function getStage4ConfirmLog() {
   return callProxy(
