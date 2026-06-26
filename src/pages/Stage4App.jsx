@@ -11,7 +11,7 @@ import {
   upsertStage4TestRow, createDrafts, sendDraftBatch,
 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
-import { batchInfo, batchOf, deptShort, deptI18n, resolveCampus } from '../constants'
+import { batchInfo, batchOf, deptShort, deptI18n, DEPT_I18N, resolveCampus } from '../constants'
 
 const ACCENT = '#7c2d12'
 const CAMP_ORDER = { '台北校區': 0, '高雄校區': 1, '其他': 2 }
@@ -52,7 +52,6 @@ const CS_LABEL = {
   negotiating: '遞補詢問中', settled_elsewhere: '已確認他系', passed: '已略過', standby: '備取待機',
 }
 const TEST_ACCOUNT = 'S4TEST0001'
-const TEST_DEPT = '測試系所(專)'
 const genTestToken = () => ('s4test' + (crypto?.randomUUID?.().replace(/-/g, '') || Math.random().toString(36).slice(2) + Date.now().toString(36))).slice(0, 40)
 const sampleMailData = (kind, lang) => {
   const il = { EN: 'en', VI: 'vi', ID: 'id' }[lang] || 'en'
@@ -82,9 +81,9 @@ export default function Stage4App() {
   const [rejectedData, setRejectedData] = useState([]) // 不錄取（即時計算，扁平列）
   const [mailLogs, setMailLogs] = useState({})         // { 's4_admit_declined': {acct:{status}}, 's4_reject': {...} }
   // 工具頁狀態
-  const [testForm, setTestForm] = useState({ cat: 'admitted', rank: 1, status: 'pending', deadline: '', expired: false })
+  const [testForm, setTestForm] = useState({ dept: DEPT_I18N[0][0], cat: 'admitted', rank: 1, status: 'pending', deadline: '', expired: false })
   const [testLink, setTestLink] = useState('')
-  const testTokenRef = useRef('')
+  const testTokenRef = useRef({})  // { 系所: token } 每系所穩定一組 token
   const [pvKind, setPvKind] = useState('s4_admit')
   const [pvLang, setPvLang] = useState('EN')
   const [selfEmail, setSelfEmail] = useState('shihchien_ifp@g2.usc.edu.tw')
@@ -283,21 +282,24 @@ export default function Stage4App() {
     if (busy) return
     setBusy(true)
     try {
-      if (!testTokenRef.current) testTokenRef.current = genTestToken()
+      const dept = testForm.dept || DEPT_I18N[0][0]
+      const map = testTokenRef.current || {}
+      if (!map[dept]) map[dept] = genTestToken()
+      testTokenRef.current = map
       const deadlineIso = testForm.expired
         ? '2000-01-01T23:59:59+08:00'
         : (testForm.deadline ? `${testForm.deadline.replace(/\//g, '-')}T23:59:59+08:00` : null)
       const row = {
-        account: TEST_ACCOUNT, department: TEST_DEPT, center: '測試中心',
+        account: TEST_ACCOUNT, department: dept, center: '測試中心',
         stage3_status: testForm.cat,
         standby_rank: testForm.cat === 'waitlisted' ? Number(testForm.rank || 1) : null,
         contact_status: testForm.status,
-        confirm_token: testTokenRef.current,
+        confirm_token: map[dept],
         confirm_deadline: deadlineIso,
       }
       const saved = await upsertStage4TestRow(row)
-      const token = saved?.confirm_token || testTokenRef.current
-      testTokenRef.current = token
+      const token = saved?.confirm_token || map[dept]
+      map[dept] = token
       setTestLink(`${window.location.origin}/#/confirm?t=${token}`)
       showToast('測試帳號已建立/更新，可開啟下方連結檢視落地頁')
     } catch (e) { showToast('建立測試帳號失敗：' + e.message, 'error') }
@@ -820,9 +822,15 @@ export default function Stage4App() {
             <CardHead left="測試帳號 · 落地頁檢視" />
             <div style={{ padding: 16 }}>
               <div style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
-                建立一筆測試列（is_test，不進任何正式統計）。切換類別／狀態／期限後開啟連結，即可檢視學生落地頁在各情境的樣式；落地頁右上角可自行切換語言。
+                建立一筆測試列（is_test，不進任何正式統計）。選系所、切換類別／狀態／期限後開啟連結，即可檢視學生落地頁在各情境的樣式（系所名會依語言翻譯）；落地頁右上角可自行切換語言。
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={lbl}>系所</label>
+                  <select style={s.sel} value={testForm.dept} onChange={(e) => setTestForm((f) => ({ ...f, dept: e.target.value }))}>
+                    {DEPT_I18N.map(([k]) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label style={lbl}>類別</label>
                   <select style={s.sel} value={testForm.cat} onChange={(e) => setTestForm((f) => ({ ...f, cat: e.target.value }))}>
