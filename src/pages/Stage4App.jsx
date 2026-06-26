@@ -416,7 +416,7 @@ export default function Stage4App() {
   const declinedItems = useMemo(() => data
     .filter((r) => r.contact_status === 'declined' && inBatch(r))
     .map((r) => ({
-      key: r.id, dept: r.department, account: r.account,
+      key: r.id, dept: r.department, account: r.account, center: r.center || '',
       name: r.appInfo?.name || '', name_english: r.appInfo?.name_english || '',
       email: r.appInfo?.email || '',
       category: r.stage3_status === 'admitted' ? '正取放棄' : '備取放棄',
@@ -425,7 +425,7 @@ export default function Stage4App() {
   const rejectedItems = useMemo(() => (rejectedData || [])
     .filter((r) => inBatch(r))
     .map((r) => ({
-      key: r.account, dept: r.department, account: r.account,
+      key: r.account, dept: r.department, account: r.account, center: r.center || '',
       name: r.name || '', name_english: r.name_english || '',
       email: r.email || '', category: '不錄取', _raw: r,
     })), [rejectedData, inBatch])
@@ -502,7 +502,7 @@ export default function Stage4App() {
                 onClick={() => openMail(rawMailable(selItems), kind)}>✉ 寄本系感謝信</Btn>} />
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ background: '#faf9f6' }}>{['姓名', '帳號', '梯次', '類別', 'Email', '寄送狀態', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <thead><tr style={{ background: '#faf9f6' }}>{['姓名', '帳號', '中心', '梯次', '類別', 'Email', '寄送狀態', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {selItems.map((it) => {
                     const bi = batchInfo(it.account)
@@ -511,6 +511,7 @@ export default function Stage4App() {
                       <tr key={it.key}>
                         <td style={td}><div style={{ fontWeight: 500 }}>{it.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{it.name_english || '—'}</div></td>
                         <td style={{ ...td, color: '#888' }}>{it.account || '—'}</td>
+                        <td style={td}>{it.center || '—'}</td>
                         <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
                         <td style={td}>{it.category}</td>
                         <td style={{ ...td, color: it.email ? '#555' : '#dc2626' }}>{it.email || '（無）'}</td>
@@ -519,7 +520,7 @@ export default function Stage4App() {
                       </tr>
                     )
                   })}
-                  {!selItems.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無資料</td></tr>}
+                  {!selItems.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無資料</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -626,7 +627,7 @@ export default function Stage4App() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#faf9f6' }}>
-                      {['姓名', '帳號', '梯次', '志願序', '二階分數', '回應狀態', '備注', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                      {['姓名', '帳號', '中心', '梯次', '志願序', '二階分數', '回應狀態', '備注', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -640,6 +641,7 @@ export default function Stage4App() {
                         <tr key={r.id}>
                           <td style={td}><div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div></td>
                           <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
+                          <td style={td}>{r.center || '—'}</td>
                           <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
                           <td style={td}>{r.preference_order ?? '—'}</td>
                           <td style={td}>{r.stage2_score ?? '—'}</td>
@@ -658,7 +660,7 @@ export default function Stage4App() {
                         </tr>
                       )
                     })}
-                    {!selRows.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無正取資料</td></tr>}
+                    {!selRows.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無正取資料</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -726,7 +728,7 @@ export default function Stage4App() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#faf9f6' }}>
-                      {['備取序', '姓名', '帳號', '梯次', '二階分數', '狀態', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                      {['備取序', '姓名', '帳號', '中心', '梯次', '二階分數', '狀態', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -744,6 +746,7 @@ export default function Stage4App() {
                           <td style={td}>備取 {r.standby_rank ?? '—'}</td>
                           <td style={td}><div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div></td>
                           <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
+                          <td style={td}>{r.center || '—'}</td>
                           <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
                           <td style={td}>{r.stage2_score ?? '—'}</td>
                           <td style={td}><Pill color={st.c} bg={st.b}>{st.t}</Pill></td>
@@ -761,7 +764,7 @@ export default function Stage4App() {
                         </tr>
                       )
                     })}
-                    {!selWaitRows.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無備取資料</td></tr>}
+                    {!selWaitRows.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無備取資料</td></tr>}
                   </tbody>
                 </table>
               </div>
