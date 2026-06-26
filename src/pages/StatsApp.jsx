@@ -8,9 +8,9 @@ import { PageShell } from '../components/PageShell'
 import { Card, CardHead, Btn, s } from '../components/UI'
 import {
   getAllApplications, getDepartmentQuotas, getDepartmentCampuses,
-  getYearlyStats, getDashboardData,
+  getYearlyStats, getDashboardData, getAdmittedForStats,
 } from '../api'
-import { CAMPUS_OPTIONS, deptShort, batchInfo, BATCHES } from '../constants'
+import { CAMPUS_OPTIONS, deptShort, batchInfo, BATCHES, resolveCampus } from '../constants'
 import { buildDashboard, AGE_BUCKETS } from '../statsCompute'
 import { getTeacher } from '../auth'
 
@@ -64,6 +64,7 @@ export default function StatsApp() {
   const [quotas, setQuotas] = useState({})
   const [campusMap, setCampusMap] = useState({})
   const [yearly, setYearly] = useState([])
+  const [admitted, setAdmitted] = useState([])  // 正取學生（含性別，依帳號去重）
   const [campus, setCampus] = useState('全部')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -76,14 +77,15 @@ export default function StatsApp() {
   useEffect(() => {
     (async () => {
       try {
-        const [d, a, q, c, y] = await Promise.all([
+        const [d, a, q, c, y, adm] = await Promise.all([
           getDashboardData(),
           getAllApplications().catch(() => []),
           getDepartmentQuotas().catch(() => ({})),
           getDepartmentCampuses().catch(() => ({})),
           getYearlyStats().catch(() => []),
+          getAdmittedForStats().catch(() => []),
         ])
-        setRaw(d); setApps(a || []); setQuotas(q || {}); setCampusMap(c || {}); setYearly(y || [])
+        setRaw(d); setApps(a || []); setQuotas(q || {}); setCampusMap(c || {}); setYearly(y || []); setAdmitted(adm || [])
       } catch (e) {
         setErr(e?.message || '載入失敗')
       } finally { setLoading(false) }
@@ -141,6 +143,31 @@ export default function StatsApp() {
 
   const genderData = useMemo(() => (dash ? Object.entries(dash.genderStats).map(([name, value]) => ({ name, value })) : []), [dash])
   const ageData = useMemo(() => (dash ? AGE_BUCKETS.map((b) => ({ name: b, value: dash.ageStats[b] || 0 })) : []), [dash])
+
+  // ── 錄取性別 × 校區（正取學生依帳號去重後，校區由其系所判定）──
+  const isFemale = (g) => /女|^f/i.test((g || '').trim())
+  const isMale = (g) => /男|^m/i.test((g || '').trim())
+  const admittedByCampus = useMemo(() => {
+    const map = {}
+    for (const r of admitted) {
+      const campus = resolveCampus(r.department, campusMap)
+      const row = map[campus] || (map[campus] = { campus, m: 0, f: 0, u: 0, t: 0 })
+      if (isFemale(r.gender)) row.f++
+      else if (isMale(r.gender)) row.m++
+      else row.u++
+      row.t++
+    }
+    // 依 CAMPUS_OPTIONS 排序；其餘校區（理論上不會有）接在後面
+    const out = CAMPUS_OPTIONS.filter((c) => map[c]).map((c) => map[c])
+    for (const k of Object.keys(map)) if (!CAMPUS_OPTIONS.includes(k)) out.push(map[k])
+    return out
+  }, [admitted, campusMap])
+
+  const admittedTotal = useMemo(() => {
+    const t = { m: 0, f: 0, u: 0, t: 0 }
+    for (const r of admittedByCampus) { t.m += r.m; t.f += r.f; t.u += r.u; t.t += r.t }
+    return t
+  }, [admittedByCampus])
 
   // ── 梯次對照（第一梯 / 第二梯加報，同漏斗口徑、受校區篩選連動）──
   const batchCmp = useMemo(() => {
@@ -480,6 +507,56 @@ export default function StatsApp() {
                 </tbody>
               </table>
             </div>
+          </Card>
+
+          {/* 錄取性別（分校區） */}
+          <Card style={{ marginBottom: 20 }}>
+            <CardHead left="錄取性別（分校區）" right={`正取 ${admitted.length} 人`} />
+            {admitted.length === 0 ? (
+              <div style={{ padding: 14, fontSize: 13, color: '#aaa' }}>
+                尚無正取資料（放榜頁確認正取後才會出現）。
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>校區</th>
+                      <th style={thNum}>男</th>
+                      <th style={thNum}>女</th>
+                      <th style={thNum}>未填</th>
+                      <th style={thNum}>總計</th>
+                      <th style={thNum}>女性比例</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {admittedByCampus.map((r) => (
+                      <tr key={r.campus}>
+                        <td style={td}>{r.campus}</td>
+                        <td style={tdNum}>{r.m || '—'}</td>
+                        <td style={tdNum}>{r.f || '—'}</td>
+                        <td style={tdNum}>{r.u || '—'}</td>
+                        <td style={{ ...tdNum, fontWeight: 700 }}>{r.t}</td>
+                        <td style={tdNum}>{r.t ? (r.f / r.t * 100).toFixed(1) + '%' : '—'}</td>
+                      </tr>
+                    ))}
+                    {(() => {
+                      const { m, f, u, t } = admittedTotal
+                      return (
+                        <tr>
+                          <td style={{ ...td, fontWeight: 700 }}>合計</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{m || '—'}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{f || '—'}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{u || '—'}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{t}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{t ? (f / t * 100).toFixed(1) + '%' : '—'}</td>
+                        </tr>
+                      )
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
 
           <div style={{ fontSize: 12, color: '#aaa', textAlign: 'center', marginTop: 8 }}>

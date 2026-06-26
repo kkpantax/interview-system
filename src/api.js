@@ -916,6 +916,25 @@ export async function getNotifyStage3() {
   return out
 }
 
+// ── 統計頁：正取學生 + 性別（一人一列，依帳號去重）──────────────
+// final_admissions(admitted) join applications 取性別；校區由系所在 StatsApp 端判定
+export async function getAdmittedForStats() {
+  const fa = await callProxy(
+    '/rest/v1/final_admissions?select=account,department&final_status=eq.admitted',
+    'GET',
+  )
+  const apps = await callProxy('/rest/v1/applications?select=account,gender', 'GET')
+  const genderMap = new Map((apps || []).map((a) => [a.account, a.gender]))
+  const seen = new Set()
+  const out = []
+  for (const r of (fa || [])) {
+    if (seen.has(r.account)) continue
+    seen.add(r.account)
+    out.push({ account: r.account, department: r.department, gender: genderMap.get(r.account) || '' })
+  }
+  return out
+}
+
 // 從 Stage3（final_admissions 的 admitted + waitlisted）同步到 Stage4：
 //   1. 取 evaluations 的 total_score、applications 的 preference_order / center / 姓名
 //   2. 依 中心 + 科系 分組，waitlisted 以 preference_order asc, total_score desc 計算 standby_rank
