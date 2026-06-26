@@ -88,6 +88,7 @@ export default function Stage4App() {
   const [pvKind, setPvKind] = useState('s4_admit')
   const [pvLang, setPvLang] = useState('EN')
   const [selfEmail, setSelfEmail] = useState('shihchien_ifp@g2.usc.edu.tw')
+  const [settingsForm, setSettingsForm] = useState({ 1: {}, 2: {} }) // 梯次設定編輯暫存
   const [batchFilter, setBatchFilter] = useState('') // '' 全部 / '1' / '2'
   const [selDept, setSelDept] = useState('')         // 展開中的系所（正取頁）
   const [mail, setMail]       = useState(null)        // { kind, recipients, batch }
@@ -131,6 +132,14 @@ export default function Stage4App() {
     getStage4Settings().then((m) => setSettings(m || {})).catch(() => {})
     refreshThanks()
   }, [refreshThanks])
+
+  // 設定載入後，填入梯次設定編輯暫存
+  useEffect(() => {
+    setSettingsForm({
+      1: { ...(settings['1'] || {}) },
+      2: { ...(settings['2'] || {}) },
+    })
+  }, [settings])
 
   // 30 秒自動輪詢（正取/備取頁需即時統計）
   useEffect(() => {
@@ -252,6 +261,24 @@ export default function Stage4App() {
   }
 
   // ── 工具頁處理器 ──
+  const setSF = (b, k, v) => setSettingsForm((f) => ({ ...f, [b]: { ...(f[b] || {}), [k]: v } }))
+  const saveBatchSettings = async (b) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const f = settingsForm[b] || {}
+      await saveStage4Settings(b, {
+        announce_date: f.announce_date || '',
+        reply_by: f.reply_by || '',
+        contact_person: f.contact_person || '',
+        contact_email: f.contact_email || '',
+      })
+      const m = await getStage4Settings(); setSettings(m || {})
+      showToast(`已儲存第${b === '2' ? '二' : '一'}梯設定`)
+    } catch (e) { showToast('儲存設定失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
   const createTestRow = async () => {
     if (busy) return
     setBusy(true)
@@ -754,6 +781,37 @@ export default function Stage4App() {
       {/* ── 工具頁 ── */}
       {tab === 'tools' && (
         <div style={{ display: 'grid', gap: 16 }}>
+          {/* 0. 梯次設定 */}
+          <Card>
+            <CardHead left="梯次設定 · 放榜日期 / 回覆期限 / 承辦資訊" />
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+                兩梯各自設定一次。寄送意願調查／遞補通知時，寄信視窗會依「梯次」自動帶入該梯的放榜日期、回覆期限與承辦資訊。
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                {['1', '2'].map((b) => {
+                  const f = settingsForm[b] || {}
+                  return (
+                    <div key={b} style={{ border: '1px solid #e8e7e3', borderRadius: 10, padding: 14 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: '#7c2d12' }}>
+                        {b === '1' ? '第一梯（報名）' : '第二梯（加報）'}
+                      </div>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div><label style={lbl}>正式放榜日期</label><input style={{ ...s.input, marginBottom: 0 }} placeholder="2026/07/25" value={f.announce_date || ''} onChange={(e) => setSF(b, 'announce_date', e.target.value)} /></div>
+                        <div><label style={lbl}>意願調查回覆期限</label><input style={{ ...s.input, marginBottom: 0 }} placeholder="2026/07/20" value={f.reply_by || ''} onChange={(e) => setSF(b, 'reply_by', e.target.value)} /></div>
+                        <div><label style={lbl}>承辦人</label><input style={{ ...s.input, marginBottom: 0 }} value={f.contact_person || ''} onChange={(e) => setSF(b, 'contact_person', e.target.value)} /></div>
+                        <div><label style={lbl}>聯絡信箱</label><input style={{ ...s.input, marginBottom: 0 }} value={f.contact_email || ''} onChange={(e) => setSF(b, 'contact_email', e.target.value)} /></div>
+                      </div>
+                      <div style={{ marginTop: 10, textAlign: 'right' }}>
+                        <Btn variant="primary" disabled={busy} onClick={() => saveBatchSettings(b)}>儲存第{b === '2' ? '二' : '一'}梯</Btn>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </Card>
+
           {/* 1. 測試帳號 */}
           <Card>
             <CardHead left="測試帳號 · 落地頁檢視" />
