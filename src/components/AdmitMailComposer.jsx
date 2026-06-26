@@ -1,17 +1,23 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Modal, Btn, s } from './UI'
 import { buildMessage, pickLang } from '../mailTemplates'
 import { createDrafts, sendDraftBatch, logMail, getMailLog, setStage4Confirm } from '../api'
 import { deptI18n } from '../constants'
 
-const KIND = 's4_admit'
+// 有落地頁（需個人確認連結）的信件種類
+const LINK_KINDS = new Set(['s4_admit', 's4_promote'])
 
-// 產生不可猜的確認 token
+const KIND_META = {
+  s4_admit:          { title: '寄送預錄取意願調查（正取・含確認連結）', send: '預錄取意願調查' },
+  s4_promote:        { title: '寄送備取遞補意願調查（含確認連結）',     send: '備取遞補意願調查' },
+  s4_admit_declined: { title: '寄送放棄後感謝信（單向）',               send: '放棄後感謝信' },
+  s4_reject:         { title: '寄送不錄取感謝信（單向）',               send: '不錄取感謝信' },
+}
+
 const newToken = () => {
   const u = () => (crypto?.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36))
   return ('s4' + u()).slice(0, 40)
 }
-// 期限日期(YYYY/MM/DD) → 台灣時間當日 23:59:59 的 timestamptz
 const toDeadlineIso = (ymd) => {
   const d = String(ymd || '').trim().replace(/\//g, '-')
   return d ? `${d}T23:59:59+08:00` : null
@@ -20,54 +26,89 @@ const fmtYmd = (dt) => `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart
 const plusDays = (n) => fmtYmd(new Date(Date.now() + n * 86400000))
 
 const LANG_TO_I18N = { EN: 'en', VI: 'vi', ID: 'id' }
-const CAT_ZH = (r) => (r.stage3_status === 'admitted' ? '正取' : `備取${r.standby_rank ?? ''}`)
+const CAT_ZH = (r) => (r.stage3_status === 'admitted' ? '正取' : (r.stage3_status === 'waitlisted' ? `備取${r.standby_rank ?? ''}` : ''))
 const CAT_FX = (r, lang) => {
   if (r.stage3_status === 'admitted') return { EN: 'Admitted', VI: 'Trúng tuyển chính thức', ID: 'Diterima' }[lang] || 'Admitted'
-  const n = r.standby_rank ?? ''
-  return { EN: `Waitlist No. ${n}`, VI: `Dự bị số ${n}`, ID: `Daftar tunggu No. ${n}` }[lang] || `Waitlist No. ${n}`
+  if (r.stage3_status === 'waitlisted') {
+    const n = r.standby_rank ?? ''
+    return { EN: `Waitlist No. ${n}`, VI: `Dự bị số ${n}`, ID: `Daftar tunggu No. ${n}` }[lang] || `Waitlist No. ${n}`
+  }
+  return ''
 }
 
-// recipients: stage4 rows（含 id, account, department, stage3_status, standby_rank, confirm_token, appInfo{name,name_english,email,nationality}）
-export default function AdmitMailComposer({ recipients, onClose, onToast }) {
+// recipients 可為 stage4 列（含 appInfo / id / confirm_token / stage3_status / standby_rank）
+// 或扁平列（getStage4Rejected：account/name/name_english/email/nationality/department）
+function normalize(recipients) {
+  return (recipients || []).map((r, i) => {
+    const ai = r.appInfo || {}
+    return {
+      key: r.id ?? r.account ?? `row${i}`,
+      id: r.id ?? null,
+      account: r.account,
+      department: r.department || '',
+      stage3_status: r.stage3_status,
+      standby_rank: r.standby_rank ?? null,
+      confirm_token: r.confirm_token || '',
+      name: ai.name ?? r.name ?? '',
+      name_english: ai.name_english ?? r.name_english ?? '',
+      email: ai.email ?? r.email ?? '',
+      nationality: ai.nationality ?? r.nationality ?? '',
+      lang: pickLang(ai.nationality ?? r.nationality),
+      include: true,
+    }
+  }).filter((r) => r.email)
+}
+
+// props:
+//   kind: 's4_admit' | 's4_promote' | 's4_admit_declined' | 's4_reject'
+//   recipients: 上述兩種列皆可
+//   defaults: { replyBy, announceDate, contactPerson, contactEmail, unitName, customZh, customForeign }（梯次設定預填，可省）
+//   onSaveDefaults: (formValues) => Promise（按「儲存本梯設定」時呼叫，可省）
+export default function AdmitMailComposer({ kind = 's4_admit', recipients, defaults, onSaveDefaults, onClose, onToast }) {
+  const hasLink = LINK_KINDS.has(kind)
+  const meta = KIND_META[kind] || KIND_META.s4_admit
+
   const [form, setForm] = useState(() => ({
-    replyBy: plusDays(7),
-    contactPerson: '',
-    contactEmail: 'shihchien_ifp@g2.usc.edu.tw',
-    unitName: '國際事務處 Office of International Affairs',
+    replyBy: defaults?.replyBy || plusDays(7),
+    announceDate: defaults?.announceDate || '',
+    contactPerson: defaults?.contactPerson || '',
+    contactEmail: defaults?.contactEmail || 'shihchien_ifp@g2.usc.edu.tw',
+    unitName: defaults?.unitName || '國際事務處 Office of International Affairs',
+    customZh: defaults?.customZh || '',
+    customForeign: defaults?.customForeign || '',
   }))
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  // 非同步載入的 defaults 第一次到位時套用一次（不覆蓋使用者後續編輯）
+  const appliedRef = useRef(false)
+  useEffect(() => {
+    if (appliedRef.current || !defaults) return
+    const filtered = Object.fromEntries(Object.entries(defaults).filter(([, v]) => v != null && v !== ''))
+    if (!Object.keys(filtered).length) return
+    appliedRef.current = true
+    setForm((f) => ({ ...f, ...filtered }))
+  }, [defaults])
 
-  const baseRows = useMemo(() => (recipients || [])
-    .filter((r) => r.appInfo?.email)
-    .map((r) => ({
-      id: r.id, account: r.account, department: r.department,
-      stage3_status: r.stage3_status, standby_rank: r.standby_rank,
-      confirm_token: r.confirm_token || '',
-      name: r.appInfo?.name || '', name_english: r.appInfo?.name_english || '',
-      email: r.appInfo?.email, nationality: r.appInfo?.nationality || '',
-      lang: pickLang(r.appInfo?.nationality), include: true,
-    })), [recipients])
-
+  const baseRows = useMemo(() => normalize(recipients), [recipients])
   const [rows, setRows] = useState(baseRows)
   useEffect(() => { setRows(baseRows) }, [baseRows])
-  const setRow = (id, p) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)))
+  const setRow = (key, p) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)))
 
-  const [created, setCreated] = useState({})   // { account: draftId }
+  const [created, setCreated] = useState({})
   const [sentMap, setSentMap] = useState({})
-  const [tokenMap, setTokenMap] = useState({}) // { id: token }（建立草稿時寫入後快取）
+  const [tokenMap, setTokenMap] = useState({})
   useEffect(() => {
-    getMailLog(KIND).then((sm) => {
+    getMailLog(kind).then((sm) => {
       setSentMap(sm)
       setCreated((c) => {
         const n = { ...c }
-        for (const r of (recipients || [])) {
+        for (const r of baseRows) {
           const log = sm[r.account]
           if (!n[r.account] && log?.status === 'draft' && log.draft_ids?.length) n[r.account] = log.draft_ids[0]
         }
         return n
       })
     }).catch(() => {})
-  }, [recipients])
+  }, [kind, baseRows])
 
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(null)
@@ -75,41 +116,43 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
   const linkFor = (token) => `${window.location.origin}/#/confirm?t=${token}`
   const dataFor = (r, token) => {
     const il = LANG_TO_I18N[r.lang] || 'en'
-    return {
+    const base = {
       中文姓名: r.name, 英文姓名: r.name_english || r.name,
       系所中: r.department, 系所外: deptI18n(r.department, il),
       類別中: CAT_ZH(r), 類別外: CAT_FX(r, r.lang),
-      確認連結: linkFor(token || r.confirm_token || tokenMap[r.id] || '（寄出時自動產生）'),
-      回覆期限: form.replyBy, 承辦人: form.contactPerson,
-      聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
+      回覆期限: form.replyBy, 正式放榜日期: form.announceDate,
+      承辦人: form.contactPerson, 聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
+      自訂中: form.customZh, 自訂外: form.customForeign,
     }
+    if (hasLink) base.確認連結 = linkFor(token || r.confirm_token || tokenMap[r.key] || '（寄出時自動產生）')
+    return base
   }
-  const msgFor = (r, token) => buildMessage({ kind: KIND, lang: r.lang, data: dataFor(r, token) })
+  const msgFor = (r, token) => buildMessage({ kind, lang: r.lang, data: dataFor(r, token) })
 
   const selected = rows.filter((r) => r.include)
 
   const validate = () => {
     if (!selected.length) return '沒有勾選任何學生'
-    if (!form.replyBy.trim()) return '請填回覆期限'
+    if (hasLink && !form.replyBy.trim()) return '請填回覆期限'
+    if (hasLink && selected.some((r) => !r.id)) return '此名單缺少 stage4 紀錄 id，無法產生確認連結'
     return null
   }
 
-  // 建立草稿前：為每位選取者確保 token、寫入 token + 回覆期限到 stage4_confirmations
   const ensureTokens = async () => {
     const deadline = toDeadlineIso(form.replyBy)
     const map = {}
     let i = 0
     for (const r of selected) {
       i += 1
-      const token = r.confirm_token || tokenMap[r.id] || newToken()
+      const token = r.confirm_token || tokenMap[r.key] || newToken()
       const fields = { confirm_deadline: deadline }
-      if (!r.confirm_token) fields.confirm_token = token   // 已有 token 則沿用（補寄不變動連結）
+      if (!r.confirm_token) fields.confirm_token = token
       await setStage4Confirm(r.id, fields)
-      map[r.id] = token
+      map[r.key] = token
       if (i % 10 === 0) onToast?.(`設定確認連結 ${i}/${selected.length}…`)
     }
     setTokenMap((m) => ({ ...m, ...map }))
-    setRows((rs) => rs.map((r) => (map[r.id] ? { ...r, confirm_token: r.confirm_token || map[r.id] } : r)))
+    setRows((rs) => rs.map((r) => (map[r.key] ? { ...r, confirm_token: r.confirm_token || map[r.key] } : r)))
     return map
   }
 
@@ -118,9 +161,9 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
     if (err) { onToast?.(err, 'warn'); return }
     setBusy(true)
     try {
-      const tmap = await ensureTokens()
+      const tmap = hasLink ? await ensureTokens() : {}
       const messages = selected.map((r) => {
-        const m = msgFor(r, tmap[r.id])
+        const m = msgFor(r, tmap[r.key])
         return { to: r.email, subject: m.subject, body: m.body }
       })
       const res = await createDrafts(messages)
@@ -128,7 +171,7 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
       const cmap = {}
       selected.forEach((r) => { if (byEmail[r.email]) cmap[r.account] = byEmail[r.email] })
       setCreated((c) => ({ ...c, ...cmap }))
-      await logMail(Object.entries(cmap).map(([account, id]) => ({ account, kind: KIND, status: 'draft', draft_ids: [id] })))
+      await logMail(Object.entries(cmap).map(([account, id]) => ({ account, kind, status: 'draft', draft_ids: [id] })))
       const failN = (res.failed || []).length
       onToast?.(`已建立 ${res.created} 封草稿到公務信箱${failN ? `（${failN} 封失敗）` : ''}`)
     } catch (e) {
@@ -140,7 +183,7 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
     const included = new Set(selected.map((r) => r.account))
     const entries = Object.entries(created).filter(([a]) => included.has(a))
     if (!entries.length) { onToast?.('尚未建立草稿（或草稿對應的學生都未勾選）', 'warn'); return }
-    if (!window.confirm(`確定送出這批 ${entries.length} 封預計錄取通知嗎？寄件人為公務信箱（會自動分批送出）。`)) return
+    if (!window.confirm(`確定送出這批 ${entries.length} 封「${meta.send}」嗎？寄件人為公務信箱（會自動分批送出）。`)) return
     const CHUNK = 8
     setBusy(true)
     let sent = 0
@@ -151,16 +194,24 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
         const accounts = part.map(([a]) => a)
         const res = await sendDraftBatch(ids)
         const nowIso = new Date().toISOString()
-        await logMail(accounts.map((account) => ({ account, kind: KIND, status: 'sent', sent_at: nowIso })))
-        setSentMap((sm) => { const n = { ...sm }; accounts.forEach((a) => { n[a] = { account: a, kind: KIND, status: 'sent', sent_at: nowIso } }); return n })
+        await logMail(accounts.map((account) => ({ account, kind, status: 'sent', sent_at: nowIso })))
+        setSentMap((sm) => { const n = { ...sm }; accounts.forEach((a) => { n[a] = { account: a, kind, status: 'sent', sent_at: nowIso } }); return n })
         setCreated((c) => { const n = { ...c }; accounts.forEach((a) => delete n[a]); return n })
         sent += (res.sent ?? ids.length)
         onToast?.(`已送出 ${sent} / ${entries.length} 封…`)
       }
-      onToast?.(`完成：已送出 ${sent} 封預計錄取通知`)
+      onToast?.(`完成：已送出 ${sent} 封「${meta.send}」`)
     } catch (e) {
       onToast?.(`送出中斷（已成功 ${sent} 封）：${e.message}。剩餘草稿仍在草稿匣，可再按「送出本批」續送。`, 'error')
     } finally { setBusy(false) }
+  }
+
+  const saveDefaults = async () => {
+    if (!onSaveDefaults) return
+    setBusy(true)
+    try { await onSaveDefaults({ ...form }); onToast?.('已儲存本梯預設設定') }
+    catch (e) { onToast?.('儲存設定失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
   }
 
   const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 3 }
@@ -172,36 +223,47 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
     if (created[account]) return <span style={{ color: '#b45309' }}>草稿已建</span>
     return <span style={{ color: '#ccc' }}>—</span>
   }
+  const colCount = hasLink ? 8 : 7
 
   return (
-    <Modal title="寄送預計錄取通知（含就讀確認連結）" onClose={onClose} width={980}>
+    <Modal title={meta.title} onClose={onClose} width={980}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 14px', marginBottom: 14 }}>
-        <div><label style={lbl}>回覆期限（學生需在此日期前確認）</label>{inp('replyBy', '2026/07/20')}</div>
+        {hasLink && <div><label style={lbl}>意願調查回覆期限</label>{inp('replyBy', '2026/07/20')}</div>}
+        {hasLink && <div><label style={lbl}>正式放榜日期</label>{inp('announceDate', '2026/07/25')}</div>}
         <div><label style={lbl}>承辦人</label>{inp('contactPerson')}</div>
         <div><label style={lbl}>聯絡信箱</label>{inp('contactEmail')}</div>
         <div><label style={lbl}>單位名稱</label>{inp('unitName')}</div>
       </div>
 
-      <div style={{ maxHeight: '42vh', overflow: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
+      {!hasLink && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>自訂段落（中文）— 帶入中文段</label>
+          <textarea style={{ ...s.input, minHeight: 56, marginBottom: 8 }} value={form.customZh} onChange={(e) => setF('customZh', e.target.value)} placeholder="例：本校○○學程／下一梯次仍在招生，歡迎參考…" />
+          <label style={lbl}>自訂段落（外語）— 帶入外語段</label>
+          <textarea style={{ ...s.input, minHeight: 56, marginBottom: 0 }} value={form.customForeign} onChange={(e) => setF('customForeign', e.target.value)} placeholder="e.g. Our ○○ program is still open for the next intake…" />
+        </div>
+      )}
+
+      <div style={{ maxHeight: '40vh', overflow: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
           <thead>
             <tr style={{ background: '#faf9f6', position: 'sticky', top: 0 }}>
               <th style={th}><input type="checkbox" checked={selected.length === rows.length && rows.length > 0}
                 onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, include: e.target.checked })))} /></th>
-              <th style={th}>姓名</th><th style={th}>系所</th><th style={th}>類別</th>
+              <th style={th}>姓名</th><th style={th}>系所</th>{hasLink && <th style={th}>類別</th>}
               <th style={th}>Email</th><th style={th}>語言</th><th style={th}>狀態</th><th style={th}></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
-                <td style={td}><input type="checkbox" checked={r.include} onChange={(e) => setRow(r.id, { include: e.target.checked })} /></td>
+              <tr key={r.key}>
+                <td style={td}><input type="checkbox" checked={r.include} onChange={(e) => setRow(r.key, { include: e.target.checked })} /></td>
                 <td style={td}><div style={{ fontWeight: 500 }}>{r.name}</div><div style={{ color: '#aaa', fontSize: 11 }}>{r.name_english}</div></td>
                 <td style={td}>{r.department}</td>
-                <td style={td}>{CAT_ZH(r)}</td>
+                {hasLink && <td style={td}>{CAT_ZH(r)}</td>}
                 <td style={td}>{r.email}</td>
                 <td style={td}>
-                  <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.id, { lang: e.target.value })}>
+                  <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.key, { lang: e.target.value })}>
                     <option value="EN">中英</option><option value="VI">中越</option><option value="ID">中印尼</option>
                   </select>
                 </td>
@@ -209,7 +271,7 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
                 <td style={td}><button style={{ ...s.btn, ...s.btnSm }} onClick={() => setPreview(r)}>預覽</button></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需為正取且有 Email）</td></tr>}
+            {!rows.length && <tr><td colSpan={colCount} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
           </tbody>
         </table>
       </div>
@@ -217,23 +279,25 @@ export default function AdmitMailComposer({ recipients, onClose, onToast }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
         <span style={{ fontSize: 12, color: '#888' }}>勾選 {selected.length} / {rows.length} 位 · 已建草稿 {Object.keys(created).length} 封</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Btn onClick={doCreate} disabled={busy}>① 建立草稿（並產生確認連結）</Btn>
+          {onSaveDefaults && <Btn onClick={saveDefaults} disabled={busy}>儲存本梯設定</Btn>}
+          <Btn onClick={doCreate} disabled={busy}>① 建立草稿{hasLink ? '（並產生確認連結）' : ''}</Btn>
           <Btn variant="primary" onClick={doSend} disabled={busy || !Object.keys(created).length}>② 送出本批</Btn>
         </div>
       </div>
       <div style={{ fontSize: 11, color: '#aaa', marginTop: 8, lineHeight: 1.6 }}>
-        流程：按「建立草稿」會先為每位學生產生專屬就讀確認連結並寫入回覆期限 → 草稿進公務信箱可逐封檢查 → 回來按「送出本批」。
-        學生點信中連結 → 開啟確認頁 → 自行按「確認就讀／放棄」，結果即時回到第四階段統計。期限前學生可改答案，每次變更都會留紀錄。
+        {hasLink
+          ? '流程：按「建立草稿」會先為每位學生產生專屬連結並寫入回覆期限 → 草稿進公務信箱可逐封檢查 → 回來按「送出本批」。學生點信中連結 → 開啟意願調查頁 → 自行表達意願，結果即時回到第四階段統計。期限前可改答案，每次變更都會留紀錄。'
+          : '流程：此為單向通知信（無確認連結）。按「建立草稿」進公務信箱可逐封檢查 → 回來按「送出本批」。自訂段落會帶入信件對應語言段。'}
       </div>
 
       {preview && (() => {
-        const m = msgFor(preview, preview.confirm_token || tokenMap[preview.id])
+        const m = msgFor(preview, preview.confirm_token || tokenMap[preview.key])
         return (
           <Modal title={`預覽 — ${preview.name}`} onClose={() => setPreview(null)} width={680}>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>收件人：{preview.email}</div>
             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{m?.subject}</div>
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, background: '#faf9f6', padding: 14, borderRadius: 8, margin: 0 }}>{m?.body}</pre>
-            <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>※ 連結會在按「建立草稿」時正式產生；預覽顯示的是占位或既有連結。</div>
+            {hasLink && <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>※ 連結會在按「建立草稿」時正式產生；預覽顯示的是占位或既有連結。</div>}
           </Modal>
         )
       })()}

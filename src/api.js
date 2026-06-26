@@ -1190,6 +1190,24 @@ export async function setStage4Confirm(id, fields) {
   return updateStage4Status(id, fields)
 }
 
+// 第四階段寄信設定（依梯次記住正式放榜日期/回覆期限/承辦資訊）
+// 回傳 { '1': {...}, '2': {...} }，找不到的梯次為 undefined
+export async function getStage4Settings() {
+  const rows = await callProxy('/rest/v1/stage4_settings?select=*', 'GET')
+  const map = {}
+  for (const r of (rows || [])) map[r.batch] = r
+  return map
+}
+// 寫入/更新某梯設定（upsert by batch）
+export async function saveStage4Settings(batch, fields) {
+  const row = { batch: String(batch), ...fields, updated_at: new Date().toISOString() }
+  return callProxy(
+    '/rest/v1/stage4_settings?on_conflict=batch',
+    'POST', [row],
+    'resolution=merge-duplicates,return=minimal',
+  )
+}
+
 // 稽核軌跡（承辦查看：某帳號/系所的確認紀錄）
 export async function getStage4ConfirmLog() {
   return callProxy(
