@@ -935,6 +935,51 @@ export async function getAdmittedForStats() {
   return out
 }
 
+// ── 不錄取名單（第三階段全系所皆未錄取）：單向感謝信用，一人一列 ──────────
+// 定義：學生在 final_admissions 有放榜資料，但沒有任何一筆 admitted/waitlisted
+//      （即所有志願皆 rejected）。一階淘汰、未進放榜者不在此列。
+// 不寫入 stage4_confirmations，純即時計算；依最高志願序（preference_order 最小）
+// 的系所分組，附 Email/姓名/國籍供寄信。寄送狀態走 mail_log（kind='s4_reject'）。
+export async function getStage4Rejected() {
+  const fa = await callProxy(
+    '/rest/v1/final_admissions?select=account,department,final_status',
+    'GET',
+  )
+  // 以帳號彙整放榜結果，判斷是否「全部皆未錄取」
+  const byAcct = new Map()
+  for (const r of (fa || [])) {
+    if (!byAcct.has(r.account)) byAcct.set(r.account, [])
+    byAcct.get(r.account).push(r)
+  }
+  const rejSet = new Set()
+  for (const [account, rows] of byAcct) {
+    const hasPlace = rows.some((r) => r.final_status === 'admitted' || r.final_status === 'waitlisted')
+    if (!hasPlace) rejSet.add(account)
+  }
+  if (!rejSet.size) return []
+
+  // 取這些帳號的 applications，挑最高志願序（preference_order 最小）的系所作代表列
+  const apps = await callProxy(
+    '/rest/v1/applications?select=account,name,name_english,email,nationality,department,preference_order,center&order=preference_order.asc',
+    'GET',
+  )
+  const pick = new Map()   // account → 代表列
+  for (const a of (apps || [])) {
+    if (!rejSet.has(a.account)) continue
+    const cur = pick.get(a.account)
+    if (!cur || (a.preference_order ?? 99) < (cur.preference_order ?? 99)) pick.set(a.account, a)
+  }
+  return Array.from(pick.values()).map((a) => ({
+    account: a.account,
+    name: a.name || '',
+    name_english: a.name_english || '',
+    email: a.email || '',
+    nationality: a.nationality || '',
+    department: a.department || '',   // 最高志願序系所，用於卡片分組
+    center: a.center || '',
+  }))
+}
+
 // 從 Stage3（final_admissions 的 admitted + waitlisted）同步到 Stage4：
 //   1. 取 evaluations 的 total_score、applications 的 preference_order / center / 姓名
 //   2. 依 中心 + 科系 分組，waitlisted 以 preference_order asc, total_score desc 計算 standby_rank
