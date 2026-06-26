@@ -25,6 +25,7 @@ const publicShape = (row, expired) => ({
   standby_rank: row.standby_rank ?? null,
   status: row.contact_status || 'pending',
   deadline: row.confirm_deadline || null,
+  announce_date: row.announce_date || null,
   confirmed_at: row.confirmed_at || null,
   expired,
 })
@@ -64,6 +65,17 @@ export default async function handler(req) {
 
   const now = Date.now()
   const expired = !!row.confirm_deadline && now > Date.parse(row.confirm_deadline)
+
+  // 補「正式放榜日期」：依帳號梯次（第4碼，'2'=加報，其餘=報名）查 stage4_settings
+  try {
+    const batch = (typeof row.account === 'string' && row.account[3] === '2') ? '2' : '1'
+    const sRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/stage4_settings?batch=eq.${batch}&select=announce_date&limit=1`,
+      { headers: H },
+    )
+    const sRows = await sRes.json()
+    row.announce_date = (Array.isArray(sRows) && sRows[0] && sRows[0].announce_date) || null
+  } catch { row.announce_date = null }
 
   if (action === 'info') {
     return json({ ok: true, nationality, ...publicShape(row, expired) })
