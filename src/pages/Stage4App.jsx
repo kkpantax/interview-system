@@ -4,9 +4,9 @@ import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx } from '../components/ExportBtn'
 import AdmitMailComposer from '../components/AdmitMailComposer'
 import {
-  getStage4Data, syncStage4FromStage3, updateStage4Status,
+  getStage4Data, getStage4Rejected, syncStage4FromStage3, updateStage4Status,
   getDepartmentQuotas, getDepartmentCampuses,
-  getStage4Settings, saveStage4Settings,
+  getStage4Settings, saveStage4Settings, getMailLog,
 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { batchInfo, batchOf, deptShort, resolveCampus } from '../constants'
@@ -48,6 +48,8 @@ export default function Stage4App() {
   const [quotas, setQuotas]   = useState({})
   const [campusOv, setCampusOv] = useState({})
   const [settings, setSettings] = useState({})       // { '1': {...}, '2': {...} }
+  const [rejectedData, setRejectedData] = useState([]) // 不錄取（即時計算，扁平列）
+  const [mailLogs, setMailLogs] = useState({})         // { 's4_admit_declined': {acct:{status}}, 's4_reject': {...} }
   const [batchFilter, setBatchFilter] = useState('') // '' 全部 / '1' / '2'
   const [selDept, setSelDept] = useState('')         // 展開中的系所（正取頁）
   const [mail, setMail]       = useState(null)        // { kind, recipients, batch }
@@ -73,11 +75,24 @@ export default function Stage4App() {
   }, [showToast])
   useEffect(() => { load() }, [load])
 
+  const refreshThanks = useCallback(async () => {
+    try {
+      const [rej, dl, rj] = await Promise.all([
+        getStage4Rejected(),
+        getMailLog('s4_admit_declined'),
+        getMailLog('s4_reject'),
+      ])
+      setRejectedData(rej || [])
+      setMailLogs({ s4_admit_declined: dl || {}, s4_reject: rj || {} })
+    } catch { /* 靜默 */ }
+  }, [])
+
   useEffect(() => {
     getDepartmentQuotas().then((q) => setQuotas(q || {})).catch(() => {})
     getDepartmentCampuses().then((o) => setCampusOv(o || {})).catch(() => {})
     getStage4Settings().then((m) => setSettings(m || {})).catch(() => {})
-  }, [])
+    refreshThanks()
+  }, [refreshThanks])
 
   // 30 秒自動輪詢（正取/備取頁需即時統計）
   useEffect(() => {
@@ -140,9 +155,9 @@ export default function Stage4App() {
   )
 
   const settingsBatch = batchFilter || '1'   // 全部時設定預設綁第一梯
-  const openMail = (recipients) => {
-    if (!recipients.length) { showToast('沒有可寄送的對象（需未回應且有 Email）', 'warn'); return }
-    setMail({ kind: 's4_admit', recipients, batch: settingsBatch })
+  const openMail = (recipients, kind = 's4_admit') => {
+    if (!recipients.length) { showToast('沒有可寄送的對象（需有 Email）', 'warn'); return }
+    setMail({ kind, recipients, batch: settingsBatch })
   }
 
   const onSaveDefaults = async (form) => {
@@ -255,6 +270,24 @@ export default function Stage4App() {
     finally { setBusy(false) }
   }
 
+  // ── 正取拒絕頁 / 不錄取頁 資料（正規化成共用 item 形狀）──
+  const declinedItems = useMemo(() => data
+    .filter((r) => r.contact_status === 'declined' && inBatch(r))
+    .map((r) => ({
+      key: r.id, dept: r.department, account: r.account,
+      name: r.appInfo?.name || '', name_english: r.appInfo?.name_english || '',
+      email: r.appInfo?.email || '',
+      category: r.stage3_status === 'admitted' ? '正取放棄' : '備取放棄',
+      _raw: r,
+    })), [data, inBatch])
+  const rejectedItems = useMemo(() => (rejectedData || [])
+    .filter((r) => inBatch(r))
+    .map((r) => ({
+      key: r.account, dept: r.department, account: r.account,
+      name: r.name || '', name_english: r.name_english || '',
+      email: r.email || '', category: '不錄取', _raw: r,
+    })), [rejectedData, inBatch])
+
   if (!teacher || teacher.role !== 'superadmin') return null
   const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fde7d4' }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
@@ -268,6 +301,92 @@ export default function Stage4App() {
     const txt = diff > 0 ? `尚可錄取 ${diff}` : diff === 0 ? '已達預計' : `超收 ${-diff}`
     const col = diff > 0 ? { c: '#0f766e', b: '#ccfbf1' } : diff === 0 ? { c: '#6b7280', b: '#f3f4f6' } : { c: '#b91c1c', b: '#fee2e2' }
     return <Pill color={col.c} bg={col.b}>{txt}</Pill>
+  }
+
+  // 感謝信分頁（正取拒絕 / 不錄取 共用）：系所卡片 + 單向寄信 + 已寄/未寄
+  const renderThanksTab = (items, kind, emptyMsg) => {
+    const sumMap = {}
+    for (const it of items) {
+      const x = (sumMap[it.dept] ||= { dept: it.dept, total: 0, mailable: 0 })
+      x.total += 1; if (it.email) x.mailable += 1
+    }
+    const summary = Object.values(sumMap).sort((a, b) => a.dept.localeCompare(b.dept, 'zh-TW'))
+    const g = {}
+    for (const su of summary) { const camp = resolveCampus(su.dept, campusOv); (g[camp] ||= []).push(su) }
+    const groups = Object.entries(g).sort((a, b) => (CAMP_ORDER[a[0]] ?? 9) - (CAMP_ORDER[b[0]] ?? 9))
+    const selItems = items.filter((it) => it.dept === selDept)
+    const logMap = mailLogs[kind] || {}
+    const rawMailable = (arr) => arr.filter((it) => it.email).map((it) => it._raw)
+    const sentN = items.filter((it) => logMap[it.account]?.status === 'sent').length
+
+    return (
+      <>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, color: '#999' }}>已寄 {sentN} / {items.length}</span>
+          <Btn variant="primary" disabled={busy || !items.some((it) => it.email)} onClick={() => openMail(rawMailable(items), kind)}>
+            ✉ 寄送感謝信（可寄 {items.filter((it) => it.email).length}）
+          </Btn>
+        </div>
+        {groups.map(([camp, list]) => (
+          <div key={camp} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#7c2d12', marginBottom: 8 }}>
+              {camp}<span style={{ color: '#bbb', fontWeight: 400 }}> · {list.reduce((s2, x) => s2 + x.total, 0)} 人</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+              {list.map((su) => {
+                const open = selDept === su.dept
+                return (
+                  <button key={su.dept} onClick={() => setSelDept(open ? '' : su.dept)}
+                    style={{ textAlign: 'left', cursor: 'pointer', background: open ? '#fff7ed' : 'white',
+                      border: '1px solid ' + (open ? ACCENT : '#e8e7e3'), borderRadius: 12, padding: 14 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{deptShort(su.dept)}</div>
+                    <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
+                      {su.total} 人 · <span style={{ color: '#15803d' }}>可寄 {su.mailable}</span>
+                      {su.total - su.mailable ? <> · <span style={{ color: '#dc2626' }}>缺 Email {su.total - su.mailable}</span></> : null}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+        {!summary.length && <div style={{ fontSize: 13, color: '#aaa', padding: 24, textAlign: 'center' }}>{loading ? '載入中…' : emptyMsg}</div>}
+
+        {selDept && (
+          <Card>
+            <CardHead left={selDept}
+              right={<Btn style={{ ...s.btn, ...s.btnSm }} disabled={busy || !selItems.some((it) => it.email)}
+                onClick={() => openMail(rawMailable(selItems), kind)}>✉ 寄本系感謝信</Btn>} />
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ background: '#faf9f6' }}>{['姓名', '帳號', '梯次', '類別', 'Email', '寄送狀態', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {selItems.map((it) => {
+                    const bi = batchInfo(it.account)
+                    const sent = logMap[it.account]?.status === 'sent'
+                    return (
+                      <tr key={it.key}>
+                        <td style={td}><div style={{ fontWeight: 500 }}>{it.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{it.name_english || '—'}</div></td>
+                        <td style={{ ...td, color: '#888' }}>{it.account || '—'}</td>
+                        <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
+                        <td style={td}>{it.category}</td>
+                        <td style={{ ...td, color: it.email ? '#555' : '#dc2626' }}>{it.email || '（無）'}</td>
+                        <td style={td}>{sent ? <Pill color="#15803d" bg="#dcfce7">已寄送</Pill> : <span style={{ color: '#ccc' }}>未寄</span>}</td>
+                        <td style={td}><button onClick={() => openMail([it._raw], kind)} disabled={busy || !it.email} style={{ ...s.btn, ...s.btnSm }}>{sent ? '重寄' : '寄送'}</button></td>
+                      </tr>
+                    )
+                  })}
+                  {!selItems.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無資料</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+        <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
+          說明：此頁寄送單向感謝信（無確認連結），寄信視窗可編輯「自訂段落（中／外語）」帶入其他方案／管道。「已寄送」依寄信紀錄判定，可重寄。
+        </div>
+      </>
+    )
   }
 
   return (
@@ -512,10 +631,14 @@ export default function Stage4App() {
         </>
       )}
 
-      {/* ── 其餘分頁（後續階段建置） ── */}
-      {['declined', 'reject', 'tools'].includes(tab) && (
+      {/* ── 正取拒絕頁 / 不錄取頁 ── */}
+      {tab === 'declined' && renderThanksTab(declinedItems, 's4_admit_declined', '目前沒有放棄錄取的學生')}
+      {tab === 'reject' && renderThanksTab(rejectedItems, 's4_reject', '目前沒有不錄取名單')}
+
+      {/* ── 工具頁（後續階段建置） ── */}
+      {tab === 'tools' && (
         <div style={{ background: 'white', border: '1px dashed #e0ddd6', borderRadius: 12, padding: 48, textAlign: 'center', color: '#aaa' }}>
-          「{TABS.find((t) => t.key === tab)?.label}」分頁建置中。
+          「工具」分頁建置中。
         </div>
       )}
 
@@ -525,7 +648,7 @@ export default function Stage4App() {
           recipients={mail.recipients}
           defaults={defaultsFromSettings(settings[mail.batch])}
           onSaveDefaults={onSaveDefaults}
-          onClose={() => { setMail(null); load() }}
+          onClose={() => { setMail(null); load(); refreshThanks() }}
           onToast={showToast}
         />
       )}
