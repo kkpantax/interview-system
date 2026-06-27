@@ -62,7 +62,7 @@ function normalize(recipients) {
 // props:
 //   kind: 's4_admit' | 's4_promote' | 's4_admit_declined' | 's4_reject'
 //   recipients: 上述兩種列皆可
-//   defaults: { replyBy, announceDate, contactPerson, contactEmail, unitName, customZh, customForeign }（梯次設定預填，可省）
+//   defaults: { replyBy, announceDate, contactPerson, contactEmail, unitName, customZh, customForeignEn, customForeignVi, customForeignId }（梯次設定預填，可省）
 //   onSaveDefaults: (formValues) => Promise（按「儲存本梯設定」時呼叫，可省）
 export default function AdmitMailComposer({ kind = 's4_admit', recipients, defaults, onSaveDefaults, onClose, onToast }) {
   const hasLink = LINK_KINDS.has(kind)
@@ -75,7 +75,9 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
     contactEmail: defaults?.contactEmail || 'shihchien_ifp@g2.usc.edu.tw',
     unitName: defaults?.unitName || '國際事務處 Office of International Affairs',
     customZh: defaults?.customZh || '',
-    customForeign: defaults?.customForeign || '',
+    customForeignEn: defaults?.customForeignEn || '',
+    customForeignVi: defaults?.customForeignVi || '',
+    customForeignId: defaults?.customForeignId || '',
   }))
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   // 非同步載入的 defaults 第一次到位時套用一次（不覆蓋使用者後續編輯）
@@ -122,7 +124,8 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
       類別中: CAT_ZH(r), 類別外: CAT_FX(r, r.lang),
       回覆期限: form.replyBy, 正式放榜日期: form.announceDate,
       承辦人: form.contactPerson, 聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
-      自訂中: form.customZh, 自訂外: form.customForeign,
+      自訂中: form.customZh,
+      自訂外: r.lang === 'VI' ? form.customForeignVi : r.lang === 'ID' ? form.customForeignId : form.customForeignEn,
     }
     if (hasLink) base.確認連結 = linkFor(token || r.confirm_token || tokenMap[r.key] || '（寄出時自動產生）')
     return base
@@ -239,8 +242,12 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>自訂段落（中文）— 帶入中文段</label>
           <textarea style={{ ...s.input, minHeight: 56, marginBottom: 8 }} value={form.customZh} onChange={(e) => setF('customZh', e.target.value)} placeholder="例：本校○○學程／下一梯次仍在招生，歡迎參考…" />
-          <label style={lbl}>自訂段落（外語）— 帶入外語段</label>
-          <textarea style={{ ...s.input, minHeight: 56, marginBottom: 0 }} value={form.customForeign} onChange={(e) => setF('customForeign', e.target.value)} placeholder="e.g. Our ○○ program is still open for the next intake…" />
+          <label style={lbl}>自訂段落（英文）— 帶入英文版外語段</label>
+          <textarea style={{ ...s.input, minHeight: 56, marginBottom: 8 }} value={form.customForeignEn} onChange={(e) => setF('customForeignEn', e.target.value)} placeholder="e.g. Our ○○ program is still open for the next intake…" />
+          <label style={lbl}>自訂段落（越南文）— 帶入越南文版外語段</label>
+          <textarea style={{ ...s.input, minHeight: 56, marginBottom: 8 }} value={form.customForeignVi} onChange={(e) => setF('customForeignVi', e.target.value)} placeholder="VD: Chương trình ○○ vẫn đang tuyển sinh đợt tới…" />
+          <label style={lbl}>自訂段落（印尼文）— 帶入印尼文版外語段</label>
+          <textarea style={{ ...s.input, minHeight: 56, marginBottom: 0 }} value={form.customForeignId} onChange={(e) => setF('customForeignId', e.target.value)} placeholder="Mis. Program ○○ kami masih dibuka untuk gelombang berikutnya…" />
         </div>
       )}
 
