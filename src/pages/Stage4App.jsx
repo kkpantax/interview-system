@@ -34,13 +34,6 @@ const defaultsFromSettings = (st) => ({
   contactEmail:  st?.contact_email || 'shihchien_ifp@g2.usc.edu.tw',
   unitName:      st?.unit_name || '國際事務處 Office of International Affairs',
 })
-const settingsFromForm = (f) => ({
-  announce_date:  f.announceDate || '',
-  reply_by:       f.replyBy || '',
-  contact_person: f.contactPerson || '',
-  contact_email:  f.contactEmail || '',
-  unit_name:      f.unitName || '',
-})
 
 // 工具頁用
 const KIND_LABEL = {
@@ -207,12 +200,6 @@ export default function Stage4App() {
   const openMail = (recipients, kind = 's4_admit') => {
     if (!recipients.length) { showToast('沒有可寄送的對象（需有 Email）', 'warn'); return }
     setMail({ kind, recipients, batch: settingsBatch })
-  }
-
-  const onSaveDefaults = async (form) => {
-    const b = mail?.batch || settingsBatch
-    await saveStage4Settings(b, settingsFromForm(form))
-    const m = await getStage4Settings(); setSettings(m || {})
   }
 
   const setStatus = async (row, status) => {
@@ -960,7 +947,6 @@ export default function Stage4App() {
           recipients={mail.recipients}
           defaults={defaultsFromSettings(settings[mail.batch])}
           settingsByBatch={settings}
-          onSaveDefaults={onSaveDefaults}
           onClose={() => { setMail(null); load(); refreshThanks() }}
           onToast={showToast}
         />

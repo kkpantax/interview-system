@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Modal, Btn, s } from './UI'
 import { buildMessage, pickLang } from '../mailTemplates'
 import { createDrafts, sendDraftBatch, logMail, getMailLog, setStage4Confirm } from '../api'
-import { deptI18n, batchOf } from '../constants'
+import { deptI18n, batchOf, BATCHES } from '../constants'
 
 // 有落地頁（需個人確認連結）的信件種類
 const LINK_KINDS = new Set(['s4_admit', 's4_promote'])
@@ -63,8 +63,7 @@ function normalize(recipients) {
 //   kind: 's4_admit' | 's4_promote' | 's4_admit_declined' | 's4_reject'
 //   recipients: 上述兩種列皆可
 //   defaults: { replyBy, announceDate, contactPerson, contactEmail, unitName, customZh, customForeignEn, customForeignVi, customForeignId }（梯次設定預填，可省）
-//   onSaveDefaults: (formValues) => Promise（按「儲存本梯設定」時呼叫，可省）
-export default function AdmitMailComposer({ kind = 's4_admit', recipients, defaults, settingsByBatch = {}, onSaveDefaults, onClose, onToast }) {
+export default function AdmitMailComposer({ kind = 's4_admit', recipients, defaults, settingsByBatch = {}, onClose, onToast }) {
   const hasLink = LINK_KINDS.has(kind)
   const meta = KIND_META[kind] || KIND_META.s4_admit
 
@@ -116,10 +115,14 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
   const [preview, setPreview] = useState(null)
 
   const linkFor = (token) => `${window.location.origin}/#/confirm?t=${token}`
-  // 依每位收件人帳號的梯次帶入該梯的放榜日期 / 回覆期限；該梯未設定時退回視窗頂部欄位值。
+  // 所有梯次相關內容（放榜日期 / 回覆期限 / 承辦資訊）一律依每位收件人帳號的梯次，
+  // 從「發送設定」帶入；寄信視窗不再提供可編輯欄位，避免誤改或混批誤帶。
   const settingFor = (r) => settingsByBatch?.[String(batchOf(r.account))] || {}
-  const announceFor = (r) => settingFor(r).announce_date || form.announceDate
-  const replyByFor  = (r) => settingFor(r).reply_by || form.replyBy
+  const announceFor = (r) => settingFor(r).announce_date || ''
+  const replyByFor  = (r) => settingFor(r).reply_by || ''
+  const contactPersonFor = (r) => settingFor(r).contact_person || ''
+  const contactEmailFor  = (r) => settingFor(r).contact_email || 'shihchien_ifp@g2.usc.edu.tw'
+  const unitNameFor      = (r) => settingFor(r).unit_name || '國際事務處 Office of International Affairs'
   const dataFor = (r, token) => {
     const il = LANG_TO_I18N[r.lang] || 'en'
     const base = {
@@ -127,7 +130,7 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
       系所中: r.department, 系所外: deptI18n(r.department, il),
       類別中: CAT_ZH(r), 類別外: CAT_FX(r, r.lang),
       回覆期限: replyByFor(r), 正式放榜日期: announceFor(r),
-      承辦人: form.contactPerson, 聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
+      承辦人: contactPersonFor(r), 聯絡信箱: contactEmailFor(r), 單位名稱: unitNameFor(r),
       自訂中: form.customZh,
       自訂外: r.lang === 'VI' ? form.customForeignVi : r.lang === 'ID' ? form.customForeignId : form.customForeignEn,
     }
@@ -138,10 +141,26 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
 
   const selected = rows.filter((r) => r.include)
 
+  // 本批名單實際涵蓋的梯次（含該梯發送設定）；供唯讀核對區與寄送前驗證共用。
+  const batchEntries = (() => {
+    const seen = []
+    const has = new Set()
+    for (const r of selected) {
+      const b = String(batchOf(r.account))
+      if (has.has(b)) continue
+      has.add(b)
+      seen.push({ b, label: BATCHES.find((x) => String(x.v) === b)?.label || `梯次 ${b}`, st: settingsByBatch?.[b] || {} })
+    }
+    return seen.sort((a, z) => a.b.localeCompare(z.b))
+  })()
+
   const validate = () => {
     if (!selected.length) return '沒有勾選任何學生'
-    if (hasLink && !form.replyBy.trim()) return '請填回覆期限'
     if (hasLink && selected.some((r) => !r.id)) return '此名單缺少 stage4 紀錄 id，無法產生確認連結'
+    if (hasLink) {
+      const bad = batchEntries.find((e) => !e.st.announce_date || !e.st.reply_by)
+      if (bad) return `${bad.label} 尚未在「發送設定」填寫放榜日期或回覆期限，請先補齊再寄送`
+    }
     return null
   }
 
@@ -212,18 +231,9 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
     } finally { setBusy(false) }
   }
 
-  const saveDefaults = async () => {
-    if (!onSaveDefaults) return
-    setBusy(true)
-    try { await onSaveDefaults({ ...form }); onToast?.('已儲存本梯預設設定') }
-    catch (e) { onToast?.('儲存設定失敗：' + e.message, 'error') }
-    finally { setBusy(false) }
-  }
-
   const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 3 }
   const th = { padding: '7px 8px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
   const td = { padding: '6px 8px', borderBottom: '1px solid #f5f4f0', fontSize: 12, verticalAlign: 'middle' }
-  const inp = (k, ph) => <input style={{ ...s.input, marginBottom: 0 }} value={form[k]} onChange={(e) => setF(k, e.target.value)} placeholder={ph} />
   const statusOf = (account) => {
     if (sentMap[account]?.status === 'sent') return <span style={{ color: '#15803d' }}>已寄送</span>
     if (created[account]) return <span style={{ color: '#b45309' }}>草稿已建</span>
@@ -233,12 +243,20 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
 
   return (
     <Modal title={meta.title} onClose={onClose} width={980}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 14px', marginBottom: 14 }}>
-        {hasLink && <div><label style={lbl}>意願調查回覆期限</label>{inp('replyBy', '2026/07/20')}</div>}
-        {hasLink && <div><label style={lbl}>正式放榜日期</label>{inp('announceDate', '2026/07/25')}</div>}
-        <div><label style={lbl}>承辦人</label>{inp('contactPerson')}</div>
-        <div><label style={lbl}>聯絡信箱</label>{inp('contactEmail')}</div>
-        <div><label style={lbl}>單位名稱</label>{inp('unitName')}</div>
+      <div style={{ marginBottom: 14, background: '#faf9f6', border: '1px solid #eee', borderRadius: 8, padding: '10px 12px' }}>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+          以下內容依各生帳號梯次自動帶入「發送設定」，本視窗不可修改；如需調整，請至第四階段「發送設定」分頁。
+        </div>
+        {batchEntries.map((e) => (
+          <div key={e.b} style={{ fontSize: 12, color: '#444', lineHeight: 1.9 }}>
+            <span style={{ fontWeight: 600 }}>{e.label}</span>：
+            {hasLink && <>放榜 <b>{e.st.announce_date || '—'}</b> · 回覆 <b>{e.st.reply_by || '—'}</b> · </>}
+            承辦 {e.st.contact_person || '—'} · {e.st.contact_email || '—'}
+            {hasLink && (!e.st.announce_date || !e.st.reply_by) &&
+              <span style={{ color: '#dc2626' }}> ⚠ 此梯放榜日期 / 回覆期限尚未設定</span>}
+          </div>
+        ))}
+        {!batchEntries.length && <div style={{ fontSize: 12, color: '#aaa' }}>尚無勾選對象</div>}
       </div>
 
       {!hasLink && (
@@ -289,7 +307,6 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
         <span style={{ fontSize: 12, color: '#888' }}>勾選 {selected.length} / {rows.length} 位 · 已建草稿 {Object.keys(created).length} 封</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {onSaveDefaults && <Btn onClick={saveDefaults} disabled={busy}>儲存本梯設定</Btn>}
           <Btn onClick={doCreate} disabled={busy}>① 建立草稿{hasLink ? '（並產生確認連結）' : ''}</Btn>
           <Btn variant="primary" onClick={doSend} disabled={busy || !Object.keys(created).length}>② 送出本批</Btn>
         </div>
