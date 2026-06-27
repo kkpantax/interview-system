@@ -3,12 +3,14 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx, writeXlsxMulti } from '../components/ExportBtn'
 import AdmitMailComposer from '../components/AdmitMailComposer'
+import TransferModal from '../components/TransferModal'
 import { buildMessage } from '../mailTemplates'
 import {
   getStage4Data, getStage4Rejected, syncStage4FromStage3, updateStage4Status,
   getDepartmentQuotas, getDepartmentCampuses,
   getStage4Settings, saveStage4Settings, getMailLog,
   upsertStage4TestRow, createDrafts, sendDraftBatch,
+  getTransferTargets, doTransfer,
 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { batchInfo, batchOf, deptShort, deptI18n, DEPT_I18N, resolveCampus } from '../constants'
@@ -48,7 +50,7 @@ const KIND_LABEL = {
   s4_reject: '不錄取感謝信（單向）',
 }
 const CS_LABEL = {
-  pending: '未回應', enrolled: '就讀/遞補就讀', declined: '放棄',
+  pending: '未回應', enrolled: '就讀/遞補就讀', declined: '放棄', transferred: '已轉報',
   negotiating: '遞補詢問中', settled_elsewhere: '已確認他系', passed: '已略過', standby: '備取待機',
 }
 const TEST_ACCOUNT = 'S4TEST0001'
@@ -91,6 +93,7 @@ export default function Stage4App() {
   const [batchFilter, setBatchFilter] = useState('') // '' 全部 / '1' / '2'
   const [selDept, setSelDept] = useState('')         // 展開中的系所（正取頁）
   const [mail, setMail]       = useState(null)        // { kind, recipients, batch }
+  const [transfer, setTransfer] = useState(null)      // { row, depts }
   const [updatedAt, setUpdatedAt] = useState('')
   const busyRef = useRef(false)
   useEffect(() => { busyRef.current = busy }, [busy])
@@ -221,6 +224,27 @@ export default function Stage4App() {
       showToast(`已將 ${row.appInfo?.name || row.account} 標記為${status === 'enrolled' ? '就讀' : '放棄'}`)
       await load()
     } catch (e) { showToast('操作失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const openTransfer = async (row) => {
+    try {
+      const depts = await getTransferTargets(row.account)
+      if (!depts.length) { showToast('查無可轉報的系所（已報考所有系所）', 'warn'); return }
+      setTransfer({ row, depts })
+    } catch (e) { showToast('載入可轉報系所失敗：' + e.message, 'error') }
+  }
+
+  const confirmTransfer = async (toDepartment, note) => {
+    if (busy || !transfer) return
+    setBusy(true)
+    try {
+      await doTransfer({ row: transfer.row, toDepartment, note })
+      const nm = transfer.row.appInfo?.name || transfer.row.account
+      setTransfer(null)
+      showToast(`已將 ${nm} 轉報至 ${toDepartment}，請至第二階段重新評分`)
+      await load()
+    } catch (e) { showToast('轉報失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
 
@@ -373,7 +397,7 @@ export default function Stage4App() {
       else if (r.contact_status === 'declined') x.declined += 1
       else x.pending += 1
     }
-    for (const r of admitRows) { if (r.contact_status === 'declined') ensure(r.department).declinesAdmit += 1 }
+    for (const r of admitRows) { if (r.contact_status === 'declined' || r.contact_status === 'transferred') ensure(r.department).declinesAdmit += 1 }
     for (const x of Object.values(m)) { x.openSlots = Math.max(0, x.declinesAdmit - x.negotiating - x.enrolled) }
     return Object.values(m).sort((a, b) => a.dept.localeCompare(b.dept, 'zh-TW'))
   }, [waitRows, admitRows])
@@ -637,6 +661,7 @@ export default function Stage4App() {
                       const cs = r.contact_status
                       const resp = cs === 'enrolled' ? { t: '✓ 願意就讀', c: '#15803d', b: '#dcfce7' }
                         : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
+                        : cs === 'transferred' ? { t: '已轉報', c: '#c2410c', b: '#ffedd5' }
                         : { t: '未回應', c: '#b45309', b: '#fef3c7' }
                       const bi = batchInfo(r.account)
                       return (
@@ -657,6 +682,8 @@ export default function Stage4App() {
                                 style={{ ...s.btn, ...s.btnSm, background: '#dcfce7', color: '#15803d', borderColor: '#86efac' }}>就讀</button>
                               <button onClick={() => setStatus(r, 'declined')} disabled={busy || cs === 'declined'}
                                 style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>放棄</button>
+                              <button onClick={() => openTransfer(r)} disabled={busy || cs === 'transferred'}
+                                style={{ ...s.btn, ...s.btnSm, background: '#ffedd5', color: '#9a3412', borderColor: '#fdba74' }}>轉報</button>
                             </div>
                           </td>
                         </tr>
@@ -739,6 +766,7 @@ export default function Stage4App() {
                       const eligible = cs === 'pending' && eligibleIds.has(r.id)
                       const st = cs === 'enrolled' ? { t: '✓ 已遞補就讀', c: '#15803d', b: '#dcfce7' }
                         : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
+                        : cs === 'transferred' ? { t: '已轉報', c: '#c2410c', b: '#ffedd5' }
                         : cs === 'negotiating' ? { t: '遞補詢問中', c: '#1e40af', b: '#dbeafe' }
                         : eligible ? { t: '可遞補', c: '#b91c1c', b: '#fee2e2' }
                         : { t: '備取待機', c: '#6b7280', b: '#f3f4f6' }
@@ -753,15 +781,17 @@ export default function Stage4App() {
                           <td style={td}>{r.stage2_score ?? '—'}</td>
                           <td style={td}><Pill color={st.c} bg={st.b}>{st.t}</Pill></td>
                           <td style={td}>
-                            {eligible ? (
-                              <button onClick={() => promoteNotify([r])} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '' : '無 Email'}
-                                style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>遞補通知</button>
-                            ) : cs === 'negotiating' ? (
-                              <button onClick={() => setMail({ kind: 's4_promote', recipients: [r], batch: settingsBatch })} disabled={busy || !r.appInfo?.email}
-                                style={{ ...s.btn, ...s.btnSm }}>重寄通知</button>
-                            ) : (
-                              <span style={{ color: '#ccc' }}>—</span>
-                            )}
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                              {eligible ? (
+                                <button onClick={() => promoteNotify([r])} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '' : '無 Email'}
+                                  style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>遞補通知</button>
+                              ) : cs === 'negotiating' ? (
+                                <button onClick={() => setMail({ kind: 's4_promote', recipients: [r], batch: settingsBatch })} disabled={busy || !r.appInfo?.email}
+                                  style={{ ...s.btn, ...s.btnSm }}>重寄通知</button>
+                              ) : null}
+                              <button onClick={() => openTransfer(r)} disabled={busy || cs === 'transferred'}
+                                style={{ ...s.btn, ...s.btnSm, background: '#ffedd5', color: '#9a3412', borderColor: '#fdba74' }}>轉報</button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -914,12 +944,21 @@ export default function Stage4App() {
         </div>
       )}
 
+      {transfer && (
+        <TransferModal
+          row={transfer.row}
+          depts={transfer.depts}
+          busy={busy}
+          onConfirm={confirmTransfer}
+          onClose={() => setTransfer(null)}
+        />
+      )}
+
       {mail && (
         <AdmitMailComposer
           kind={mail.kind}
           recipients={mail.recipients}
           defaults={defaultsFromSettings(settings[mail.batch])}
-          settingsByBatch={settings}
           onSaveDefaults={onSaveDefaults}
           onClose={() => { setMail(null); load(); refreshThanks() }}
           onToast={showToast}

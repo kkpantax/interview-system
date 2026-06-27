@@ -460,7 +460,7 @@ export async function getStage2List(dept) {
   const rows = await callProxy(
     `/rest/v1/applications?select=*,evaluations(id,recommendation,total_score,eval_date,evaluator_name,translator_name,scores,teacher_note,custom_questions)` +
       `&department=eq.${encodeURIComponent(dept)}` +
-      `&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc`,
+      `&stage1_passed_date=not.is.null&paper_passed=is.true&withdrawn=is.false&order=name.asc`,
     'GET',
   )
   return rows || []
@@ -849,11 +849,13 @@ export async function loginTeacher(username, password) {
 // ── Stage 3（第三階段 · 最終錄取）──────────────────────────────────────────
 // 所有二階評分 + 對應 application（只有已過一階者才會有評分）
 export async function getStage3Data() {
-  return callProxy(
-    '/rest/v1/evaluations?select=*,applications(account,name,name_english,department,stage1_passed_date,preference_order,center,nationality,gender)' +
+  const rows = await callProxy(
+    '/rest/v1/evaluations?select=*,applications(account,name,name_english,department,stage1_passed_date,preference_order,center,nationality,gender,withdrawn)' +
       '&order=department.asc,total_score.desc',
     'GET',
   )
+  // 轉報後原志願已標記 withdrawn，排除其評分列不進放榜比對
+  return (rows || []).filter((e) => !e.applications?.withdrawn)
 }
 
 export async function getFinalAdmissions() {
@@ -1225,4 +1227,86 @@ export async function getStage4ConfirmLog() {
     '/rest/v1/stage4_confirm_log?select=*&order=created_at.desc',
     'GET',
   )
+}
+
+// ── 轉報（行政後台）────────────────────────────────────────────────
+// 可轉報的目標系所：全系所清單扣掉該生原本已報考的系（皆以 applications.department 的實際字串為準）
+export async function getTransferTargets(account) {
+  const [all, mine] = await Promise.all([
+    callProxy('/rest/v1/applications?select=department', 'GET'),
+    callProxy(`/rest/v1/applications?select=department&account=eq.${encodeURIComponent(account)}`, 'GET'),
+  ])
+  const taken = new Set((mine || []).map((a) => a.department).filter(Boolean))
+  const allSet = new Set((all || []).map((a) => a.department).filter(Boolean))
+  return [...allSet].filter((d) => !taken.has(d)).sort((a, b) => a.localeCompare(b, 'zh-Hant'))
+}
+
+// 執行轉報：
+//   1) 目前 stage4 列 → 已轉報（開出備取缺額）
+//   2) 該生原有 applications 全部標記 withdrawn（退出放榜比對）
+//   3) 在新系開一筆申請（withdrawn=false、paper_passed=true、帶 stage1_passed_date）→ 出現在新系二階待評分
+//   4) 寫入 transfers 記錄（供追蹤頁）
+export async function doTransfer({ row, toDepartment, note }) {
+  const account = row.account
+  const teacher = getTeacher()
+  const src = await callProxy(
+    `/rest/v1/applications?select=*&account=eq.${encodeURIComponent(account)}&limit=1`, 'GET',
+  )
+  const base = (src && src[0]) || {}
+
+  // 1) 開出舊缺額
+  await updateStage4Status(row.id, { contact_status: 'transferred' })
+
+  // 2) 原有志願退出比對
+  await callProxy(
+    `/rest/v1/applications?account=eq.${encodeURIComponent(account)}`,
+    'PATCH', { withdrawn: true }, 'return=minimal',
+  )
+
+  // 3) 新系建立申請
+  const today = new Date().toISOString().slice(0, 10)
+  const newApp = {
+    account,
+    department: toDepartment,
+    preference_order: null,
+    name: base.name ?? null,
+    name_english: base.name_english ?? null,
+    passport_number: base.passport_number ?? null,
+    nationality: base.nationality ?? null,
+    gender: base.gender ?? null,
+    birth_date: base.birth_date ?? null,
+    email: base.email ?? null,
+    phone: base.phone ?? null,
+    high_school: base.high_school ?? null,
+    status: 'stage1_passed',
+    stage1_passed_date: base.stage1_passed_date ?? today,
+    paper_passed: true,
+    center: base.center ?? null,
+    withdrawn: false,
+  }
+  await callProxy('/rest/v1/applications', 'POST', newApp, 'return=minimal')
+
+  // 4) 轉報記錄
+  await callProxy('/rest/v1/transfers', 'POST', {
+    account,
+    from_department: row.department,
+    from_status: row.stage3_status ?? null,
+    from_standby_rank: row.standby_rank ?? null,
+    to_department: toDepartment,
+    note: note || null,
+    created_by: teacher?.username || teacher?.display_name || null,
+    to_status: 'scoring',
+  }, 'return=minimal')
+
+  return true
+}
+
+// 轉報追蹤清單（含學生姓名）
+export async function getTransfers() {
+  const [tr, apps] = await Promise.all([
+    callProxy('/rest/v1/transfers?select=*&order=created_at.desc', 'GET'),
+    callProxy('/rest/v1/applications?select=account,name,name_english', 'GET'),
+  ])
+  const m = new Map((apps || []).map((a) => [a.account, a]))
+  return (tr || []).map((t) => ({ ...t, appInfo: m.get(t.account) || {} }))
 }
