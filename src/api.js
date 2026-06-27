@@ -1301,12 +1301,59 @@ export async function doTransfer({ row, toDepartment, note }) {
   return true
 }
 
-// 轉報追蹤清單（含學生姓名）
+// 轉報追蹤清單：每筆附學生姓名 + 自動計算「新系現況」
+//   二階待評分 → 二階已評分 → 三階正取/備取/不錄取 → 四階(就讀/放棄)
 export async function getTransfers() {
-  const [tr, apps] = await Promise.all([
+  const [tr, apps, evals, fa, s4] = await Promise.all([
     callProxy('/rest/v1/transfers?select=*&order=created_at.desc', 'GET'),
     callProxy('/rest/v1/applications?select=account,name,name_english', 'GET'),
+    callProxy('/rest/v1/evaluations?select=department,total_score,recommendation,applications(account)', 'GET'),
+    callProxy('/rest/v1/final_admissions?select=account,department,final_status', 'GET'),
+    callProxy('/rest/v1/stage4_confirmations?select=account,department,contact_status,stage3_status,standby_rank', 'GET'),
   ])
-  const m = new Map((apps || []).map((a) => [a.account, a]))
-  return (tr || []).map((t) => ({ ...t, appInfo: m.get(t.account) || {} }))
+  const nameMap = new Map((apps || []).map((a) => [a.account, a]))
+  const k = (acct, dept) => `${acct}__${dept}`
+  const evalMap = new Map()
+  for (const e of (evals || [])) {
+    const acct = e.applications?.account
+    if (acct) evalMap.set(k(acct, e.department), e)
+  }
+  const faMap = new Map((fa || []).map((r) => [k(r.account, r.department), r]))
+  const s4Map = new Map((s4 || []).map((r) => [k(r.account, r.department), r]))
+
+  return (tr || []).map((t) => {
+    const key = k(t.account, t.to_department)
+    const s4r = s4Map.get(key)
+    const far = faMap.get(key)
+    const ev  = evalMap.get(key)
+    let newStatus
+    if (s4r) {
+      const base = s4r.stage3_status === 'admitted' ? '正取'
+        : s4r.stage3_status === 'waitlisted' ? `備取${s4r.standby_rank ?? ''}` : '已放榜'
+      const cs = s4r.contact_status === 'enrolled' ? '·就讀'
+        : s4r.contact_status === 'declined' ? '·放棄'
+        : s4r.contact_status === 'transferred' ? '·已轉報' : ''
+      newStatus = { key: 'stage4', label: `四階 ${base}${cs}`, color: '#15803d', bg: '#dcfce7' }
+    } else if (far) {
+      const fs = far.final_status
+      newStatus = fs === 'admitted'   ? { key: 'admitted',   label: '三階 正取',   color: '#15803d', bg: '#dcfce7' }
+        : fs === 'waitlisted' ? { key: 'waitlisted', label: '三階 備取',   color: '#b45309', bg: '#fef3c7' }
+        : fs === 'rejected'   ? { key: 'rejected',   label: '三階 不錄取', color: '#b91c1c', bg: '#fee2e2' }
+        :                       { key: 'pending',    label: '三階 待定',   color: '#6b7280', bg: '#f3f4f6' }
+    } else if (ev) {
+      newStatus = { key: 'scored', label: `二階已評分${ev.total_score != null ? `（${ev.total_score}）` : ''}`, color: '#1e40af', bg: '#dbeafe' }
+    } else {
+      newStatus = { key: 'await_eval', label: '二階待評分', color: '#92400e', bg: '#fef3c7' }
+    }
+    return { ...t, appInfo: nameMap.get(t.account) || {}, newStatus }
+  })
+}
+
+// 手動更新轉報的承辦處理狀態（to_status）
+export async function updateTransferStatus(id, to_status) {
+  const r = await callProxy(`/rest/v1/transfers?id=eq.${id}`, 'PATCH', { to_status }, 'return=representation')
+  if (!r || (Array.isArray(r) && r.length === 0)) {
+    throw new Error('更新失敗（找不到記錄，或 transfers 缺少 UPDATE 的 RLS 政策）')
+  }
+  return r
 }
