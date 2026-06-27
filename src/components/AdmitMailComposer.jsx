@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Modal, Btn, s } from './UI'
 import { buildMessage, pickLang } from '../mailTemplates'
 import { createDrafts, sendDraftBatch, logMail, getMailLog, setStage4Confirm } from '../api'
-import { deptI18n } from '../constants'
+import { deptI18n, batchOf } from '../constants'
 
 // 有落地頁（需個人確認連結）的信件種類
 const LINK_KINDS = new Set(['s4_admit', 's4_promote'])
@@ -64,7 +64,7 @@ function normalize(recipients) {
 //   recipients: 上述兩種列皆可
 //   defaults: { replyBy, announceDate, contactPerson, contactEmail, unitName, customZh, customForeignEn, customForeignVi, customForeignId }（梯次設定預填，可省）
 //   onSaveDefaults: (formValues) => Promise（按「儲存本梯設定」時呼叫，可省）
-export default function AdmitMailComposer({ kind = 's4_admit', recipients, defaults, onSaveDefaults, onClose, onToast }) {
+export default function AdmitMailComposer({ kind = 's4_admit', recipients, defaults, settingsByBatch = {}, onSaveDefaults, onClose, onToast }) {
   const hasLink = LINK_KINDS.has(kind)
   const meta = KIND_META[kind] || KIND_META.s4_admit
 
@@ -116,13 +116,17 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
   const [preview, setPreview] = useState(null)
 
   const linkFor = (token) => `${window.location.origin}/#/confirm?t=${token}`
+  // 依每位收件人帳號的梯次帶入該梯的放榜日期 / 回覆期限；該梯未設定時退回視窗頂部欄位值。
+  const settingFor = (r) => settingsByBatch?.[String(batchOf(r.account))] || {}
+  const announceFor = (r) => settingFor(r).announce_date || form.announceDate
+  const replyByFor  = (r) => settingFor(r).reply_by || form.replyBy
   const dataFor = (r, token) => {
     const il = LANG_TO_I18N[r.lang] || 'en'
     const base = {
       中文姓名: r.name, 英文姓名: r.name_english || r.name,
       系所中: r.department, 系所外: deptI18n(r.department, il),
       類別中: CAT_ZH(r), 類別外: CAT_FX(r, r.lang),
-      回覆期限: form.replyBy, 正式放榜日期: form.announceDate,
+      回覆期限: replyByFor(r), 正式放榜日期: announceFor(r),
       承辦人: form.contactPerson, 聯絡信箱: form.contactEmail, 單位名稱: form.unitName,
       自訂中: form.customZh,
       自訂外: r.lang === 'VI' ? form.customForeignVi : r.lang === 'ID' ? form.customForeignId : form.customForeignEn,
@@ -142,13 +146,12 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
   }
 
   const ensureTokens = async () => {
-    const deadline = toDeadlineIso(form.replyBy)
     const map = {}
     let i = 0
     for (const r of selected) {
       i += 1
       const token = r.confirm_token || tokenMap[r.key] || newToken()
-      const fields = { confirm_deadline: deadline }
+      const fields = { confirm_deadline: toDeadlineIso(replyByFor(r)) }
       if (!r.confirm_token) fields.confirm_token = token
       await setStage4Confirm(r.id, fields)
       map[r.key] = token
