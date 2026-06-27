@@ -880,7 +880,7 @@ export async function getStage4Data() {
     'GET',
   )
   const apps = await callProxy(
-    '/rest/v1/applications?select=account,name,name_english,birth_date,passport_number,email',
+    '/rest/v1/applications?select=account,name,name_english,nationality,birth_date,passport_number,email',
     'GET',
   )
   const appMap = new Map((apps || []).map((a) => [a.account, a]))
