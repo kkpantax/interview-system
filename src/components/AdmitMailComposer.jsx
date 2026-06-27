@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Modal, Btn, s } from './UI'
 import { buildMessage, pickLang } from '../mailTemplates'
 import { createDrafts, sendDraftBatch, logMail, getMailLog, setStage4Confirm } from '../api'
-import { deptI18n, batchOf, BATCHES } from '../constants'
+import { deptI18n, batchOf, BATCHES, campusOf } from '../constants'
 
 // 有落地頁（需個人確認連結）的信件種類
 const LINK_KINDS = new Set(['s4_admit', 's4_promote'])
@@ -26,6 +26,19 @@ const fmtYmd = (dt) => `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart
 const plusDays = (n) => fmtYmd(new Date(Date.now() + n * 86400000))
 
 const LANG_TO_I18N = { EN: 'en', VI: 'vi', ID: 'id' }
+// 校區多語名稱（與學生端落地頁 ConfirmApp 的 CAMPUS_I18N 一致）。
+const CAMPUS_I18N = {
+  '台北校區': { zh: '台北校區', en: 'Taipei Campus', vi: 'Cơ sở Đài Bắc', id: 'Kampus Taipei' },
+  '高雄校區': { zh: '高雄校區', en: 'Kaohsiung Campus', vi: 'Cơ sở Cao Hùng', id: 'Kampus Kaohsiung' },
+}
+// 信件用：把系所所屬校區包成括號附在系名後；無法判定（其他）時回傳空字串，避免空欄。
+// zh 用全形括號、外語用半形括號並前置空格，直接接在 {{系所中}}/{{系所外}} 之後。
+const campusParens = (dept = '', il = 'en') => {
+  const camp = campusOf(dept)
+  if (!camp || camp === '其他') return ''
+  const name = CAMPUS_I18N[camp]?.[il] || camp
+  return il === 'zh' ? `（${name}）` : ` (${name})`
+}
 const CAT_ZH = (r) => (r.stage3_status === 'admitted' ? '正取' : (r.stage3_status === 'waitlisted' ? `備取${r.standby_rank ?? ''}` : ''))
 const CAT_FX = (r, lang) => {
   if (r.stage3_status === 'admitted') return { EN: 'Admitted', VI: 'Trúng tuyển chính thức', ID: 'Diterima' }[lang] || 'Admitted'
@@ -128,6 +141,7 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
     const base = {
       中文姓名: r.name, 英文姓名: r.name_english || r.name,
       系所中: r.department, 系所外: deptI18n(r.department, il),
+      校區中: campusParens(r.department, 'zh'), 校區外: campusParens(r.department, il),
       類別中: CAT_ZH(r), 類別外: CAT_FX(r, r.lang),
       回覆期限: replyByFor(r), 正式放榜日期: announceFor(r),
       承辦人: contactPersonFor(r), 聯絡信箱: contactEmailFor(r), 單位名稱: unitNameFor(r),
