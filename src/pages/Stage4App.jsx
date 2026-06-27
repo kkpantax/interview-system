@@ -63,6 +63,26 @@ const sampleMailData = (kind, lang) => {
   }
 }
 
+// 頁面頂端統計總覽列（純呈現）。items: [{ label, value, color?, bg?, border?, sub? }]
+function StatStrip({ items }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+      {items.map((it) => (
+        <div key={it.label} style={{
+          flex: '1 1 120px', minWidth: 104,
+          background: it.bg || '#faf9f6',
+          border: '1px solid ' + (it.border || '#eceae5'),
+          borderRadius: 12, padding: '10px 14px',
+        }}>
+          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: it.color || '#1a1a18' }}>{it.value}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>{it.label}</div>
+          {it.sub != null && <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{it.sub}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Stage4App() {
   const teacher = getTeacher()
   const [tab, setTab]         = useState('admit')
@@ -182,6 +202,18 @@ export default function Stage4App() {
     }
     return Object.entries(g).sort((a, b) => (CAMP_ORDER[a[0]] ?? 9) - (CAMP_ORDER[b[0]] ?? 9))
   }, [admitSummary, campusOv])
+
+  // 正取頁整體彙總
+  const admitTotals = useMemo(() => {
+    const t = admitSummary.reduce((a, x) => ({
+      total: a.total + x.total, enrolled: a.enrolled + x.enrolled,
+      declined: a.declined + x.declined, pending: a.pending + x.pending,
+      promoted: a.promoted + x.promotedEnrolled,
+    }), { total: 0, enrolled: 0, declined: 0, pending: 0, promoted: 0 })
+    const responded = t.enrolled + t.declined
+    return { ...t, finalEnroll: t.enrolled + t.promoted, responded,
+      rate: t.total ? Math.round((responded / t.total) * 100) : null }
+  }, [admitSummary])
 
   // 展開系所的學生列
   const selRows = useMemo(
@@ -397,6 +429,13 @@ export default function Stage4App() {
 
   const totalOpenSlots = useMemo(() => waitSummary.reduce((n, x) => n + x.openSlots, 0), [waitSummary])
 
+  // 備取頁整體彙總
+  const waitTotals = useMemo(() => waitSummary.reduce((a, x) => ({
+    total: a.total + x.total, negotiating: a.negotiating + x.negotiating,
+    enrolled: a.enrolled + x.enrolled, declined: a.declined + x.declined,
+    pending: a.pending + x.pending,
+  }), { total: 0, negotiating: 0, enrolled: 0, declined: 0, pending: 0 }), [waitSummary])
+
   // 展開系所的備取生（依 standby_rank）
   const selWaitRows = useMemo(
     () => waitRows.filter((r) => r.department === selDept)
@@ -474,9 +513,17 @@ export default function Stage4App() {
     const logMap = mailLogs[kind] || {}
     const rawMailable = (arr) => arr.filter((it) => it.email).map((it) => it._raw)
     const sentN = items.filter((it) => logMap[it.account]?.status === 'sent').length
+    const mailableN = items.filter((it) => it.email).length
+    const kindLabel = kind === 's4_reject' ? '不錄取' : '放棄錄取'
 
     return (
       <>
+        <StatStrip items={[
+          { label: `${kindLabel}總人數`, value: items.length },
+          { label: '可寄 Email', value: mailableN, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+          { label: '已寄送', value: sentN, color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', sub: `未寄 ${Math.max(0, mailableN - sentN)}` },
+          { label: '缺 Email', value: items.length - mailableN, color: (items.length - mailableN) ? '#dc2626' : '#6b7280', bg: (items.length - mailableN) ? '#fef2f2' : '#faf9f6', border: (items.length - mailableN) ? '#fecaca' : '#eceae5' },
+        ]} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 12, color: '#999' }}>已寄 {sentN} / {items.length}</span>
           <Btn variant="primary" disabled={busy || !items.some((it) => it.email)} onClick={() => openMail(rawMailable(items), kind)}>
@@ -581,6 +628,14 @@ export default function Stage4App() {
       {/* ── 正取頁 ── */}
       {tab === 'admit' && (
         <>
+          <StatStrip items={[
+            { label: '正取總數', value: admitTotals.total },
+            { label: '已接受就讀', value: admitTotals.enrolled, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+            { label: '已拒絕', value: admitTotals.declined, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+            { label: '尚未回應', value: admitTotals.pending, color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+            { label: '回應率', value: admitTotals.rate == null ? '—' : admitTotals.rate + '%', sub: `已回應 ${admitTotals.responded}/${admitTotals.total}` },
+            { label: '最終就讀', value: admitTotals.finalEnroll, color: '#7c2d12', bg: '#fff7ed', border: '#fed7aa', sub: admitTotals.promoted ? `含遞補 ${admitTotals.promoted}` : null },
+          ]} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
             <Btn variant="primary" disabled={busy || !notifyList.length}
               onClick={() => openMail(notifyList)}>
@@ -692,6 +747,14 @@ export default function Stage4App() {
       {/* ── 備取頁 ── */}
       {tab === 'wait' && (
         <>
+          <StatStrip items={[
+            { label: '備取總數', value: waitTotals.total },
+            { label: '可遞補待通知', value: totalOpenSlots, color: totalOpenSlots ? '#b91c1c' : '#6b7280', bg: totalOpenSlots ? '#fef2f2' : '#faf9f6', border: totalOpenSlots ? '#fecaca' : '#eceae5' },
+            { label: '遞補詢問中', value: waitTotals.negotiating, color: '#1e40af', bg: '#eff6ff', border: '#bfdbfe' },
+            { label: '已遞補就讀', value: waitTotals.enrolled, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+            { label: '放棄', value: waitTotals.declined, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+            { label: '備取待機', value: waitTotals.pending, color: '#6b7280' },
+          ]} />
           {totalOpenSlots > 0 && (
             <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '10px 16px', marginBottom: 12, fontSize: 13, color: '#9a3412', fontWeight: 600 }}>
               ⚠ 目前共有 {totalOpenSlots} 位備取生「可遞補待通知」，請至對應系所逐一或批次寄送遞補通知。
