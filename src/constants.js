@@ -165,6 +165,24 @@ export const deptI18n = (dept = '', lang = 'en') => {
   return dept
 }
 
+// 中文系所全名（學生端落地頁顯示用）；keyword includes 比對、長關鍵字在前、容忍 (專) 後綴。
+// 查無對照時退回原字串。需登記全名請在值結尾補「(專)」。
+export const DEPT_ZH_FULL = [
+  ['資訊科技與管理', '資訊科技與管理學系'],
+  ['資訊科技與通訊', '資訊科技與通訊學系'],
+  ['資訊管理',       '資訊管理學系'],
+  ['餐飲管理',       '餐飲管理學系'],
+  ['食品營養',       '食品營養與保健生技學系'],
+  ['家庭研究',       '家庭研究與兒童發展學系'],
+  ['社會工作',       '社會工作學系'],
+  ['建築設計',       '建築設計學系'],
+  ['休閒產業',       '休閒產業管理學系'],
+]
+export const deptZhFull = (dept = '') => {
+  for (const [k, v] of DEPT_ZH_FULL) if (String(dept).includes(k)) return v
+  return dept
+}
+
 // 後台「校區設定」可選的校區（同時也是選系頁的分組順序來源）
 export const CAMPUS_OPTIONS = ['台北校區', '高雄校區', '其他']
 

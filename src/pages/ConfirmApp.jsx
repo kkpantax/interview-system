@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { confirmInfo, confirmSubmit } from '../api'
-import { deptI18n, campusOf } from '../constants'
+import { deptI18n, deptZhFull, campusOf } from '../constants'
 
 // 語言：zh 中文 / en English / vi Tiếng Việt / id Bahasa Indonesia
 const LANGS = [
@@ -139,7 +139,7 @@ export default function ConfirmApp({ token }) {
     )
   }
 
-  const deptName = lang === 'zh' ? info.department : deptI18n(info.department, lang)
+  const deptName = lang === 'zh' ? deptZhFull(info.department) : deptI18n(info.department, lang)
   const campusRaw = campusOf(info.department)
   const campusText = campusRaw && campusRaw !== '其他' ? campusName(campusRaw, lang) : ''
   const resultText = info.type === 'admitted' ? tr('admitted') : tr('waitlisted', { r: info.standby_rank ?? '' })
