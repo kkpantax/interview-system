@@ -13,7 +13,7 @@ import {
   getTransferTargets, doTransfer,
 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
-import { batchInfo, batchOf, deptShort, deptI18n, DEPT_I18N, resolveCampus } from '../constants'
+import { batchInfo, batchOf, deptZhFull, deptI18n, DEPT_I18N, resolveCampus } from '../constants'
 
 const ACCENT = '#7c2d12'
 const CAMP_ORDER = { '台北校區': 0, '高雄校區': 1, '其他': 2 }
@@ -495,7 +495,7 @@ export default function Stage4App() {
                   <button key={su.dept} onClick={() => setSelDept(open ? '' : su.dept)}
                     style={{ textAlign: 'left', cursor: 'pointer', background: open ? '#fff7ed' : 'white',
                       border: '1px solid ' + (open ? ACCENT : '#e8e7e3'), borderRadius: 12, padding: 14 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{deptShort(su.dept)}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{deptZhFull(su.dept)}</div>
                     <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
                       {su.total} 人 · <span style={{ color: '#15803d' }}>可寄 {su.mailable}</span>
                       {su.total - su.mailable ? <> · <span style={{ color: '#dc2626' }}>缺 Email {su.total - su.mailable}</span></> : null}
@@ -602,7 +602,7 @@ export default function Stage4App() {
                       style={{ textAlign: 'left', cursor: 'pointer', background: open ? '#fff7ed' : 'white',
                         border: '1px solid ' + (open ? ACCENT : '#e8e7e3'), borderRadius: 12, padding: 14 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600, fontSize: 14 }}>{deptShort(su.dept)}</span>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{deptZhFull(su.dept)}</span>
                         {quotaBadge(su.dept, su.total)}
                       </div>
                       <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
@@ -711,7 +711,7 @@ export default function Stage4App() {
                       style={{ textAlign: 'left', cursor: 'pointer', background: open ? '#fff7ed' : 'white',
                         border: '1px solid ' + (open ? ACCENT : '#e8e7e3'), borderRadius: 12, padding: 14 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600, fontSize: 14 }}>{deptShort(su.dept)}</span>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{deptZhFull(su.dept)}</span>
                         {su.openSlots > 0 && <Pill color="#b91c1c" bg="#fee2e2">可遞補 {su.openSlots}</Pill>}
                       </div>
                       <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
