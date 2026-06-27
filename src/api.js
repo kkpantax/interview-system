@@ -984,7 +984,7 @@ export async function getStage4Rejected() {
 
 // 從 Stage3（final_admissions 的 admitted + waitlisted）同步到 Stage4：
 //   1. 取 evaluations 的 total_score、applications 的 preference_order / center / 姓名
-//   2. 依 中心 + 科系 分組，waitlisted 以 preference_order asc, total_score desc 計算 standby_rank
+//   2. 依 科系 分組（跨中心），waitlisted 完全以該系老師打的分數 total_score desc 計算 standby_rank
 //   3. admitted 的 standby_rank 為 null
 //   4. upsert（on_conflict account+department，merge-duplicates）；
 //      已存在且 contact_status != 'pending' 的不覆蓋，保護進行中（候補詢問/就讀/放棄…）的資料
@@ -1023,19 +1023,22 @@ export async function syncStage4FromStage3() {
     }
   })
 
-  // 計算 standby_rank：依 中心 + 科系 分組，只對 waitlisted 排序
+  // 計算 standby_rank：依「科系」分組（跨中心），只對 waitlisted 排序。
+  // 完全依該系老師打的分數（stage2_score = evaluations.total_score）由高到低排；
+  // 同分時以志願序、帳號作為穩定排序的次要依據（不影響主排序＝老師分數）。
   const groups = {}
   for (const r of rows) {
     if (r.stage3_status !== 'waitlisted') continue
-    const k = `${r.center}__${r.department}`
+    const k = r.department
     if (!groups[k]) groups[k] = []
     groups[k].push(r)
   }
   for (const group of Object.values(groups)) {
-    group.sort((a, b) => {
-      if (a.preference_order !== b.preference_order) return (a.preference_order || 99) - (b.preference_order || 99)
-      return (b.stage2_score || 0) - (a.stage2_score || 0)
-    })
+    group.sort((a, b) =>
+      (b.stage2_score || 0) - (a.stage2_score || 0) ||
+      (a.preference_order || 99) - (b.preference_order || 99) ||
+      String(a.account || '').localeCompare(String(b.account || '')),
+    )
     group.forEach((r, i) => { r.standby_rank = i + 1 })
   }
 
