@@ -959,6 +959,7 @@ export default function Stage4App() {
           kind={mail.kind}
           recipients={mail.recipients}
           defaults={defaultsFromSettings(settings[mail.batch])}
+          settingsByBatch={settings}
           onSaveDefaults={onSaveDefaults}
           onClose={() => { setMail(null); load(); refreshThanks() }}
           onToast={showToast}
