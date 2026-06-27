@@ -21,7 +21,7 @@ const TABS = [
   { key: 'wait',     label: '備取' },
   { key: 'declined', label: '正取拒絕' },
   { key: 'reject',   label: '不錄取' },
-  { key: 'tools',    label: '工具' },
+  { key: 'tools',    label: '發送設定' },
 ]
 
 // 設定列(DB) ↔ composer defaults
