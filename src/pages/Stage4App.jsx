@@ -499,21 +499,17 @@ export default function Stage4App() {
     if (!rows.length) { showToast('本系沒有需要結案的備取生', 'warn'); return }
     const nPend = rows.filter((r) => r.contact_status === 'pending').length
     const nNego = rows.filter((r) => r.contact_status === 'negotiating').length
-    const withEmail = rows.filter((r) => r.appInfo?.email)
     if (!window.confirm(
       `確定要將「${dept}」備取截止結案？\n\n` +
       `將把 ${rows.length} 位未遞補備取生標記為「備取未遞補（不錄取）」，之後不再遞補：\n` +
       `　· 備取待機 ${nPend} 位\n　· 遞補詢問逾期未回 ${nNego} 位\n\n` +
-      `接著開啟「不錄取感謝信」寄送視窗（可寄 ${withEmail.length} 位，無 Email 者僅標記不寄信）。`,
+      `結案後他們會併入「不錄取」頁，請於該頁統一寄送不錄取感謝信。`,
     )) return
     setBusy(true)
     try {
       for (const r of rows) await updateStage4Status(r.id, { contact_status: 'waitlist_closed' })
-      showToast(`「${dept}」已結案，${rows.length} 位標記為備取未遞補`)
-      await load()
-      if (withEmail.length) {
-        setMail({ kind: 's4_reject', recipients: withEmail.map((r) => ({ ...r, contact_status: 'waitlist_closed' })), batch: settingsBatch })
-      }
+      showToast(`「${dept}」已結案，${rows.length} 位已併入「不錄取」頁`)
+      await load(); await refreshThanks()
     } catch (e) { showToast('結案失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
@@ -528,13 +524,22 @@ export default function Stage4App() {
       category: r.stage3_status === 'admitted' ? '正取放棄' : '備取放棄',
       _raw: r,
     })), [data, inBatch])
-  const rejectedItems = useMemo(() => (rejectedData || [])
-    .filter((r) => inBatch(r))
+  // 備取截止未遞補者（視同不錄取，併入不錄取頁統一做感謝信）
+  const waitClosedItems = useMemo(() => data
+    .filter((r) => r.contact_status === 'waitlist_closed' && inBatch(r))
     .map((r) => ({
+      key: r.id, dept: r.department, account: r.account, center: r.center || '',
+      name: r.appInfo?.name || '', name_english: r.appInfo?.name_english || '',
+      email: r.appInfo?.email || '', category: '備取未遞補', _raw: r,
+    })), [data, inBatch])
+  const rejectedItems = useMemo(() => ([
+    ...(rejectedData || []).filter((r) => inBatch(r)).map((r) => ({
       key: r.account, dept: r.department, account: r.account, center: r.center || '',
       name: r.name || '', name_english: r.name_english || '',
       email: r.email || '', category: '不錄取', _raw: r,
-    })), [rejectedData, inBatch])
+    })),
+    ...waitClosedItems,
+  ]), [rejectedData, inBatch, waitClosedItems])
 
   if (!teacher || teacher.role !== 'superadmin') return null
   const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fde7d4' }
