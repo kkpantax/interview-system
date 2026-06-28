@@ -14,6 +14,39 @@ const KIND_META = {
   s4_reject:         { title: '寄送不錄取感謝信（單向）',               send: '不錄取感謝信' },
 }
 
+// 第二/第三次「催覆」用的提醒前言（僅含連結的正取/備取意願調查信會用到）。
+// 中文段共用 zh；外語段依收件人語言挑選 EN/VI/ID。
+const REMIND = {
+  zh: {
+    2: '※ 提醒：本信為「第二次通知」。若您先前已回覆，敬請忽略本信；若尚未回覆，請於回覆期限前透過下方專屬連結告知就讀意願。',
+    3: '※ 提醒：本信為「第三次（最後）通知」。若您先前已回覆，敬請忽略；若尚未回覆，請務必於回覆期限前透過下方專屬連結告知就讀意願，逾期恕難受理。',
+  },
+  EN: {
+    2: '※ Reminder: This is our second notice. If you have already responded, please disregard this email; if not, please use your personal link below to indicate your enrollment intent before the deadline.',
+    3: '※ Reminder: This is our third and final notice. If you have already responded, please disregard this email; otherwise, please be sure to indicate your intent via the link below before the deadline, as late replies cannot be accepted.',
+  },
+  VI: {
+    2: '※ Nhắc nhở: Đây là thông báo lần thứ hai. Nếu bạn đã phản hồi, vui lòng bỏ qua email này; nếu chưa, vui lòng dùng liên kết cá nhân bên dưới để cho biết nguyện vọng nhập học trước thời hạn.',
+    3: '※ Nhắc nhở: Đây là thông báo lần thứ ba và là lần cuối. Nếu bạn đã phản hồi, vui lòng bỏ qua; nếu chưa, vui lòng cho biết nguyện vọng qua liên kết bên dưới trước thời hạn, vì phản hồi trễ sẽ không được chấp nhận.',
+  },
+  ID: {
+    2: '※ Pengingat: Ini adalah pemberitahuan kedua. Jika Anda sudah merespons, abaikan email ini; jika belum, gunakan tautan pribadi di bawah untuk menyatakan minat studi Anda sebelum batas waktu.',
+    3: '※ Pengingat: Ini adalah pemberitahuan ketiga sekaligus terakhir. Jika Anda sudah merespons, abaikan; jika belum, pastikan menyatakan minat melalui tautan di bawah sebelum batas waktu, karena balasan terlambat tidak dapat diterima.',
+  },
+}
+const REMIND_SUBJ = '【提醒 Reminder】'
+const ZH_GREET = '親愛的 {{中文姓名}} 同學，您好：'
+// 外語段加在最前面、中文段加在分隔線後的中文問候語之前。每段自帶結尾換行。
+const injectRemind = (body, lang, round) => {
+  if (!body || !round || round < 2) return body
+  const fx = (REMIND[lang] || REMIND.EN)[round] || ''
+  const zh = REMIND.zh[round] || ''
+  let out = body
+  if (fx) out = fx + '\n\n' + out
+  if (zh && out.includes(ZH_GREET)) out = out.replace(ZH_GREET, zh + '\n\n' + ZH_GREET)
+  return out
+}
+
 const newToken = () => {
   const u = () => (crypto?.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36))
   return ('s4' + u()).slice(0, 40)
@@ -126,6 +159,7 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
 
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(null)
+  const [noticeRound, setNoticeRound] = useState(1)   // 1=首次 2=第二次催覆 3=第三次催覆（僅含連結信使用）
 
   const linkFor = (token) => `${window.location.origin}/#/confirm?t=${token}`
   // 所有梯次相關內容（放榜日期 / 回覆期限 / 承辦資訊）一律依每位收件人帳號的梯次，
@@ -151,7 +185,14 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
     if (hasLink) base.確認連結 = linkFor(token || r.confirm_token || tokenMap[r.key] || '（寄出時自動產生）')
     return base
   }
-  const msgFor = (r, token) => buildMessage({ kind, lang: r.lang, data: dataFor(r, token) })
+  const msgFor = (r, token) => {
+    const m = buildMessage({ kind, lang: r.lang, data: dataFor(r, token) })
+    if (!m) return m
+    if (hasLink && noticeRound > 1) {
+      return { subject: REMIND_SUBJ + m.subject, body: injectRemind(m.body, r.lang, noticeRound) }
+    }
+    return m
+  }
 
   const selected = rows.filter((r) => r.include)
 
@@ -272,6 +313,22 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
         ))}
         {!batchEntries.length && <div style={{ fontSize: 12, color: '#aaa' }}>尚無勾選對象</div>}
       </div>
+
+      {hasLink && (
+        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ ...lbl, marginBottom: 0 }}>通知次別</label>
+          <select style={{ ...s.sel, padding: '4px 8px', maxWidth: 220 }} value={noticeRound} onChange={(e) => setNoticeRound(Number(e.target.value))}>
+            <option value={1}>首次通知</option>
+            <option value={2}>第二次（催覆）</option>
+            <option value={3}>第三次（最後催覆）</option>
+          </select>
+          <span style={{ fontSize: 11, color: noticeRound > 1 ? '#b45309' : '#888' }}>
+            {noticeRound > 1
+              ? `信件開頭會加註「第${noticeRound === 2 ? '二' : '三'}次通知」提醒、主旨加上「${REMIND_SUBJ}」；專屬連結與回覆期限維持不變，僅寄給仍未回應者即可。`
+              : '一般首次通知，信件內容維持原樣。'}
+          </span>
+        </div>
+      )}
 
       {!hasLink && (
         <div style={{ marginBottom: 14 }}>
