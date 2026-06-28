@@ -83,6 +83,18 @@ function StatStrip({ items }) {
   )
 }
 
+// 單一校區的彙總（欄位與 admitTotals 一致）
+function campusTotals(list) {
+  const t = list.reduce((a, x) => ({
+    total: a.total + x.total, enrolled: a.enrolled + x.enrolled,
+    declined: a.declined + x.declined, pending: a.pending + x.pending,
+    promoted: a.promoted + x.promotedEnrolled,
+  }), { total: 0, enrolled: 0, declined: 0, pending: 0, promoted: 0 })
+  const responded = t.enrolled + t.declined
+  return { ...t, finalEnroll: t.enrolled + t.promoted, responded,
+    rate: t.total ? Math.round((responded / t.total) * 100) : null }
+}
+
 export default function Stage4App() {
   const teacher = getTeacher()
   const [tab, setTab]         = useState('admit')
@@ -643,11 +655,21 @@ export default function Stage4App() {
             </Btn>
           </div>
 
-          {admitByCampus.map(([camp, list]) => (
+          {admitByCampus.map(([camp, list]) => {
+            const ct = campusTotals(list)
+            return (
             <div key={camp} style={{ marginBottom: 18 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#7c2d12', marginBottom: 8 }}>
-                {camp}<span style={{ color: '#bbb', fontWeight: 400 }}> · {list.reduce((s2, x) => s2 + x.total, 0)} 位正取</span>
+                {camp}<span style={{ color: '#bbb', fontWeight: 400 }}> · {ct.total} 位正取</span>
               </div>
+              <StatStrip items={[
+                { label: '正取總數', value: ct.total },
+                { label: '已接受就讀', value: ct.enrolled, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+                { label: '已拒絕', value: ct.declined, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+                { label: '尚未回應', value: ct.pending, color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+                { label: '回應率', value: ct.rate == null ? '—' : ct.rate + '%', sub: `已回應 ${ct.responded}/${ct.total}` },
+                { label: '最終就讀', value: ct.finalEnroll, color: '#7c2d12', bg: '#fff7ed', border: '#fed7aa', sub: ct.promoted ? `含遞補 ${ct.promoted}` : null },
+              ]} />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
                 {list.map((su) => {
                   const open = selDept === su.dept
@@ -674,7 +696,7 @@ export default function Stage4App() {
                 })}
               </div>
             </div>
-          ))}
+          )})}
           {!admitSummary.length && (
             <div style={{ fontSize: 13, color: '#aaa', padding: 24, textAlign: 'center' }}>
               {loading ? '載入中…' : '尚無正取資料，請先點右上角「從Stage3同步名單」'}
