@@ -536,12 +536,6 @@ export default function Stage4App() {
           { label: '已寄送', value: sentN, color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', sub: `未寄 ${Math.max(0, mailableN - sentN)}` },
           { label: '缺 Email', value: items.length - mailableN, color: (items.length - mailableN) ? '#dc2626' : '#6b7280', bg: (items.length - mailableN) ? '#fef2f2' : '#faf9f6', border: (items.length - mailableN) ? '#fecaca' : '#eceae5' },
         ]} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <span style={{ fontSize: 12, color: '#999' }}>已寄 {sentN} / {items.length}</span>
-          <Btn variant="primary" disabled={busy || !items.some((it) => it.email)} onClick={() => openMail(rawMailable(items), kind)}>
-            ✉ 寄送感謝信（可寄 {items.filter((it) => it.email).length}）
-          </Btn>
-        </div>
         {groups.map(([camp, list]) => (
           <div key={camp} style={{ marginBottom: 18 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#7c2d12', marginBottom: 8 }}>
@@ -632,6 +626,18 @@ export default function Stage4App() {
           <Btn variant="primary" style={{ marginLeft: 8 }} disabled={busy || !notifyList.length}
             onClick={() => openMail(notifyList)}>
             ✉ 寄送預錄取意願調查{notifyList.length ? `（未回應 ${notifyList.length}）` : ''}
+          </Btn>
+        )}
+        {tab === 'declined' && (
+          <Btn variant="primary" style={{ marginLeft: 8 }} disabled={busy || !declinedItems.some((it) => it.email)}
+            onClick={() => openMail(declinedItems.filter((it) => it.email).map((it) => it._raw), 's4_admit_declined')}>
+            ✉ 寄送感謝信（可寄 {declinedItems.filter((it) => it.email).length}）
+          </Btn>
+        )}
+        {tab === 'reject' && (
+          <Btn variant="primary" style={{ marginLeft: 8 }} disabled={busy || !rejectedItems.some((it) => it.email)}
+            onClick={() => openMail(rejectedItems.filter((it) => it.email).map((it) => it._raw), 's4_reject')}>
+            ✉ 寄送感謝信（可寄 {rejectedItems.filter((it) => it.email).length}）
           </Btn>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
