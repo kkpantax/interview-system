@@ -45,6 +45,7 @@ const KIND_LABEL = {
 const CS_LABEL = {
   pending: '未回應', enrolled: '就讀/遞補就讀', declined: '放棄', transferred: '已轉報',
   negotiating: '遞補詢問中', settled_elsewhere: '已確認他系', passed: '已略過', standby: '備取待機',
+  waitlist_closed: '備取未遞補（不錄取）',
 }
 const TEST_ACCOUNT = 'S4TEST0001'
 const genTestToken = () => ('s4test' + (crypto?.randomUUID?.().replace(/-/g, '') || Math.random().toString(36).slice(2) + Date.now().toString(36))).slice(0, 40)
@@ -420,12 +421,13 @@ export default function Stage4App() {
   // 各系備取統計 + 可遞補缺額（缺額 = 正取放棄數 − 已詢問 − 已遞補就讀）
   const waitSummary = useMemo(() => {
     const m = {}
-    const ensure = (dept) => (m[dept] ||= { dept, total: 0, negotiating: 0, enrolled: 0, declined: 0, pending: 0, declinesAdmit: 0, openSlots: 0 })
+    const ensure = (dept) => (m[dept] ||= { dept, total: 0, negotiating: 0, enrolled: 0, declined: 0, pending: 0, closed: 0, declinesAdmit: 0, openSlots: 0 })
     for (const r of waitRows) {
       const x = ensure(r.department); x.total += 1
       if (r.contact_status === 'negotiating') x.negotiating += 1
       else if (r.contact_status === 'enrolled') x.enrolled += 1
       else if (r.contact_status === 'declined') x.declined += 1
+      else if (r.contact_status === 'waitlist_closed') x.closed += 1
       else x.pending += 1
     }
     for (const r of admitRows) { if (r.contact_status === 'declined' || r.contact_status === 'transferred') ensure(r.department).declinesAdmit += 1 }
@@ -445,8 +447,8 @@ export default function Stage4App() {
   const waitTotals = useMemo(() => waitSummary.reduce((a, x) => ({
     total: a.total + x.total, negotiating: a.negotiating + x.negotiating,
     enrolled: a.enrolled + x.enrolled, declined: a.declined + x.declined,
-    pending: a.pending + x.pending,
-  }), { total: 0, negotiating: 0, enrolled: 0, declined: 0, pending: 0 }), [waitSummary])
+    pending: a.pending + x.pending, closed: a.closed + x.closed,
+  }), { total: 0, negotiating: 0, enrolled: 0, declined: 0, pending: 0, closed: 0 }), [waitSummary])
 
   // 展開系所的備取生（依 standby_rank）
   const selWaitRows = useMemo(
@@ -460,6 +462,11 @@ export default function Stage4App() {
     const pend = selWaitRows.filter((r) => r.contact_status === 'pending')
     return new Set(pend.slice(0, selOpenSlots).map((r) => r.id))
   }, [selWaitRows, selOpenSlots])
+  // 截止結案候選：尚未遞補就讀者（備取待機 + 遞補詢問逾期未回）
+  const closableRows = useMemo(
+    () => selWaitRows.filter((r) => r.contact_status === 'pending' || r.contact_status === 'negotiating'),
+    [selWaitRows],
+  )
 
   // 遞補通知：先轉 negotiating（佔住缺額），再開 s4_promote 寄信視窗
   const promoteNotify = async (rows) => {
@@ -473,6 +480,41 @@ export default function Stage4App() {
       await load()
       setMail({ kind: 's4_promote', recipients: withEmail.map((r) => ({ ...r, contact_status: 'negotiating' })), batch: settingsBatch })
     } catch (e) { showToast('遞補通知失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  // 強制遞補（不受 openSlots 限制）：行政手動把任一備取生轉 negotiating 並寄遞補意願調查
+  const forcePromote = async (r) => {
+    if (!r.appInfo?.email) { showToast('此備取生沒有 Email，無法寄送遞補通知', 'warn'); return }
+    if (!window.confirm(
+      `確定要「強制遞補」${r.appInfo?.name || r.account}（備取 ${r.standby_rank ?? '—'}）？\n\n` +
+      `此動作不受該系「可遞補缺額」限制（名額流動時使用），\n將直接寄送備取遞補意願調查並轉為「遞補詢問中」。`,
+    )) return
+    await promoteNotify([r])
+  }
+
+  // 逐系備取截止結案：未遞補者（備取待機 + 遞補詢問逾期）標為 waitlist_closed，並寄不錄取感謝信
+  const closeWaitlist = async (dept) => {
+    const rows = closableRows
+    if (!rows.length) { showToast('本系沒有需要結案的備取生', 'warn'); return }
+    const nPend = rows.filter((r) => r.contact_status === 'pending').length
+    const nNego = rows.filter((r) => r.contact_status === 'negotiating').length
+    const withEmail = rows.filter((r) => r.appInfo?.email)
+    if (!window.confirm(
+      `確定要將「${dept}」備取截止結案？\n\n` +
+      `將把 ${rows.length} 位未遞補備取生標記為「備取未遞補（不錄取）」，之後不再遞補：\n` +
+      `　· 備取待機 ${nPend} 位\n　· 遞補詢問逾期未回 ${nNego} 位\n\n` +
+      `接著開啟「不錄取感謝信」寄送視窗（可寄 ${withEmail.length} 位，無 Email 者僅標記不寄信）。`,
+    )) return
+    setBusy(true)
+    try {
+      for (const r of rows) await updateStage4Status(r.id, { contact_status: 'waitlist_closed' })
+      showToast(`「${dept}」已結案，${rows.length} 位標記為備取未遞補`)
+      await load()
+      if (withEmail.length) {
+        setMail({ kind: 's4_reject', recipients: withEmail.map((r) => ({ ...r, contact_status: 'waitlist_closed' })), batch: settingsBatch })
+      }
+    } catch (e) { showToast('結案失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
 
@@ -781,6 +823,7 @@ export default function Stage4App() {
             { label: '已遞補就讀', value: waitTotals.enrolled, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
             { label: '放棄', value: waitTotals.declined, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
             { label: '備取待機', value: waitTotals.pending, color: '#6b7280' },
+            { label: '未遞補（不錄取）', value: waitTotals.closed, color: '#6b7280', bg: '#f3f4f6', border: '#e5e7eb' },
           ]} />
           {totalOpenSlots > 0 && (
             <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '10px 16px', marginBottom: 12, fontSize: 13, color: '#9a3412', fontWeight: 600 }}>
@@ -825,10 +868,17 @@ export default function Stage4App() {
             <Card>
               <CardHead left={`${selDept}`}
                 right={
-                  <Btn style={{ ...s.btn, ...s.btnSm }} disabled={busy || !eligibleIds.size}
-                    onClick={() => promoteNotify(selWaitRows.filter((r) => eligibleIds.has(r.id)))}>
-                    ✉ 通知可遞補者{eligibleIds.size ? `（${eligibleIds.size}）` : ''}
-                  </Btn>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <Btn style={{ ...s.btn, ...s.btnSm }} disabled={busy || !eligibleIds.size}
+                      onClick={() => promoteNotify(selWaitRows.filter((r) => eligibleIds.has(r.id)))}>
+                      ✉ 通知可遞補者{eligibleIds.size ? `（${eligibleIds.size}）` : ''}
+                    </Btn>
+                    <Btn style={{ ...s.btn, ...s.btnSm, background: '#fef2f2', color: '#991b1b', borderColor: '#fca5a5' }}
+                      disabled={busy || !closableRows.length}
+                      onClick={() => closeWaitlist(selDept)}>
+                      ⊘ 截止結案{closableRows.length ? `（${closableRows.length}）` : ''}
+                    </Btn>
+                  </div>
                 } />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -844,6 +894,7 @@ export default function Stage4App() {
                       const st = cs === 'enrolled' ? { t: '✓ 已遞補就讀', c: '#15803d', b: '#dcfce7' }
                         : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
                         : cs === 'transferred' ? { t: '已轉報', c: '#c2410c', b: '#ffedd5' }
+                        : cs === 'waitlist_closed' ? { t: '備取未遞補', c: '#6b7280', b: '#e5e7eb' }
                         : cs === 'negotiating' ? { t: '遞補詢問中', c: '#1e40af', b: '#dbeafe' }
                         : eligible ? { t: '可遞補', c: '#b91c1c', b: '#fee2e2' }
                         : { t: '備取待機', c: '#6b7280', b: '#f3f4f6' }
@@ -862,6 +913,9 @@ export default function Stage4App() {
                               {eligible ? (
                                 <button onClick={() => promoteNotify([r])} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '' : '無 Email'}
                                   style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>遞補通知</button>
+                              ) : cs === 'pending' ? (
+                                <button onClick={() => forcePromote(r)} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '不受可遞補缺額限制，行政強制遞補' : '無 Email'}
+                                  style={{ ...s.btn, ...s.btnSm, background: '#fff', color: '#b45309', borderColor: '#fcd34d' }}>強制遞補</button>
                               ) : cs === 'negotiating' ? (
                                 <button onClick={() => setMail({ kind: 's4_promote', recipients: [r], batch: settingsBatch })} disabled={busy || !r.appInfo?.email}
                                   style={{ ...s.btn, ...s.btnSm }}>重寄通知</button>
