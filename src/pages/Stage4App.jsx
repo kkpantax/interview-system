@@ -628,6 +628,12 @@ export default function Stage4App() {
             {t.label}
           </button>
         ))}
+        {tab === 'admit' && (
+          <Btn variant="primary" style={{ marginLeft: 8 }} disabled={busy || !notifyList.length}
+            onClick={() => openMail(notifyList)}>
+            ✉ 寄送預錄取意願調查{notifyList.length ? `（未回應 ${notifyList.length}）` : ''}
+          </Btn>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 12, color: '#999' }}>梯次</span>
           <select style={{ ...s.sel, padding: '5px 8px' }} value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)}>
@@ -648,13 +654,6 @@ export default function Stage4App() {
             { label: '回應率', value: admitTotals.rate == null ? '—' : admitTotals.rate + '%', sub: `已回應 ${admitTotals.responded}/${admitTotals.total}` },
             { label: '最終就讀', value: admitTotals.finalEnroll, color: '#7c2d12', bg: '#fff7ed', border: '#fed7aa', sub: admitTotals.promoted ? `含遞補 ${admitTotals.promoted}` : null },
           ]} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <Btn variant="primary" disabled={busy || !notifyList.length}
-              onClick={() => openMail(notifyList)}>
-              ✉ 寄送預錄取意願調查{notifyList.length ? `（未回應 ${notifyList.length}）` : ''}
-            </Btn>
-          </div>
-
           {admitByCampus.map(([camp, list]) => {
             const ct = campusTotals(list)
             return (
