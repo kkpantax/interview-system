@@ -937,6 +937,24 @@ export async function getAdmittedForStats() {
   return out
 }
 
+// ── 就讀學生（含性別，依帳號去重）：stage4 contact_status='enrolled' ──────────
+export async function getEnrolledForStats() {
+  const s4 = await callProxy(
+    '/rest/v1/stage4_confirmations?select=account,department&contact_status=eq.enrolled',
+    'GET',
+  )
+  const apps = await callProxy('/rest/v1/applications?select=account,gender', 'GET')
+  const genderMap = new Map((apps || []).map((a) => [a.account, a.gender]))
+  const seen = new Set()
+  const out = []
+  for (const r of (s4 || [])) {
+    if (seen.has(r.account)) continue
+    seen.add(r.account)
+    out.push({ account: r.account, department: r.department, gender: genderMap.get(r.account) || '' })
+  }
+  return out
+}
+
 // ── 不錄取名單（第三階段全系所皆未錄取）：單向感謝信用，一人一列 ──────────
 // 定義：學生在 final_admissions 有放榜資料，但沒有任何一筆 admitted/waitlisted
 //      （即所有志願皆 rejected）。一階淘汰、未進放榜者不在此列。

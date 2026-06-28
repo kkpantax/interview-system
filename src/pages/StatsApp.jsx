@@ -8,7 +8,7 @@ import { PageShell } from '../components/PageShell'
 import { Card, CardHead, Btn, s } from '../components/UI'
 import {
   getAllApplications, getDepartmentQuotas, getDepartmentCampuses,
-  getYearlyStats, getDashboardData, getAdmittedForStats,
+  getYearlyStats, getDashboardData, getAdmittedForStats, getEnrolledForStats,
 } from '../api'
 import { CAMPUS_OPTIONS, deptShort, batchInfo, BATCHES, resolveCampus } from '../constants'
 import { buildDashboard, AGE_BUCKETS } from '../statsCompute'
@@ -65,6 +65,7 @@ export default function StatsApp() {
   const [campusMap, setCampusMap] = useState({})
   const [yearly, setYearly] = useState([])
   const [admitted, setAdmitted] = useState([])  // 正取學生（含性別，依帳號去重）
+  const [enrolledStu, setEnrolledStu] = useState([])  // 確定就讀學生（含性別，依帳號去重）
   const [campus, setCampus] = useState('全部')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -77,15 +78,16 @@ export default function StatsApp() {
   useEffect(() => {
     (async () => {
       try {
-        const [d, a, q, c, y, adm] = await Promise.all([
+        const [d, a, q, c, y, adm, enr] = await Promise.all([
           getDashboardData(),
           getAllApplications().catch(() => []),
           getDepartmentQuotas().catch(() => ({})),
           getDepartmentCampuses().catch(() => ({})),
           getYearlyStats().catch(() => []),
           getAdmittedForStats().catch(() => []),
+          getEnrolledForStats().catch(() => []),
         ])
-        setRaw(d); setApps(a || []); setQuotas(q || {}); setCampusMap(c || {}); setYearly(y || []); setAdmitted(adm || [])
+        setRaw(d); setApps(a || []); setQuotas(q || {}); setCampusMap(c || {}); setYearly(y || []); setAdmitted(adm || []); setEnrolledStu(enr || [])
       } catch (e) {
         setErr(e?.message || '載入失敗')
       } finally { setLoading(false) }
@@ -168,6 +170,28 @@ export default function StatsApp() {
     for (const r of admittedByCampus) { t.m += r.m; t.f += r.f; t.u += r.u; t.t += r.t }
     return t
   }, [admittedByCampus])
+
+  // ── 就讀性別 × 校區（確定就讀學生依帳號去重後，校區由其系所判定）──
+  const enrolledByCampus = useMemo(() => {
+    const map = {}
+    for (const r of enrolledStu) {
+      const campus = resolveCampus(r.department, campusMap)
+      const row = map[campus] || (map[campus] = { campus, m: 0, f: 0, u: 0, t: 0 })
+      if (isFemale(r.gender)) row.f++
+      else if (isMale(r.gender)) row.m++
+      else row.u++
+      row.t++
+    }
+    const out = CAMPUS_OPTIONS.filter((c) => map[c]).map((c) => map[c])
+    for (const k of Object.keys(map)) if (!CAMPUS_OPTIONS.includes(k)) out.push(map[k])
+    return out
+  }, [enrolledStu, campusMap])
+
+  const enrolledTotal = useMemo(() => {
+    const t = { m: 0, f: 0, u: 0, t: 0 }
+    for (const r of enrolledByCampus) { t.m += r.m; t.f += r.f; t.u += r.u; t.t += r.t }
+    return t
+  }, [enrolledByCampus])
 
   // ── 梯次對照（第一梯 / 第二梯加報，同漏斗口徑、受校區篩選連動）──
   const batchCmp = useMemo(() => {
@@ -542,6 +566,56 @@ export default function StatsApp() {
                     ))}
                     {(() => {
                       const { m, f, u, t } = admittedTotal
+                      return (
+                        <tr>
+                          <td style={{ ...td, fontWeight: 700 }}>合計</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{m || '—'}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{f || '—'}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{u || '—'}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{t}</td>
+                          <td style={{ ...tdNum, fontWeight: 700 }}>{t ? (f / t * 100).toFixed(1) + '%' : '—'}</td>
+                        </tr>
+                      )
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* 就讀性別（分校區） */}
+          <Card style={{ marginBottom: 20 }}>
+            <CardHead left="就讀性別（分校區）" right={`確定就讀 ${enrolledStu.length} 人`} />
+            {enrolledStu.length === 0 ? (
+              <div style={{ padding: 14, fontSize: 13, color: '#aaa' }}>
+                尚無就讀資料（放榜頁確認就讀後才會出現）。
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>校區</th>
+                      <th style={thNum}>男</th>
+                      <th style={thNum}>女</th>
+                      <th style={thNum}>未填</th>
+                      <th style={thNum}>總計</th>
+                      <th style={thNum}>女性比例</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enrolledByCampus.map((r) => (
+                      <tr key={r.campus}>
+                        <td style={td}>{r.campus}</td>
+                        <td style={tdNum}>{r.m || '—'}</td>
+                        <td style={tdNum}>{r.f || '—'}</td>
+                        <td style={tdNum}>{r.u || '—'}</td>
+                        <td style={{ ...tdNum, fontWeight: 700 }}>{r.t}</td>
+                        <td style={tdNum}>{r.t ? (r.f / r.t * 100).toFixed(1) + '%' : '—'}</td>
+                      </tr>
+                    ))}
+                    {(() => {
+                      const { m, f, u, t } = enrolledTotal
                       return (
                         <tr>
                           <td style={{ ...td, fontWeight: 700 }}>合計</td>
