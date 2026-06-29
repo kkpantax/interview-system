@@ -47,6 +47,13 @@ const CS_LABEL = {
   negotiating: '遞補詢問中', settled_elsewhere: '已確認他系', passed: '已略過', standby: '備取待機',
   waitlist_closed: '備取未遞補（不錄取）',
 }
+const CENTER_COLS = [
+  { key: 'name', label: '中文姓名' }, { key: 'name_english', label: '英文姓名' },
+  { key: 'account', label: '帳號' }, { key: 'campus', label: '校區' },
+  { key: 'department', label: '系所' }, { key: 'category', label: '類別' },
+  { key: 'batch', label: '梯次' }, { key: 'status', label: '狀態' },
+  { key: 'email', label: 'Email' },
+]
 const TEST_ACCOUNT = 'S4TEST0001'
 const genTestToken = () => ('s4test' + (crypto?.randomUUID?.().replace(/-/g, '') || Math.random().toString(36).slice(2) + Date.now().toString(36))).slice(0, 40)
 const sampleMailData = (kind, lang) => {
@@ -118,6 +125,7 @@ export default function Stage4App() {
   const [settingsForm, setSettingsForm] = useState({ 1: {}, 2: {} }) // 梯次設定編輯暫存
   const [batchFilter, setBatchFilter] = useState('') // '' 全部 / '1' / '2'
   const [selDept, setSelDept] = useState('')         // 展開中的系所（正取頁）
+  const [selCenter, setSelCenter] = useState('')     // 展開中的中心（各中心統計）
   const [mail, setMail]       = useState(null)        // { kind, recipients, batch }
   const [transfer, setTransfer] = useState(null)      // { row, depts }
   const [updatedAt, setUpdatedAt] = useState('')
@@ -228,6 +236,40 @@ export default function Stage4App() {
       rate: t.total ? Math.round((responded / t.total) * 100) : null }
   }, [admitSummary])
 
+  // 各中心統計（全部第四階段學生：正取＋備取，套梯次篩選）
+  const centerSummary = useMemo(() => {
+    const m = {}
+    const ensure = (c) => (m[c] ||= {
+      center: c, total: 0, admitted: 0, waitlisted: 0,
+      enrolled: 0, promotedEnrolled: 0, declined: 0, pending: 0,
+    })
+    for (const r of data) {
+      if (!inBatch(r)) continue
+      const x = ensure(r.center || '（未填中心）')
+      x.total += 1
+      const isAdmit = r.stage3_status === 'admitted'
+      const isWait  = r.stage3_status === 'waitlisted'
+      if (isAdmit) x.admitted += 1
+      if (isWait)  x.waitlisted += 1
+      const cs = r.contact_status
+      if (cs === 'enrolled') { if (isWait) x.promotedEnrolled += 1; else x.enrolled += 1 }
+      else if (cs === 'declined') x.declined += 1
+      else if (cs === 'pending')  x.pending += 1
+    }
+    return Object.values(m).sort((a, b) => b.total - a.total || a.center.localeCompare(b.center, 'zh-TW'))
+  }, [data, inBatch])
+
+  // 展開中心的學生列（依校區→系所→志願序排序）
+  const centerRows = useMemo(
+    () => data
+      .filter((r) => inBatch(r) && (r.center || '（未填中心）') === selCenter)
+      .sort((a, b) =>
+        (CAMP_ORDER[resolveCampus(a.department, campusOv)] ?? 9) - (CAMP_ORDER[resolveCampus(b.department, campusOv)] ?? 9)
+        || (a.department || '').localeCompare(b.department || '', 'zh-TW')
+        || (a.preference_order || 99) - (b.preference_order || 99)),
+    [data, inBatch, selCenter, campusOv],
+  )
+
   // 展開系所的學生列
   const selRows = useMemo(
     () => admitRows.filter((r) => r.department === selDept)
@@ -313,6 +355,39 @@ export default function Stage4App() {
       ], out, '第四階段最終就讀名單.xlsx',
     )
     showToast(`已匯出 ${out.length} 筆就讀名單`)
+  }
+
+  // 各中心名單匯出（全部第四階段學生）
+  const centerExportRows = useCallback((center) => data
+    .filter((r) => inBatch(r) && (r.center || '（未填中心）') === center)
+    .sort((a, b) =>
+      (CAMP_ORDER[resolveCampus(a.department, campusOv)] ?? 9) - (CAMP_ORDER[resolveCampus(b.department, campusOv)] ?? 9)
+      || (a.department || '').localeCompare(b.department || '', 'zh-TW')
+      || (a.preference_order || 99) - (b.preference_order || 99))
+    .map((r) => ({
+      name: r.appInfo?.name ?? '', name_english: r.appInfo?.name_english ?? '',
+      account: r.account ?? '', campus: resolveCampus(r.department, campusOv),
+      department: deptZhFull(r.department) || r.department || '',
+      category: r.stage3_status === 'admitted' ? '正取'
+        : r.stage3_status === 'waitlisted' ? ('備取' + (r.standby_rank ? ` ${r.standby_rank}` : '')) : '',
+      batch: batchInfo(r.account).label,
+      status: CS_LABEL[r.contact_status] || r.contact_status || '',
+      email: r.appInfo?.email ?? '',
+    })),
+    [data, inBatch, campusOv],
+  )
+
+  const exportCenter = (center) => {
+    const rows = centerExportRows(center)
+    if (!rows.length) { showToast('此中心無資料', 'warn'); return }
+    writeXlsx(CENTER_COLS, rows, `第四階段_${center}_名單.xlsx`)
+    showToast(`已匯出 ${center}：${rows.length} 筆`)
+  }
+  const exportAllCenters = () => {
+    if (!centerSummary.length) { showToast('尚無中心資料', 'warn'); return }
+    const sheets = centerSummary.map((c) => ({ name: c.center, columns: CENTER_COLS, rows: centerExportRows(c.center) }))
+    writeXlsxMulti(sheets, '第四階段_各中心名單.xlsx')
+    showToast(`已匯出 ${sheets.length} 個中心名單`)
   }
 
   // ── 工具頁處理器 ──
@@ -663,7 +738,7 @@ export default function Stage4App() {
       {/* 分頁列 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSelDept('') }}
+          <button key={t.key} onClick={() => { setTab(t.key); setSelDept(''); setSelCenter('') }}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
               borderColor: tab === t.key ? ACCENT : '#ddd', fontWeight: tab === t.key ? 600 : 400 }}>
             {t.label}
@@ -752,6 +827,96 @@ export default function Stage4App() {
           {!admitSummary.length && (
             <div style={{ fontSize: 13, color: '#aaa', padding: 24, textAlign: 'center' }}>
               {loading ? '載入中…' : '尚無正取資料，請先點右上角「從Stage3同步名單」'}
+            </div>
+          )}
+
+          {/* ── 各中心統計（全部第四階段學生，置於校區區塊下方）── */}
+          {centerSummary.length > 0 && (
+            <div style={{ marginTop: 4, marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#7c2d12' }}>
+                  各中心統計<span style={{ color: '#bbb', fontWeight: 400 }}> · 全部第四階段學生（正取＋備取）· {centerSummary.length} 個中心</span>
+                </div>
+                <Btn style={{ ...s.btn, ...s.btnSm }} onClick={exportAllCenters}>⬇ 匯出全部中心名單</Btn>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
+                {centerSummary.map((c) => {
+                  const open = selCenter === c.center
+                  const finalEnroll = c.enrolled + c.promotedEnrolled
+                  const responded = c.enrolled + c.promotedEnrolled + c.declined
+                  const rate = c.total ? Math.round((responded / c.total) * 100) : null
+                  return (
+                    <div key={c.center}
+                      style={{ background: open ? '#fff7ed' : 'white', border: '1px solid ' + (open ? ACCENT : '#e8e7e3'), borderRadius: 12, padding: 14 }}>
+                      <button onClick={() => setSelCenter(open ? '' : c.center)}
+                        style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', boxSizing: 'border-box' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>{c.center}</span>
+                          <span style={{ fontSize: 11, color: '#999' }}>{open ? '收合 ▲' : '展開 ▼'}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
+                          學生 <b>{c.total}</b>（正取 {c.admitted}・備取 {c.waitlisted}）
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7 }}>
+                          <span style={{ color: '#15803d' }}>就讀 {c.enrolled}</span>
+                          {' · '}<span style={{ color: '#dc2626' }}>拒絕 {c.declined}</span>
+                          {' · '}<span style={{ color: '#b45309' }}>未回應 {c.pending}</span>
+                          {' · '}回應率 {rate == null ? '—' : rate + '%'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#7c2d12', marginTop: 4, fontWeight: 600 }}>
+                          最終就讀 {finalEnroll}
+                          {c.promotedEnrolled ? <span style={{ color: '#999', fontWeight: 400 }}>（含遞補 {c.promotedEnrolled}）</span> : null}
+                        </div>
+                      </button>
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #f0efeb' }}>
+                        <Btn style={{ ...s.btn, ...s.btnSm }} onClick={() => exportCenter(c.center)}>⬇ 下載名單</Btn>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* 展開中心 → 學生名單（唯讀，無任何狀態變更按鈕） */}
+              {selCenter && (
+                <Card style={{ marginTop: 12 }}>
+                  <CardHead left={`${selCenter} · 學生名單（${centerRows.length}）`}
+                    right={<Btn style={{ ...s.btn, ...s.btnSm }} onClick={() => exportCenter(selCenter)}>⬇ 下載此中心名單</Btn>} />
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#faf9f6' }}>
+                          {['姓名', '帳號', '校區', '系所', '類別', '梯次', '狀態'].map((h) => <th key={h} style={th}>{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {centerRows.map((r) => {
+                          const cs = r.contact_status
+                          const resp = cs === 'enrolled' ? { t: '✓ 願意就讀', c: '#15803d', b: '#dcfce7' }
+                            : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
+                            : cs === 'transferred' ? { t: '已轉報', c: '#c2410c', b: '#ffedd5' }
+                            : cs === 'pending' ? { t: '未回應', c: '#b45309', b: '#fef3c7' }
+                            : { t: CS_LABEL[cs] || cs || '—', c: '#555', b: '#eeece7' }
+                          const bi = batchInfo(r.account)
+                          const cat = r.stage3_status === 'admitted' ? '正取'
+                            : r.stage3_status === 'waitlisted' ? ('備取' + (r.standby_rank ? ` ${r.standby_rank}` : '')) : '—'
+                          return (
+                            <tr key={r.id}>
+                              <td style={td}><div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div></td>
+                              <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
+                              <td style={td}>{resolveCampus(r.department, campusOv) || '—'}</td>
+                              <td style={td}>{deptZhFull(r.department) || r.department || '—'}</td>
+                              <td style={td}>{cat}</td>
+                              <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
+                              <td style={td}><Pill color={resp.c} bg={resp.b}>{resp.t}</Pill></td>
+                            </tr>
+                          )
+                        })}
+                        {!centerRows.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>此中心無資料</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
             </div>
           )}
 
