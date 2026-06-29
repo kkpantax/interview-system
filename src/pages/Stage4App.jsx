@@ -830,7 +830,64 @@ export default function Stage4App() {
             </div>
           )}
 
-          {/* ── 各中心統計（全部第四階段學生，置於校區區塊下方）── */}
+          {/* 展開系所學生名單 */}
+          {selDept && (
+            <Card>
+              <CardHead left={`${selDept}`}
+                right={
+                  <Btn style={{ ...s.btn, ...s.btnSm }} disabled={busy || !selRows.some((r) => r.contact_status === 'pending' && r.appInfo?.email)}
+                    onClick={() => openMail(selRows.filter((r) => r.contact_status === 'pending' && r.appInfo?.email))}>
+                    ✉ 通知本系未回應
+                  </Btn>
+                } />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#faf9f6' }}>
+                      {['姓名', '帳號', '中心', '梯次', '志願序', '二階分數', '回應狀態', '備注', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selRows.map((r) => {
+                      const cs = r.contact_status
+                      const resp = cs === 'enrolled' ? { t: '✓ 願意就讀', c: '#15803d', b: '#dcfce7' }
+                        : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
+                        : cs === 'transferred' ? { t: '已轉報', c: '#c2410c', b: '#ffedd5' }
+                        : { t: '未回應', c: '#b45309', b: '#fef3c7' }
+                      const bi = batchInfo(r.account)
+                      return (
+                        <tr key={r.id}>
+                          <td style={td}><div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div></td>
+                          <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
+                          <td style={td}>{r.center || '—'}</td>
+                          <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
+                          <td style={td}>{r.preference_order ?? '—'}</td>
+                          <td style={td}>{r.stage2_score ?? '—'}</td>
+                          <td style={td}><Pill color={resp.c} bg={resp.b}>{resp.t}</Pill></td>
+                          <td style={td}><input defaultValue={r.admin_note || ''} onBlur={(e) => saveNote(r, e.target.value)} placeholder="備注" style={{ ...s.input, marginBottom: 0, minWidth: 120 }} /></td>
+                          <td style={td}>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button onClick={() => openMail([r])} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '' : '無 Email'}
+                                style={{ ...s.btn, ...s.btnSm }}>通知</button>
+                              <button onClick={() => setStatus(r, 'enrolled')} disabled={busy || cs === 'enrolled'}
+                                style={{ ...s.btn, ...s.btnSm, background: '#dcfce7', color: '#15803d', borderColor: '#86efac' }}>就讀</button>
+                              <button onClick={() => setStatus(r, 'declined')} disabled={busy || cs === 'declined'}
+                                style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>放棄</button>
+                              <button onClick={() => openTransfer(r)} disabled={busy || cs === 'transferred'}
+                                style={{ ...s.btn, ...s.btnSm, background: '#ffedd5', color: '#9a3412', borderColor: '#fdba74' }}>轉報</button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {!selRows.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無正取資料</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* ── 各中心統計（全部第四階段學生，置於系所展開名單之後）── */}
           {centerSummary.length > 0 && (
             <div style={{ marginTop: 4, marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
@@ -918,63 +975,6 @@ export default function Stage4App() {
                 </Card>
               )}
             </div>
-          )}
-
-          {/* 展開系所學生名單 */}
-          {selDept && (
-            <Card>
-              <CardHead left={`${selDept}`}
-                right={
-                  <Btn style={{ ...s.btn, ...s.btnSm }} disabled={busy || !selRows.some((r) => r.contact_status === 'pending' && r.appInfo?.email)}
-                    onClick={() => openMail(selRows.filter((r) => r.contact_status === 'pending' && r.appInfo?.email))}>
-                    ✉ 通知本系未回應
-                  </Btn>
-                } />
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#faf9f6' }}>
-                      {['姓名', '帳號', '中心', '梯次', '志願序', '二階分數', '回應狀態', '備注', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selRows.map((r) => {
-                      const cs = r.contact_status
-                      const resp = cs === 'enrolled' ? { t: '✓ 願意就讀', c: '#15803d', b: '#dcfce7' }
-                        : cs === 'declined' ? { t: '放棄', c: '#dc2626', b: '#fee2e2' }
-                        : cs === 'transferred' ? { t: '已轉報', c: '#c2410c', b: '#ffedd5' }
-                        : { t: '未回應', c: '#b45309', b: '#fef3c7' }
-                      const bi = batchInfo(r.account)
-                      return (
-                        <tr key={r.id}>
-                          <td style={td}><div style={{ fontWeight: 500 }}>{r.appInfo?.name || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{r.appInfo?.name_english || '—'}</div></td>
-                          <td style={{ ...td, color: '#888' }}>{r.account || '—'}</td>
-                          <td style={td}>{r.center || '—'}</td>
-                          <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td>
-                          <td style={td}>{r.preference_order ?? '—'}</td>
-                          <td style={td}>{r.stage2_score ?? '—'}</td>
-                          <td style={td}><Pill color={resp.c} bg={resp.b}>{resp.t}</Pill></td>
-                          <td style={td}><input defaultValue={r.admin_note || ''} onBlur={(e) => saveNote(r, e.target.value)} placeholder="備注" style={{ ...s.input, marginBottom: 0, minWidth: 120 }} /></td>
-                          <td style={td}>
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button onClick={() => openMail([r])} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '' : '無 Email'}
-                                style={{ ...s.btn, ...s.btnSm }}>通知</button>
-                              <button onClick={() => setStatus(r, 'enrolled')} disabled={busy || cs === 'enrolled'}
-                                style={{ ...s.btn, ...s.btnSm, background: '#dcfce7', color: '#15803d', borderColor: '#86efac' }}>就讀</button>
-                              <button onClick={() => setStatus(r, 'declined')} disabled={busy || cs === 'declined'}
-                                style={{ ...s.btn, ...s.btnSm, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>放棄</button>
-                              <button onClick={() => openTransfer(r)} disabled={busy || cs === 'transferred'}
-                                style={{ ...s.btn, ...s.btnSm, background: '#ffedd5', color: '#9a3412', borderColor: '#fdba74' }}>轉報</button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {!selRows.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>本系無正取資料</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
           )}
 
           <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, lineHeight: 1.6 }}>
