@@ -590,6 +590,25 @@ export default function Stage4App() {
     finally { setBusy(false) }
   }
 
+  // 結束單一已詢問但逾期未回的備取生：標為 waitlist_closed（併入不錄取頁），
+  // 立即釋出缺額給下一位備取生（只影響這一位，非整系截止結案）
+  const endNegotiating = async (r) => {
+    if (!window.confirm(
+      `確定要「結束詢問」${r.appInfo?.name || r.account}（備取 ${r.standby_rank ?? '—'}）？\n\n` +
+      `此人已寄送遞補通知但逾期未回。結束後：\n` +
+      `　· 其狀態轉為「備取未遞補」並併入「不錄取」頁（可於該頁寄感謝信）\n` +
+      `　· 釋出的缺額立即開放給下一位備取生（顯示為「可遞補」）\n\n` +
+      `此動作只影響這一位，不等同整系截止結案。`,
+    )) return
+    setBusy(true)
+    try {
+      await updateStage4Status(r.id, { contact_status: 'waitlist_closed' })
+      showToast(`已結束 ${r.appInfo?.name || r.account} 的詢問，缺額已釋出給下一位`)
+      await load(); await refreshThanks()
+    } catch (e) { showToast('結束詢問失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
   // ── 正取拒絕頁 / 不錄取頁 資料（正規化成共用 item 形狀）──
   const declinedItems = useMemo(() => data
     .filter((r) => r.contact_status === 'declined' && inBatch(r))
@@ -1092,8 +1111,12 @@ export default function Stage4App() {
                                 <button onClick={() => forcePromote(r)} disabled={busy || !r.appInfo?.email} title={r.appInfo?.email ? '不受可遞補缺額限制，行政強制遞補' : '無 Email'}
                                   style={{ ...s.btn, ...s.btnSm, background: '#fff', color: '#b45309', borderColor: '#fcd34d' }}>強制遞補</button>
                               ) : cs === 'negotiating' ? (
-                                <button onClick={() => setMail({ kind: 's4_promote', recipients: [r], batch: settingsBatch })} disabled={busy || !r.appInfo?.email}
-                                  style={{ ...s.btn, ...s.btnSm }}>重寄通知</button>
+                                <>
+                                  <button onClick={() => setMail({ kind: 's4_promote', recipients: [r], batch: settingsBatch })} disabled={busy || !r.appInfo?.email}
+                                    style={{ ...s.btn, ...s.btnSm }}>重寄通知</button>
+                                  <button onClick={() => endNegotiating(r)} disabled={busy} title="逾期未回：結束此人詢問並釋出缺額給下一位"
+                                    style={{ ...s.btn, ...s.btnSm, background: '#f3f4f6', color: '#6b7280', borderColor: '#d1d5db' }}>結束詢問</button>
+                                </>
                               ) : null}
                               <button onClick={() => openTransfer(r)} disabled={busy || cs === 'transferred'}
                                 style={{ ...s.btn, ...s.btnSm, background: '#ffedd5', color: '#9a3412', borderColor: '#fdba74' }}>轉報</button>
