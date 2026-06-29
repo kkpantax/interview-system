@@ -126,6 +126,7 @@ export default function Stage4App() {
   const [batchFilter, setBatchFilter] = useState('') // '' 全部 / '1' / '2'
   const [selDept, setSelDept] = useState('')         // 展開中的系所（正取頁）
   const [selCenter, setSelCenter] = useState('')     // 展開中的中心（各中心統計）
+  const [centerOpen, setCenterOpen] = useState(false) // 各中心統計整區是否展開（預設收合）
   const [mail, setMail]       = useState(null)        // { kind, recipients, batch }
   const [transfer, setTransfer] = useState(null)      // { row, depts }
   const [updatedAt, setUpdatedAt] = useState('')
@@ -891,11 +892,14 @@ export default function Stage4App() {
           {centerSummary.length > 0 && (
             <div style={{ marginTop: 4, marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#7c2d12' }}>
+                <button onClick={() => setCenterOpen((v) => !v)}
+                  style={{ all: 'unset', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#7c2d12', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: '#999' }}>{centerOpen ? '▲' : '▼'}</span>
                   各中心統計<span style={{ color: '#bbb', fontWeight: 400 }}> · 全部第四階段學生（正取＋備取）· {centerSummary.length} 個中心</span>
-                </div>
-                <Btn style={{ ...s.btn, ...s.btnSm }} onClick={exportAllCenters}>⬇ 匯出全部中心名單</Btn>
+                </button>
+                {centerOpen && <Btn style={{ ...s.btn, ...s.btnSm }} onClick={exportAllCenters}>⬇ 匯出全部中心名單</Btn>}
               </div>
+              {centerOpen && (<>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
                 {centerSummary.map((c) => {
                   const open = selCenter === c.center
@@ -974,6 +978,7 @@ export default function Stage4App() {
                   </div>
                 </Card>
               )}
+              </>)}
             </div>
           )}
 
