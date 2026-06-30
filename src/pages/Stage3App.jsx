@@ -113,6 +113,7 @@ const DEPT_EXPORT_COLS = [
 // 全校總名單匯出欄位（每人一列，不分系）
 const SCHOOL_EXPORT_COLS = [
   { key: 'name',        label: '中文姓名' },
+  { key: 'name_english', label: '英文姓名' },
   { key: 'account',     label: '帳號' },
   { key: 'batch_label', label: '梯次' },
   { key: 'nationality', label: '國籍' },
@@ -687,6 +688,7 @@ export default function Stage3App() {
   const exportSchoolRoster = () => {
     const toRow = (r) => ({
       name:         r.name,
+      name_english: r.name_english,
       account:      r.account,
       batch_label:  batchInfo(r.account).label,
       nationality:  r.nationality,
