@@ -160,6 +160,8 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(null)
   const [noticeRound, setNoticeRound] = useState(1)   // 1=首次 2=第二次催覆 3=第三次催覆（僅含連結信使用）
+  // 備取遞補(s4_promote)可單獨設回覆期限：預設帶入該梯次原設定，可改；空=沿用梯次設定
+  const [replyByOverride, setReplyByOverride] = useState('')
 
   const linkFor = (token) => `${window.location.origin}/#/confirm?t=${token}`
   // 所有梯次相關內容（放榜日期 / 回覆期限 / 承辦資訊）一律依每位收件人帳號的梯次，
@@ -170,6 +172,7 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
   const contactPersonFor = (r) => settingFor(r).contact_person || ''
   const contactEmailFor  = (r) => settingFor(r).contact_email || 'shihchien_ifp@g2.usc.edu.tw'
   const unitNameFor      = (r) => settingFor(r).unit_name || '國際事務處 Office of International Affairs'
+  const effReplyByFor    = (r) => (kind === 's4_promote' && replyByOverride) ? replyByOverride : replyByFor(r)
   const dataFor = (r, token) => {
     const il = LANG_TO_I18N[r.lang] || 'en'
     const base = {
@@ -177,7 +180,7 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
       系所中: r.department, 系所外: deptI18n(r.department, il),
       校區中: campusParens(r.department, 'zh'), 校區外: campusParens(r.department, il),
       類別中: CAT_ZH(r), 類別外: CAT_FX(r, r.lang),
-      回覆期限: replyByFor(r), 正式放榜日期: announceFor(r),
+      回覆期限: effReplyByFor(r), 正式放榜日期: announceFor(r),
       承辦人: contactPersonFor(r), 聯絡信箱: contactEmailFor(r), 單位名稱: unitNameFor(r),
       自訂中: form.customZh,
       自訂外: r.lang === 'VI' ? form.customForeignVi : r.lang === 'ID' ? form.customForeignId : form.customForeignEn,
@@ -209,6 +212,13 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
     return seen.sort((a, z) => a.b.localeCompare(z.b))
   })()
 
+  const odRef = useRef(false)
+  useEffect(() => {
+    if (kind !== 's4_promote' || odRef.current) return
+    const first = batchEntries.find((e) => e.st.reply_by)
+    if (first) { odRef.current = true; setReplyByOverride(String(first.st.reply_by).replace(/\//g, '-')) }
+  }, [kind, batchEntries])
+
   const validate = () => {
     if (!selected.length) return '沒有勾選任何學生'
     if (hasLink && selected.some((r) => !r.id)) return '此名單缺少 stage4 紀錄 id，無法產生確認連結'
@@ -225,7 +235,7 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
     for (const r of selected) {
       i += 1
       const token = r.confirm_token || tokenMap[r.key] || newToken()
-      const fields = { confirm_deadline: toDeadlineIso(replyByFor(r)) }
+      const fields = { confirm_deadline: toDeadlineIso(effReplyByFor(r)) }
       if (!r.confirm_token) fields.confirm_token = token
       await setStage4Confirm(r.id, fields)
       map[r.key] = token
@@ -326,6 +336,17 @@ export default function AdmitMailComposer({ kind = 's4_admit', recipients, defau
             {noticeRound > 1
               ? `信件開頭會加註「第${noticeRound === 2 ? '二' : '三'}次通知」提醒、主旨加上「${REMIND_SUBJ}」；專屬連結與回覆期限維持不變，僅寄給仍未回應者即可。`
               : '一般首次通知，信件內容維持原樣。'}
+          </span>
+        </div>
+      )}
+
+      {kind === 's4_promote' && (
+        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ ...lbl, marginBottom: 0 }}>備取回覆期限</label>
+          <input type="date" style={{ ...s.input, padding: '4px 8px', maxWidth: 200, marginBottom: 0 }}
+            value={replyByOverride} onChange={(e) => setReplyByOverride(e.target.value)} />
+          <span style={{ fontSize: 11, color: '#888' }}>
+            預設帶入該梯次原回覆期限，可改；會同時套用到信件內容與每位備取生的確認連結到期日。
           </span>
         </div>
       )}
