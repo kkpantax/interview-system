@@ -9,6 +9,7 @@ import Stage3App from './pages/Stage3App'
 import Stage4App from './pages/Stage4App'
 import TransferApp from './pages/TransferApp'
 import ConfirmApp from './pages/ConfirmApp'
+import OnboardApp from './pages/OnboardApp'
 import TeacherLogin from './pages/TeacherLogin'
 
 const StatsApp = lazy(() => import('./pages/StatsApp'))
@@ -43,6 +44,7 @@ export default function App() {
   if (path === '/stage4') return <Stage4App />
   if (path === '/transfers') return <TransferApp />
   if (path === '/confirm') return <ConfirmApp token={query.t || ''} />
+  if (path === '/onboard') return <OnboardApp token={query.t || ''} />
   if (path === '/stats')  return (
     <Suspense fallback={<div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f4f0', color:'#999', fontSize:14 }}>載入統計儀表板…</div>}>
       <StatsApp />

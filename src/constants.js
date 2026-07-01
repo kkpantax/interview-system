@@ -208,3 +208,13 @@ export const BATCHES = [
 // 取得某帳號的梯次資訊物件（含顏色 / 標籤），查無回退「未分梯」
 export const batchInfo = (account) =>
   BATCHES.find((b) => b.v === batchOf(account)) || BATCHES[2]
+
+// ── 入學準備（onboarding）五步驟 ─────────────────────────────────────────────
+// key 對應 enroll_progress.step / enroll_settings.step；四語標籤供學生端 #/onboard 顯示。
+export const ENROLL_STEPS = [
+  { key: 'confirm',      zh: '資料確認', en: 'Information Confirmation', vi: 'Xác nhận thông tin',            id: 'Konfirmasi Data' },
+  { key: 'payment',      zh: '繳費',     en: 'Tuition Payment',          vi: 'Đóng học phí',                  id: 'Pembayaran' },
+  { key: 'visa',         zh: '簽證',     en: 'Visa',                     vi: 'Thị thực (Visa)',               id: 'Visa' },
+  { key: 'arrival',      zh: '來台時間', en: 'Arrival Date',             vi: 'Thời gian đến Đài Loan',        id: 'Waktu Kedatangan' },
+  { key: 'predeparture', zh: '行前通知', en: 'Pre-departure Notice',     vi: 'Thông báo trước khởi hành',     id: 'Informasi Pra-keberangkatan' },
+]

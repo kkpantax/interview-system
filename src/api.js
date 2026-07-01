@@ -1208,6 +1208,21 @@ export async function confirmSubmit(token, decision) {
   return callConfirm('submit', { token, decision })
 }
 
+// ── 入學準備 · 學生端唯讀資訊（公開端點 /api/onboard，service key 驗 token）────
+// 回傳 { ok, student, progress: {step: {...}}, settings: {step: {...}} }
+export async function onboardInfo(token) {
+  const res = await fetch(`/api/onboard?token=${encodeURIComponent(token)}`)
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) {
+    const err = new Error(data.error || '入學準備服務請求失敗')
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {
   return updateStage4Status(id, fields)
