@@ -1235,6 +1235,27 @@ export async function onboardSubmit(payload) {
   if (!res.ok || data.ok === false) throw new Error(data.error || '入學準備服務請求失敗')
   return data
 }
+// 上傳檔案到學生的 Drive 資料夾（走 /api/onboard-upload → Apps Script）。
+// file 為 <input type="file"> 的 File 物件；kind 為檔案類別（如 'payment_proof'）。
+// 檔案上限約 3MB（Edge 請求體限制），回傳 { ok, fileId, url, filename }
+export async function onboardUpload(token, kind, file, step) {
+  const dataBase64 = await new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result).split(',')[1] || '')
+    r.onerror = () => reject(new Error('讀取檔案失敗'))
+    r.readAsDataURL(file)
+  })
+  const res = await fetch('/api/onboard-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, kind, step, filename: file.name, mimeType: file.type, dataBase64 }),
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) throw new Error(data.error || '上傳失敗')
+  return data
+}
 
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {
