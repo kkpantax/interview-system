@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
-import { onboardInfo } from '../api'
-import { deptI18n, deptZhFull, ENROLL_STEPS } from '../constants'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { onboardInfo, onboardSubmit } from '../api'
+import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS } from '../constants'
 
-// 學生端「入學準備」落地頁（Phase 1：唯讀骨架）。
-// 鏡像 ConfirmApp.jsx：token 由 #/onboard?t=xxx 取得，呼叫 /api/onboard 讀取
-// 基本資料 + 五步進度 + 梯次設定；各步表單內容為 Phase 2。
+// 學生端「入學準備」落地頁。
+// Phase 1：token landing + 五步進度條（唯讀）。
+// Phase 2：步驟1「資料確認」表單 + 送出（server 寫入後自動進到步驟2）。
+// 注意：enroll_progress.step / enroll_settings.step 在 DB 是數字 1~5，
+// 前端一律用 ENROLL_STEPS[i].step 查 progress / settings。
 
 // 語言：zh 中文 / en English / vi Tiếng Việt / id Bahasa Indonesia
 const LANGS = [
@@ -32,6 +34,18 @@ const T = {
   contact:      { zh: '聯絡窗口', en: 'Contact', vi: 'Liên hệ', id: 'Kontak' },
   allDone:      { zh: '🎉 您已完成所有入學準備步驟，我們台灣見！', en: '🎉 You have completed all enrollment steps. See you in Taiwan!', vi: '🎉 Bạn đã hoàn thành tất cả các bước. Hẹn gặp bạn tại Đài Loan!', id: '🎉 Anda telah menyelesaikan semua langkah. Sampai jumpa di Taiwan!' },
   unit:         { zh: '實踐大學 國際事務處', en: 'Office of International Affairs, Shih Chien University', vi: 'Phòng Hợp tác Quốc tế, Đại học Thực Tiễn', id: 'Kantor Urusan Internasional, Shih Chien University' },
+  // 步驟1表單
+  s1PrefillTitle: { zh: '基本資料（請確認並可修正）', en: 'Basic Information (please check and correct if needed)', vi: 'Thông tin cơ bản (vui lòng kiểm tra và sửa nếu cần)', id: 'Data Dasar (mohon periksa dan perbaiki jika perlu)' },
+  s1FillTitle:    { zh: '請填寫以下資料', en: 'Please fill in the following', vi: 'Vui lòng điền các thông tin sau', id: 'Mohon isi data berikut' },
+  s1ReqNote:      { zh: '* 為必填欄位', en: '* Required fields', vi: '* Mục bắt buộc', id: '* Wajib diisi' },
+  s1LineTitle:    { zh: '加入新生 LINE 群組', en: 'Join the LINE group for new students', vi: 'Tham gia nhóm LINE tân sinh viên', id: 'Gabung grup LINE mahasiswa baru' },
+  s1LineHint:     { zh: '請掃描 QR Code 加入群組，重要通知將在群組發布。', en: 'Please scan the QR code to join. Important notices will be posted in the group.', vi: 'Vui lòng quét mã QR để tham gia. Các thông báo quan trọng sẽ được đăng trong nhóm.', id: 'Silakan pindai kode QR untuk bergabung. Pengumuman penting akan diposting di grup.' },
+  s1LineNoQr:     { zh: 'QR Code 稍後提供', en: 'QR code will be provided later.', vi: 'Mã QR sẽ được cung cấp sau.', id: 'Kode QR akan tersedia nanti.' },
+  s1LineCheck:    { zh: '我已加入 LINE 群組', en: 'I have joined the LINE group', vi: 'Tôi đã tham gia nhóm LINE', id: 'Saya sudah bergabung di grup LINE' },
+  s1Submit:       { zh: '確認送出', en: 'Submit', vi: 'Xác nhận gửi', id: 'Kirim' },
+  submitting:     { zh: '送出中…', en: 'Submitting…', vi: 'Đang gửi…', id: 'Mengirim…' },
+  s1Saved:        { zh: '✓ 資料已送出，已為您開啟下一步。', en: '✓ Submitted. The next step is now open.', vi: '✓ Đã gửi. Bước tiếp theo đã được mở.', id: '✓ Terkirim. Langkah berikutnya sudah terbuka.' },
+  s1Missing:      { zh: '請填寫必填欄位：', en: 'Please fill in the required fields: ', vi: 'Vui lòng điền các mục bắt buộc: ', id: 'Mohon isi kolom wajib: ' },
 }
 
 const CAMPUS_I18N = {
@@ -56,18 +70,18 @@ const fmtDate = (iso) => {
 }
 
 // gating：confirmed 保持 ✓；「最低一個非 confirmed 的步驟」為 open（DB 若標 submitted
-// 則顯示待確認），其後全部視為 locked（不論 DB 存什麼）。
+// 則顯示待確認），其後全部視為 locked（不論 DB 存什麼）。以 step 數字為 key。
 function effectiveStates(progress) {
   const out = {}
   let gated = false
   for (const st of ENROLL_STEPS) {
-    const raw = progress?.[st.key]?.state || 'locked'
-    if (raw === 'confirmed') { out[st.key] = 'confirmed'; continue }
+    const raw = progress?.[st.step]?.state || 'locked'
+    if (raw === 'confirmed') { out[st.step] = 'confirmed'; continue }
     if (!gated) {
-      out[st.key] = raw === 'submitted' ? 'submitted' : 'open'
+      out[st.step] = raw === 'submitted' ? 'submitted' : 'open'
       gated = true
     } else {
-      out[st.key] = 'locked'
+      out[st.step] = 'locked'
     }
   }
   return out
@@ -86,6 +100,11 @@ const STATE_LABEL_KEY = { locked: 'stLocked', open: 'stOpen', submitted: 'stSubm
 export default function OnboardApp({ token }) {
   const [lang, setLang] = useState('zh')
   const [info, setInfo] = useState(undefined)   // undefined=載入中, null=無效
+  const [form, setForm] = useState({})
+  const [lineJoined, setLineJoined] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)       // 步驟1剛送出成功
+  const langInited = useRef(false)
   const tr = (k, vars = {}) => Object.entries(vars).reduce((str, [kk, vv]) => str.split(`{${kk}}`).join(vv), T[k]?.[lang] || T[k]?.zh || k)
 
   const load = useCallback(async () => {
@@ -93,7 +112,14 @@ export default function OnboardApp({ token }) {
     try {
       const res = await onboardInfo(token)
       setInfo(res)
-      setLang(langOf(res.student?.nationality))
+      if (!langInited.current) {
+        setLang(langOf(res.student?.nationality))
+        langInited.current = true
+      }
+      // 步驟1表單回填：已存過的 data 優先，否則帶 prefill
+      const saved = res.progress?.[1]?.data || {}
+      setForm({ ...(res.prefill || {}), ...saved })
+      if (saved.line_joined) setLineJoined(true)
     } catch {
       setInfo(null)
     }
@@ -101,12 +127,31 @@ export default function OnboardApp({ token }) {
 
   useEffect(() => { load() }, [load])
 
+  const submitStep1 = async () => {
+    const fields = [...ONBOARD_STEP1_FIELDS.prefill, ...ONBOARD_STEP1_FIELDS.fill]
+    const missing = fields.filter((f) => f.req && !String(form[f.key] || '').trim())
+    if (missing.length) {
+      alert(tr('s1Missing') + missing.map((f) => f[lang] || f.zh).join('、'))
+      return
+    }
+    setBusy(true)
+    try {
+      await onboardSubmit({ token, step: 1, data: form, line_joined: lineJoined })
+      setDone(true)
+      await load()
+    } catch (e) {
+      alert(e.message)
+    } finally { setBusy(false) }
+  }
+
   // 版面（同 ConfirmApp）
   const wrap = { minHeight: '100vh', background: '#f5f4f0', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px', fontFamily: "system-ui, 'Noto Sans TC', sans-serif", color: '#1a1a18' }
   const card = { background: 'white', borderRadius: 14, border: '1px solid #e8e7e3', maxWidth: 480, width: '100%', marginTop: 40, marginBottom: 40, overflow: 'hidden', boxShadow: '0 2px 18px rgba(0,0,0,.05)' }
   const infoBox = { background: '#faf9f6', border: '1px solid #eee', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }
   const sectionBox = { background: '#fafaf8', border: '1px solid #efeee9', borderRadius: 10, padding: '12px 16px', marginTop: 14 }
   const sectionTitle = { fontSize: 11.5, fontWeight: 700, color: ACCENT, letterSpacing: 0.5, marginBottom: 6 }
+  const inputStyle = { width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'white', color: '#1a1a18' }
+  const labelStyle = { fontSize: 12, color: '#666', marginBottom: 3, display: 'block' }
 
   const langBar = (
     <div style={{ display: 'flex', gap: 6, marginTop: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -140,11 +185,67 @@ export default function OnboardApp({ token }) {
 
   const student = info.student || {}
   const states = effectiveStates(info.progress)
-  const currentStep = ENROLL_STEPS.find((st) => states[st.key] !== 'confirmed') || null
-  const currentSetting = currentStep ? info.settings?.[currentStep.key] : null
+  const currentStep = ENROLL_STEPS.find((st) => states[st.step] !== 'confirmed') || null
+  const currentSetting = currentStep ? info.settings?.[currentStep.step] : null
 
   const deptName = lang === 'zh' ? deptZhFull(student.department) : deptI18n(student.department, lang)
   const campusText = student.campus && student.campus !== '其他' ? campusName(student.campus, lang) : ''
+
+  const field = (f) => (
+    <div key={f.key} style={{ marginBottom: 10 }}>
+      <label style={labelStyle}>
+        {f[lang] || f.zh}{f.req && <span style={{ color: '#b91c1c' }}> *</span>}
+      </label>
+      <input
+        style={inputStyle}
+        value={form[f.key] ?? ''}
+        onChange={(e) => setForm((p) => ({ ...p, [f.key]: e.target.value }))}
+      />
+    </div>
+  )
+
+  const step1Setting = info.settings?.[1]
+  const lineQr = step1Setting?.extra?.line_qr_url
+
+  const step1Form = (
+    <div>
+      <div style={{ ...sectionBox, marginTop: 14 }}>
+        <div style={sectionTitle}>{tr('s1PrefillTitle')}</div>
+        {ONBOARD_STEP1_FIELDS.prefill.map(field)}
+      </div>
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s1FillTitle')}</div>
+        <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 8 }}>{tr('s1ReqNote')}</div>
+        {ONBOARD_STEP1_FIELDS.fill.map(field)}
+      </div>
+      {/* LINE 群組 */}
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s1LineTitle')}</div>
+        <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>{tr('s1LineHint')}</div>
+        <div style={{ textAlign: 'center', marginBottom: 10 }}>
+          {lineQr ? (
+            <img src={lineQr} alt="LINE QR" style={{ width: 160, height: 160, objectFit: 'contain', border: '1px solid #eee', borderRadius: 8, background: 'white' }} />
+          ) : (
+            <div style={{ width: 160, height: 160, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #ccc', borderRadius: 8, color: '#aaa', fontSize: 12, lineHeight: 1.6, padding: 8, boxSizing: 'border-box', textAlign: 'center' }}>
+              {tr('s1LineNoQr')}
+            </div>
+          )}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, cursor: 'pointer', fontWeight: 500 }}>
+          <input type="checkbox" checked={lineJoined} onChange={(e) => setLineJoined(e.target.checked)} style={{ width: 17, height: 17, accentColor: ACCENT }} />
+          {tr('s1LineCheck')}
+        </label>
+      </div>
+      <button
+        onClick={submitStep1}
+        disabled={!lineJoined || busy}
+        style={{ width: '100%', marginTop: 14, padding: '13px', borderRadius: 10, fontSize: 15, fontWeight: 700, fontFamily: 'inherit',
+          border: 'none', cursor: !lineJoined || busy ? 'not-allowed' : 'pointer',
+          background: !lineJoined || busy ? '#e5e7eb' : ACCENT, color: !lineJoined || busy ? '#9ca3af' : 'white' }}>
+        {busy ? tr('submitting') : tr('s1Submit')}
+      </button>
+    </div>
+  )
 
   return (
     <div style={wrap}>
@@ -166,11 +267,11 @@ export default function OnboardApp({ token }) {
           {/* 五步進度條 */}
           <div style={{ display: 'flex', alignItems: 'flex-start', margin: '20px 0 6px' }}>
             {ENROLL_STEPS.map((st, i) => {
-              const state = states[st.key]
+              const state = states[st.step]
               const c = STATE_STYLE[state]
               const isCurrent = state === 'open' || state === 'submitted'
               return (
-                <div key={st.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                <div key={st.step} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                   {/* 連接線（畫在左側，第一步不畫） */}
                   {i > 0 && (
                     <div style={{ position: 'absolute', top: 15, right: '50%', width: '100%', height: 2, marginRight: 16,
@@ -195,25 +296,36 @@ export default function OnboardApp({ token }) {
             })}
           </div>
 
-          {/* 目前步驟內容（Phase 2 補各步表單，先放 placeholder） */}
-          {currentStep ? (
-            <div style={sectionBox}>
-              <div style={sectionTitle}>{currentStep[lang] || currentStep.zh} · {tr(STATE_LABEL_KEY[states[currentStep.key]])}</div>
-              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.8, padding: '10px 0', textAlign: 'center' }}>
-                🚧 {tr('placeholder')}
-              </div>
-              {currentSetting?.deadline && <Row label={tr('deadline')} value={fmtDate(currentSetting.deadline)} />}
-              {(currentSetting?.contact_name || currentSetting?.contact_email) && (
-                <Row label={tr('contact')} value={
-                  <span>
-                    {currentSetting.contact_name || ''}
-                    {currentSetting.contact_email && (
-                      <a href={`mailto:${currentSetting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{currentSetting.contact_email}</a>
-                    )}
-                  </span>
-                } />
-              )}
+          {/* 剛送出成功的提示 */}
+          {done && (
+            <div style={{ background: '#dcfce7', borderRadius: 10, padding: '12px 14px', textAlign: 'center', marginTop: 14, fontSize: 13.5, fontWeight: 600, color: '#15803d' }}>
+              {tr('s1Saved')}
             </div>
+          )}
+
+          {/* 目前步驟內容 */}
+          {currentStep ? (
+            currentStep.step === 1 && states[1] === 'open' ? (
+              step1Form
+            ) : (
+              <div style={sectionBox}>
+                <div style={sectionTitle}>{currentStep[lang] || currentStep.zh} · {tr(STATE_LABEL_KEY[states[currentStep.step]])}</div>
+                <div style={{ fontSize: 13, color: '#888', lineHeight: 1.8, padding: '10px 0', textAlign: 'center' }}>
+                  🚧 {tr('placeholder')}
+                </div>
+                {currentSetting?.deadline && <Row label={tr('deadline')} value={fmtDate(currentSetting.deadline)} />}
+                {(currentSetting?.contact_name || currentSetting?.contact_email) && (
+                  <Row label={tr('contact')} value={
+                    <span>
+                      {currentSetting.contact_name || ''}
+                      {currentSetting.contact_email && (
+                        <a href={`mailto:${currentSetting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{currentSetting.contact_email}</a>
+                      )}
+                    </span>
+                  } />
+                )}
+              </div>
+            )
           ) : (
             <div style={{ background: '#dcfce7', borderRadius: 10, padding: '16px', textAlign: 'center', marginTop: 14, fontSize: 14, fontWeight: 600, color: '#15803d', lineHeight: 1.7 }}>
               {tr('allDone')}

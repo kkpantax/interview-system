@@ -1208,8 +1208,8 @@ export async function confirmSubmit(token, decision) {
   return callConfirm('submit', { token, decision })
 }
 
-// ── 入學準備 · 學生端唯讀資訊（公開端點 /api/onboard，service key 驗 token）────
-// 回傳 { ok, student, progress: {step: {...}}, settings: {step: {...}} }
+// ── 入學準備 · 學生端（公開端點 /api/onboard，service key 驗 token）───────────
+// GET 回傳 { ok, student, progress: {step: {...}}, settings: {step: {...}}, prefill }
 export async function onboardInfo(token) {
   const res = await fetch(`/api/onboard?token=${encodeURIComponent(token)}`)
   const text = await res.text()
@@ -1220,6 +1220,19 @@ export async function onboardInfo(token) {
     err.status = res.status
     throw err
   }
+  return data
+}
+// 送出步驟表單（payload: { token, step, data, line_joined }），回傳更新後五步 progress
+export async function onboardSubmit(payload) {
+  const res = await fetch('/api/onboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) throw new Error(data.error || '入學準備服務請求失敗')
   return data
 }
 

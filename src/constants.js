@@ -210,11 +210,41 @@ export const batchInfo = (account) =>
   BATCHES.find((b) => b.v === batchOf(account)) || BATCHES[2]
 
 // ── 入學準備（onboarding）五步驟 ─────────────────────────────────────────────
-// key 對應 enroll_progress.step / enroll_settings.step；四語標籤供學生端 #/onboard 顯示。
+// step 對應 enroll_progress.step / enroll_settings.step（DB 為 smallint 1~5）；
+// key 為程式內識別名；四語標籤供學生端 #/onboard 顯示。
 export const ENROLL_STEPS = [
-  { key: 'confirm',      zh: '資料確認', en: 'Information Confirmation', vi: 'Xác nhận thông tin',            id: 'Konfirmasi Data' },
-  { key: 'payment',      zh: '繳費',     en: 'Tuition Payment',          vi: 'Đóng học phí',                  id: 'Pembayaran' },
-  { key: 'visa',         zh: '簽證',     en: 'Visa',                     vi: 'Thị thực (Visa)',               id: 'Visa' },
-  { key: 'arrival',      zh: '來台時間', en: 'Arrival Date',             vi: 'Thời gian đến Đài Loan',        id: 'Waktu Kedatangan' },
-  { key: 'predeparture', zh: '行前通知', en: 'Pre-departure Notice',     vi: 'Thông báo trước khởi hành',     id: 'Informasi Pra-keberangkatan' },
+  { step: 1, key: 'confirm',      zh: '資料確認', en: 'Information Confirmation', vi: 'Xác nhận thông tin',            id: 'Konfirmasi Data' },
+  { step: 2, key: 'payment',      zh: '繳費',     en: 'Tuition Payment',          vi: 'Đóng học phí',                  id: 'Pembayaran' },
+  { step: 3, key: 'visa',         zh: '簽證',     en: 'Visa',                     vi: 'Thị thực (Visa)',               id: 'Visa' },
+  { step: 4, key: 'arrival',      zh: '來台時間', en: 'Arrival Date',             vi: 'Thời gian đến Đài Loan',        id: 'Waktu Kedatangan' },
+  { step: 5, key: 'predeparture', zh: '行前通知', en: 'Pre-departure Notice',     vi: 'Thông báo trước khởi hành',     id: 'Informasi Pra-keberangkatan' },
 ]
+
+// ── 入學準備 · 步驟1「資料確認」表單欄位 ──────────────────────────────────────
+// prefill 組：從 applications 帶入（學生可編修）；fill 組：庫裡沒有、由學生填寫。
+// req: true 為必填（前端標 * 並擋送出）。四語標籤比照 DEPT_I18N 風格。
+export const ONBOARD_STEP1_FIELDS = {
+  prefill: [
+    { key: 'name',            zh: '中文姓名',   en: 'Chinese Name',              vi: 'Họ tên (chữ Hán)',            id: 'Nama Mandarin',              req: true },
+    { key: 'gender',          zh: '性別',       en: 'Gender',                    vi: 'Giới tính',                   id: 'Jenis Kelamin',              req: true },
+    { key: 'birth_date',      zh: '出生日期',   en: 'Date of Birth',             vi: 'Ngày sinh',                   id: 'Tanggal Lahir',              req: true },
+    { key: 'passport_number', zh: '護照號碼',   en: 'Passport No.',              vi: 'Số hộ chiếu',                 id: 'Nomor Paspor',               req: true },
+    { key: 'nationality',     zh: '國籍',       en: 'Nationality',               vi: 'Quốc tịch',                   id: 'Kewarganegaraan',            req: true },
+  ],
+  fill: [
+    { key: 'name_en',         zh: '英文姓名（同護照）', en: 'English Name (as in passport)', vi: 'Họ tên tiếng Anh (theo hộ chiếu)', id: 'Nama (sesuai paspor)', req: true },
+    { key: 'arc_no',          zh: '居留證號',   en: 'ARC No.',                   vi: 'Số thẻ cư trú (ARC)',         id: 'Nomor ARC' },
+    { key: 'phone',           zh: '學生手機',   en: 'Mobile Phone',              vi: 'Số điện thoại di động',       id: 'Nomor HP',                   req: true },
+    { key: 'email',           zh: 'E-mail',     en: 'E-mail',                    vi: 'E-mail',                      id: 'E-mail',                     req: true },
+    { key: 'email2',          zh: 'E-mail（備用）', en: 'E-mail (secondary)',    vi: 'E-mail (dự phòng)',           id: 'E-mail (cadangan)' },
+    { key: 'zip_mail',        zh: '通訊郵遞區號', en: 'Mailing Zip Code',        vi: 'Mã bưu điện (liên lạc)',      id: 'Kode Pos (surat)' },
+    { key: 'addr_mail',       zh: '通訊地址',   en: 'Mailing Address',           vi: 'Địa chỉ liên lạc',            id: 'Alamat Surat-menyurat',      req: true },
+    { key: 'zip_reg',         zh: '戶籍郵遞區號', en: 'Registered Zip Code',     vi: 'Mã bưu điện (hộ khẩu)',       id: 'Kode Pos (domisili)' },
+    { key: 'addr_reg',        zh: '戶籍地址',   en: 'Registered Address',        vi: 'Địa chỉ hộ khẩu',             id: 'Alamat Domisili' },
+    { key: 'tel',             zh: '市話',       en: 'Telephone',                 vi: 'Điện thoại bàn',              id: 'Telepon Rumah' },
+    { key: 'guardian_name',   zh: '監護人姓名', en: 'Guardian Name',             vi: 'Họ tên người giám hộ',        id: 'Nama Wali',                  req: true },
+    { key: 'guardian_phone',  zh: '家長手機',   en: "Guardian's Phone",          vi: 'SĐT phụ huynh',               id: 'Nomor HP Orang Tua',         req: true },
+    { key: 'school',          zh: '畢業學校',   en: 'School Graduated',          vi: 'Trường tốt nghiệp',           id: 'Sekolah Asal',               req: true },
+    { key: 'grad_year',       zh: '畢業年度',   en: 'Year of Graduation',        vi: 'Năm tốt nghiệp',              id: 'Tahun Lulus',                req: true },
+  ],
+}
