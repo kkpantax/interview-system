@@ -1283,9 +1283,11 @@ async function onboardAdminPost(payload) {
   }
   return data
 }
-// 撈全部入學準備學生 + 五步狀態 + 檔案（batch: 'all' | '1' | '2'）
-export const onboardAdminList = (username, password, batch = 'all') =>
-  onboardAdminPost({ action: 'list', username, password, batch })
+// 撈全部入學準備學生 + 五步狀態 + 檔案（batch: 'all'|'1'|'2'；campus: 'all'|'台北'|'高雄'）
+// 註：後台頁的校區篩選在前端做（總覽的分校區小計需要全部校區資料），campus 參數保留給
+// 之後的匯出等單一校區場景使用。
+export const onboardAdminList = (username, password, batch = 'all', campus = 'all') =>
+  onboardAdminPost({ action: 'list', username, password, batch, campus })
 // 確認某生某步（步驟2/3），自動開下一步
 export const onboardAdminConfirm = (username, password, account, step) =>
   onboardAdminPost({ action: 'confirm', username, password, account, step })

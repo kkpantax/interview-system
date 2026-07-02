@@ -8,6 +8,7 @@ import { ENROLL_STEPS, deptZhFull } from '../constants'
 // 入學準備後台（superadmin 專用）。掛 #/onboard-admin，StageNav 顯示「⑤ 入學準備」。
 // 資料經 /api/onboard-admin（service role），操作需帶超管帳密——本頁用一次性密碼閘門
 // 取得密碼後快取於記憶體（不落地 storage）重用。整體結構鏡像 Stage4App。
+// 頂部兩維度篩選：梯次（伺服器端）× 校區（前端，讓總覽分校區小計恆能並列兩校區）。
 const ACCENT = '#7c2d12'
 
 // enroll_progress.state → 顯示
@@ -62,6 +63,7 @@ export default function OnboardAdminApp() {
   const [data, setData] = useState([])
   const [tab, setTab] = useState('overview')
   const [batch, setBatch] = useState('all')
+  const [campus, setCampus] = useState('all')   // 校區在前端篩：分校區小計需同時看到兩校區
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState(null)
@@ -161,15 +163,30 @@ export default function OnboardAdminApp() {
   }
 
   // ── 已驗證：統計與名單 ──────────────────────────────────────────────────────
-  const active = data.filter((x) => x.status !== 'abandoned')
-  const completedN = data.filter((x) => x.status === 'completed').length
-  const abandonedList = data.filter((x) => x.status === 'abandoned')
+  // 梯次已在伺服器端篩過（data 即該梯次），校區於此處前端篩，兩維度同時作用於所有數字與名單
+  const visible = campus === 'all' ? data : data.filter((x) => x.campus === campus)
+  const active = visible.filter((x) => x.status !== 'abandoned')
+  const completedN = visible.filter((x) => x.status === 'completed').length
+  const abandonedList = visible.filter((x) => x.status === 'abandoned')
   const denom = active.length   // 分母排除已放棄
 
   // 各步「卡關中」= 該步 open/submitted（非放棄）
   const stuckAt = (step) => active.filter((x) => x.status !== 'completed'
     && ['open', 'submitted'].includes(stepStateOf(x, step)))
   const countState = (step, state) => active.filter((x) => stepStateOf(x, step) === state).length
+
+  // 分校區小計：從 data（僅梯次篩過）計算，切到單一校區時仍能並列台北/高雄對照
+  const campusStats = (c) => {
+    const rows = data.filter((x) => x.campus === c)
+    const act = rows.filter((x) => x.status !== 'abandoned')
+    return {
+      total: act.length,
+      stuck: ENROLL_STEPS.map((st) => act.filter((x) => x.status !== 'completed'
+        && ['open', 'submitted'].includes(stepStateOf(x, st.step))).length),
+      completed: rows.filter((x) => x.status === 'completed').length,
+      abandoned: rows.filter((x) => x.status === 'abandoned').length,
+    }
+  }
 
   const right = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -252,6 +269,10 @@ export default function OnboardAdminApp() {
           <select style={{ ...s.sel, padding: '5px 8px' }} value={batch} onChange={(e) => changeBatch(e.target.value)}>
             <option value="all">全部</option><option value="1">第一梯</option><option value="2">第二梯</option>
           </select>
+          <span style={{ fontSize: 12, color: '#999', marginLeft: 4 }}>校區</span>
+          <select style={{ ...s.sel, padding: '5px 8px' }} value={campus} onChange={(e) => setCampus(e.target.value)}>
+            <option value="all">全部</option><option value="台北">台北</option><option value="高雄">高雄</option>
+          </select>
         </div>
       </div>
 
@@ -291,6 +312,55 @@ export default function OnboardAdminApp() {
               </div>
             </div>
           </Card>
+
+          {/* 分校區小計：台北/高雄 並列對照（不受校區切換影響，僅隨梯次篩選） */}
+          {(() => {
+            const tp = campusStats('台北')
+            const ks = campusStats('高雄')
+            const noCampusN = data.filter((x) => !x.campus).length
+            const thC = { ...th, textAlign: 'center', width: 110 }
+            const tdC = { ...td, textAlign: 'center', fontWeight: 600 }
+            return (
+              <Card style={{ marginTop: 16 }}>
+                <CardHead left="分校區小計（台北 ↔ 高雄 對照）" />
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#faf9f6' }}>
+                      <th style={th}>項目</th><th style={thC}>台北</th><th style={thC}>高雄</th>
+                    </tr></thead>
+                    <tbody>
+                      <tr>
+                        <td style={{ ...td, color: '#666' }}>總人數（不含放棄）</td>
+                        <td style={tdC}>{tp.total}</td><td style={tdC}>{ks.total}</td>
+                      </tr>
+                      {ENROLL_STEPS.map((st, i) => (
+                        <tr key={st.step}>
+                          <td style={td}>{'①②③④⑤'[i]} {st.zh} 卡關中</td>
+                          <td style={{ ...tdC, color: tp.stuck[i] ? '#b45309' : '#bbb' }}>{tp.stuck[i]}</td>
+                          <td style={{ ...tdC, color: ks.stuck[i] ? '#b45309' : '#bbb' }}>{ks.stuck[i]}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ ...td, color: '#15803d', fontWeight: 500 }}>🎉 已完成全部</td>
+                        <td style={{ ...tdC, color: '#15803d' }}>{tp.completed}</td>
+                        <td style={{ ...tdC, color: '#15803d' }}>{ks.completed}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ ...td, color: '#dc2626' }}>已放棄</td>
+                        <td style={{ ...tdC, color: tp.abandoned ? '#dc2626' : '#bbb' }}>{tp.abandoned}</td>
+                        <td style={{ ...tdC, color: ks.abandoned ? '#dc2626' : '#bbb' }}>{ks.abandoned}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                {noCampusN > 0 && (
+                  <div style={{ fontSize: 12, color: '#999', padding: '8px 2px 2px' }}>
+                    另有 {noCampusN} 位學生尚未設定校區，未計入上表兩欄。
+                  </div>
+                )}
+              </Card>
+            )
+          })()}
         </>
       )}
 

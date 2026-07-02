@@ -2,7 +2,8 @@
 // 鏡像 api/reset.js 的驗證方式：POST body 帶 { username, password }，伺服器用 service key
 // 撈 teachers 比對 password_hash === btoa(username:password) 且 role === 'superadmin' 才放行。
 // 單一端點以 action 分派：list / confirm / abandon / reactivate。
-//   - list：回全部 enroll_students（預設排除 is_test）＋每人五步 state＋各步檔案連結，支援 batch 篩選。
+//   - list：回全部 enroll_students（預設排除 is_test）＋每人五步 state＋各步檔案連結，
+//     支援 batch(all/1/2) 與 campus(all/台北/高雄) 篩選。
 //   - confirm：{account, step} → 該步 confirmed，並自動把下一步 locked→open；log admin_confirm。
 //   - abandon：{account, reason} → enroll_students.status='abandoned'；log abandon。
 //   - reactivate：{account} → status 回 'active'；log reactivate。
@@ -62,10 +63,12 @@ export default async function handler(req) {
   // ── list：全部學生 + 五步 state + 檔案 ────────────────────────────────────────
   if (action === 'list') {
     const batch = body.batch && body.batch !== 'all' ? String(body.batch) : ''
+    const campus = body.campus && body.campus !== 'all' ? String(body.campus) : ''
     const includeTest = body.includeTest === true
 
     let sUrl = `${SUPABASE_URL}/rest/v1/enroll_students?select=account,name,department,campus,batch,status,abandoned_at,abandoned_by,abandon_reason,dorm_room,dorm_bed,classroom,is_test`
     if (batch) sUrl += `&batch=eq.${encodeURIComponent(batch)}`
+    if (campus) sUrl += `&campus=eq.${encodeURIComponent(campus)}`
     if (!includeTest) sUrl += `&is_test=eq.false`
 
     const [sRes, pRes, fRes] = await Promise.all([
