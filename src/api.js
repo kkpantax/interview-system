@@ -1306,6 +1306,9 @@ export const onboardAdminSaveSettings = (username, password, payload) =>
 // 儲存 LINE 群組 QR 圖片網址（value = {台北, 高雄}）
 export const onboardAdminSaveLineQr = (username, password, value) =>
   onboardAdminPost({ action: 'save-line-qr', username, password, value })
+// 儲存承辦窗口（全域兩組、只分校區：value = {台北:{name,email,phone}, 高雄:{...}}）
+export const onboardAdminSaveContacts = (username, password, value) =>
+  onboardAdminPost({ action: 'save-contacts', username, password, value })
 // 批次匯入學號/宿舍資訊（rows = [{account, fields:{student_id?,dorm_room?,dorm_bed?,classroom?}}]，
 // fields 只含有值欄＝空欄不覆蓋）；回 { updated, skipped }
 export const onboardAdminImportStudents = (username, password, rows) =>

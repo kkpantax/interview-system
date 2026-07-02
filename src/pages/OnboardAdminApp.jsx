@@ -3,7 +3,8 @@ import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
-  onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminImportStudents } from '../api'
+  onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
+  onboardAdminImportStudents } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
 
@@ -41,16 +42,20 @@ const fmtTime = (iso) => {
 
 const stepStateOf = (stu, step) => stu.steps?.[step]?.state || 'locked'
 
-// timestamptz ISO ↔ <input type="datetime-local"> 的本地時間字串
-const isoToLocal = (iso) => {
+// timestamptz ISO → 台北時區的日期字串（YYYY-MM-DD，供 <input type="date">）
+// 截止日一律存為當日台北 23:59:59，這裡固定 +8h 取 UTC 日期，不受瀏覽器時區影響
+const isoToTpeDate = (iso) => {
   if (!iso) return ''
   const d = new Date(iso)
   if (isNaN(d)) return ''
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+  const t = new Date(d.getTime() + 8 * 3600 * 1000)
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`
 }
 
 const CAMPUSES = ['台北', '高雄']
+const NOTICE_LANGS = [['zh', '中文'], ['en', 'English'], ['vi', 'Tiếng Việt'], ['id', 'Bahasa Indonesia']]
+const emptyLangs = () => ({ zh: '', en: '', vi: '', id: '' })
+const emptyContact = () => ({ name: '', email: '', phone: '' })
 
 // 批次匯入的欄位定義：中文標題（Excel 表頭）↔ enroll_students 欄名；account 為對應鍵
 const IMPORT_COLS = [
@@ -159,10 +164,11 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
-  // ── 設定分頁：每步截止/承辦 + 步驟5行前須知 + LINE QR ─────────────────────────
+  // ── 設定分頁：每步截止日 + 承辦窗口（分校區） + 步驟5行前須知（校區×四語） + LINE QR ──
   const [cfgLoaded, setCfgLoaded] = useState(false)
-  const [rowForm, setRowForm] = useState({})   // { `${batch}-${step}`: {deadline, contact_name, contact_email, contact_phone} }
-  const [notice, setNotice] = useState({ 台北: '', 高雄: '' })
+  const [rowForm, setRowForm] = useState({})   // { `${batch}-${step}`: {deadline: 'YYYY-MM-DD'} }
+  const [notice, setNotice] = useState({ 台北: emptyLangs(), 高雄: emptyLangs() })
+  const [contacts, setContacts] = useState({ 台北: emptyContact(), 高雄: emptyContact() })
   const [qrForm, setQrForm] = useState({ 台北: '', 高雄: '' })
 
   const loadSettings = useCallback(async (password) => {
@@ -172,20 +178,26 @@ export default function OnboardAdminApp() {
       const res = await onboardAdminGetSettings(teacher.username, pp)
       const rows = res.settings || []
       const f = {}
-      for (const r of rows) {
-        f[`${r.batch}-${r.step}`] = {
-          deadline: isoToLocal(r.deadline),
-          contact_name: r.contact_name || '',
-          contact_email: r.contact_email || '',
-          contact_phone: r.contact_phone || '',
+      for (const r of rows) f[`${r.batch}-${r.step}`] = { deadline: isoToTpeDate(r.deadline) }
+      setRowForm(f)
+      // 行前須知以第一梯 step5 為準（兩梯共通儲存）。舊格式相容：
+      // 純字串 → 兩校區 zh；{台北:"字串"} → 該校區 zh；{台北:{zh,...}} → 原樣帶入
+      const n5 = rows.find((r) => String(r.batch) === '1' && Number(r.step) === 5)?.extra?.notice
+      const next = { 台北: emptyLangs(), 高雄: emptyLangs() }
+      if (typeof n5 === 'string') { next['台北'].zh = n5; next['高雄'].zh = n5 }
+      else if (n5 && typeof n5 === 'object') {
+        for (const c of CAMPUSES) {
+          const v = n5[c]
+          if (typeof v === 'string') next[c].zh = v
+          else if (v && typeof v === 'object') for (const [lk] of NOTICE_LANGS) next[c][lk] = v[lk] || ''
         }
       }
-      setRowForm(f)
-      // 行前須知以第一梯 step5 為準（兩梯共通儲存）；舊資料為字串時兩校區同值帶入
-      const n5 = rows.find((r) => String(r.batch) === '1' && Number(r.step) === 5)?.extra?.notice
-      if (typeof n5 === 'string') setNotice({ 台北: n5, 高雄: n5 })
-      else if (n5 && typeof n5 === 'object') setNotice({ 台北: n5['台北'] || '', 高雄: n5['高雄'] || '' })
-      else setNotice({ 台北: '', 高雄: '' })
+      setNotice(next)
+      // 承辦窗口以 enroll_config 為準（enroll_settings 的舊 contact_* 欄不搬、不再顯示）
+      setContacts({
+        台北: { ...emptyContact(), ...(res.contacts?.['台北'] || {}) },
+        高雄: { ...emptyContact(), ...(res.contacts?.['高雄'] || {}) },
+      })
       setQrForm({ 台北: res.line_qr?.['台北'] || '', 高雄: res.line_qr?.['高雄'] || '' })
       setCfgLoaded(true)
     } catch (e) { showToast('載入設定失敗：' + e.message, 'error') }
@@ -201,14 +213,20 @@ export default function OnboardAdminApp() {
     const f = rowForm[`${b}-${step}`] || {}
     setBusy(true)
     try {
-      await onboardAdminSaveSettings(teacher.username, pw, {
-        batch: b, step,
-        deadline: f.deadline ? new Date(f.deadline).toISOString() : null,
-        contact_name: (f.contact_name || '').trim() || null,
-        contact_email: (f.contact_email || '').trim() || null,
-        contact_phone: (f.contact_phone || '').trim() || null,
-      })
-      showToast(`已儲存 ${b === '1' ? '第一梯' : '第二梯'}「${ENROLL_STEPS[step - 1]?.zh}」設定`)
+      // deadline 傳日期字串（YYYY-MM-DD），由後端組成當日台北 23:59:59
+      await onboardAdminSaveSettings(teacher.username, pw, { batch: b, step, deadline: f.deadline || null })
+      showToast(`已儲存 ${b === '1' ? '第一梯' : '第二梯'}「${ENROLL_STEPS[step - 1]?.zh}」截止日`)
+      await loadSettings()
+    } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const saveContacts = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await onboardAdminSaveContacts(teacher.username, pw, contacts)
+      showToast('已儲存承辦窗口')
       await loadSettings()
     } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
     finally { setBusy(false) }
@@ -590,28 +608,28 @@ export default function OnboardAdminApp() {
         <Card><div style={{ padding: 28, textAlign: 'center', color: '#aaa' }}>{loading ? '載入設定中…' : '設定載入失敗，請按右上 ↻ 重試'}</div></Card>
       ) : (
         <>
-          {/* A. 每步設定：截止日 + 承辦資訊（依梯次分兩組） */}
+          {/* A. 每步截止日（依梯次分兩組；期限固定為當日台北 23:59） */}
           {['1', '2'].map((b) => (
             <Card key={b} style={{ marginBottom: 16 }}>
-              <CardHead left={`${b === '1' ? '第一梯' : '第二梯'}：各步驟截止時間與承辦資訊`} />
+              <CardHead left={`${b === '1' ? '第一梯' : '第二梯'}：各步驟截止日`}
+                right="期限為當日台北時間 23:59" />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ background: '#faf9f6' }}>
-                    {['步驟', '截止時間', '承辦人姓名', 'Email', '電話', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                    {['步驟', '截止日', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {ENROLL_STEPS.map((st) => {
                       const k = `${b}-${st.step}`
-                      const f = rowForm[k] || { deadline: '', contact_name: '', contact_email: '', contact_phone: '' }
-                      const upd = (key, v) => setRowForm((p) => ({ ...p, [k]: { ...f, [key]: v } }))
-                      const cell = { ...s.input, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }
+                      const f = rowForm[k] || { deadline: '' }
                       return (
                         <tr key={st.step}>
                           <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 500 }}>{'①②③④⑤'[st.step - 1]} {st.zh}</td>
-                          <td style={td}><input type="datetime-local" value={f.deadline} onChange={(e) => upd('deadline', e.target.value)} style={cell} /></td>
-                          <td style={td}><input value={f.contact_name} onChange={(e) => upd('contact_name', e.target.value)} style={{ ...cell, width: 110 }} /></td>
-                          <td style={td}><input value={f.contact_email} onChange={(e) => upd('contact_email', e.target.value)} style={{ ...cell, width: 190 }} /></td>
-                          <td style={td}><input value={f.contact_phone} onChange={(e) => upd('contact_phone', e.target.value)} style={{ ...cell, width: 130 }} /></td>
+                          <td style={td}>
+                            <input type="date" value={f.deadline}
+                              onChange={(e) => setRowForm((p) => ({ ...p, [k]: { deadline: e.target.value } }))}
+                              style={{ ...s.input, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }} />
+                          </td>
                           <td style={td}><button onClick={() => saveRow(b, st.step)} disabled={busy} style={{ ...s.btn, ...s.btnSm, background: ACCENT, color: '#fff', borderColor: ACCENT }}>儲存</button></td>
                         </tr>
                       )
@@ -622,20 +640,54 @@ export default function OnboardAdminApp() {
             </Card>
           ))}
 
-          {/* B. 步驟5 行前須知（分校區，兩梯次共通儲存） */}
+          {/* 承辦窗口：全域兩組、只分校區（存 enroll_config，不再逐步驟設定） */}
           <Card style={{ marginBottom: 16 }}>
-            <CardHead left="⑤ 行前須知（依校區顯示，兩梯次共通）" />
+            <CardHead left="承辦窗口（分校區，全部步驟共用）" />
             <div style={{ padding: '4px 2px' }}>
               <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
-                學生端「⑤ 行前通知」會依學生校區顯示對應內容；儲存時同步寫入第一、二梯的步驟5設定。
+                學生端各步驟顯示的聯絡窗口，依學生校區取對應一組（不分梯次、不分步驟）。
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                {CAMPUSES.map((c) => (
+                  <div key={c} style={{ flex: '1 1 280px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: ACCENT, marginBottom: 6 }}>{c}校區</div>
+                    {[['name', '承辦人姓名'], ['email', 'Email'], ['phone', '電話']].map(([fk, fl]) => (
+                      <div key={fk} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>{fl}</div>
+                        <input value={contacts[c][fk]}
+                          onChange={(e) => setContacts((p) => ({ ...p, [c]: { ...p[c], [fk]: e.target.value } }))}
+                          style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontSize: 13 }} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Btn variant="primary" disabled={busy} onClick={saveContacts}>儲存承辦窗口</Btn>
+              </div>
+            </div>
+          </Card>
+
+          {/* B. 步驟5 行前須知（校區 × 四語，兩梯次共通儲存） */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardHead left="⑤ 行前須知（校區 × 四語，兩梯次共通）" />
+            <div style={{ padding: '4px 2px' }}>
+              <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
+                學生端「⑤ 行前通知」依學生校區＋介面語言顯示對應內容（該語言留空時顯示中文）；
+                儲存時同步寫入第一、二梯的步驟5設定。
               </div>
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 {CAMPUSES.map((c) => (
                   <div key={c} style={{ flex: '1 1 320px' }}>
-                    <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{c}校區</div>
-                    <textarea rows={8} value={notice[c]}
-                      onChange={(e) => setNotice((p) => ({ ...p, [c]: e.target.value }))}
-                      style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, resize: 'vertical' }} />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: ACCENT, marginBottom: 6 }}>{c}校區</div>
+                    {NOTICE_LANGS.map(([lk, ll]) => (
+                      <div key={lk} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>{ll}</div>
+                        <textarea rows={5} value={notice[c][lk]}
+                          onChange={(e) => setNotice((p) => ({ ...p, [c]: { ...p[c], [lk]: e.target.value } }))}
+                          style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, resize: 'vertical' }} />
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>

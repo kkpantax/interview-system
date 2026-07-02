@@ -271,6 +271,27 @@ export default function OnboardApp({ token }) {
   const lineQr = typeof qrCfg === 'string' ? qrCfg.trim()
     : ((student.campus && qrCfg?.[student.campus]) || '').trim()
 
+  // 承辦窗口：讀 enroll_config.contacts（全域兩組、只分校區），依學生校區取；campus 未設定 → 台北
+  const contactsCfg = info.contacts || {}
+  const contact = (student.campus && contactsCfg[student.campus]) || contactsCfg['台北'] || {}
+  const hasContact = !!(contact.name || contact.email || contact.phone)
+
+  // 共用：期限 / 聯絡窗口小方塊（步驟2/3/4/5 共用）；期限只顯示日期（當日台北 23:59 到期）
+  const metaBox = (setting) => (setting?.deadline || hasContact) ? (
+    <div style={sectionBox}>
+      {setting?.deadline && <Row label={tr('deadline')} value={fmtDate(setting.deadline)} />}
+      {hasContact && (
+        <Row label={tr('contact')} value={
+          <span>
+            {contact.name || ''}
+            {contact.email && (<a href={`mailto:${contact.email}`} style={{ color: ACCENT, marginLeft: 6 }}>{contact.email}</a>)}
+            {contact.phone && <span style={{ marginLeft: 6 }}>{contact.phone}</span>}
+          </span>
+        } />
+      )}
+    </div>
+  ) : null
+
   const step1Form = (
     <div>
       <div style={{ ...sectionBox, marginTop: 14 }}>
@@ -352,38 +373,9 @@ export default function OnboardApp({ token }) {
       </div>
 
       {/* 期限 / 聯絡窗口 */}
-      {(currentSetting?.deadline || currentSetting?.contact_name || currentSetting?.contact_email) && (
-        <div style={sectionBox}>
-          {currentSetting?.deadline && <Row label={tr('deadline')} value={fmtDate(currentSetting.deadline)} />}
-          {(currentSetting?.contact_name || currentSetting?.contact_email) && (
-            <Row label={tr('contact')} value={
-              <span>
-                {currentSetting.contact_name || ''}
-                {currentSetting.contact_email && (
-                  <a href={`mailto:${currentSetting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{currentSetting.contact_email}</a>
-                )}
-              </span>
-            } />
-          )}
-        </div>
-      )}
+      {metaBox(currentSetting)}
     </div>
   )
-
-  // 共用：期限 / 聯絡窗口小方塊（步驟3/4/5 共用）
-  const metaBox = (setting) => (setting?.deadline || setting?.contact_name || setting?.contact_email) ? (
-    <div style={sectionBox}>
-      {setting?.deadline && <Row label={tr('deadline')} value={fmtDate(setting.deadline)} />}
-      {(setting?.contact_name || setting?.contact_email) && (
-        <Row label={tr('contact')} value={
-          <span>
-            {setting.contact_name || ''}
-            {setting.contact_email && (<a href={`mailto:${setting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{setting.contact_email}</a>)}
-          </span>
-        } />
-      )}
-    </div>
-  ) : null
 
   const bigBtn = (disabled) => ({ width: '100%', marginTop: 14, padding: '13px', borderRadius: 10, fontSize: 15, fontWeight: 700, fontFamily: 'inherit',
     border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', background: disabled ? '#e5e7eb' : ACCENT, color: disabled ? '#9ca3af' : 'white' })
@@ -463,11 +455,16 @@ export default function OnboardApp({ token }) {
     const ex = s5extra
     if (!ex) return ''
     if (typeof ex === 'string') return ex
-    // extra.notice 可為字串（通用）或 {台北,高雄}（分校區）；其餘鍵名為舊格式相容
+    // extra.notice 新格式：{台北:{zh,en,vi,id},高雄:{...}}；相容舊格式：字串（通用）或 {台北:"字串"}
     const n = ex.notice ?? ex.by_campus ?? ex.campus ?? ex.common ?? ex.text ?? ex.content ?? ''
     if (typeof n === 'string') return n
-    if (n && typeof n === 'object') return (student.campus && n[student.campus]) || n['台北'] || n['高雄'] || ''
-    return ''
+    if (!n || typeof n !== 'object') return ''
+    // 校區層：campus 未設定 → fallback 台北 → 高雄
+    const byCampus = (student.campus && n[student.campus]) || n['台北'] || n['高雄'] || ''
+    if (typeof byCampus === 'string') return byCampus
+    if (!byCampus || typeof byCampus !== 'object') return ''
+    // 語言層：當前語言留空 → fallback 中文
+    return byCampus[lang] || byCampus.zh || ''
   })()
   const hasCheckin = !!(student.dorm_room || student.dorm_bed || student.classroom)
   const step5Content = (
@@ -572,13 +569,14 @@ export default function OnboardApp({ token }) {
                   🚧 {tr('placeholder')}
                 </div>
                 {currentSetting?.deadline && <Row label={tr('deadline')} value={fmtDate(currentSetting.deadline)} />}
-                {(currentSetting?.contact_name || currentSetting?.contact_email) && (
+                {hasContact && (
                   <Row label={tr('contact')} value={
                     <span>
-                      {currentSetting.contact_name || ''}
-                      {currentSetting.contact_email && (
-                        <a href={`mailto:${currentSetting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{currentSetting.contact_email}</a>
+                      {contact.name || ''}
+                      {contact.email && (
+                        <a href={`mailto:${contact.email}`} style={{ color: ACCENT, marginLeft: 6 }}>{contact.email}</a>
                       )}
+                      {contact.phone && <span style={{ marginLeft: 6 }}>{contact.phone}</span>}
                     </span>
                   } />
                 )}

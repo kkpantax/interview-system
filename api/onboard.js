@@ -71,7 +71,7 @@ export default async function handler(req) {
         `${SUPABASE_URL}/rest/v1/enroll_files?account=eq.${encodeURIComponent(student.account)}&select=step,kind,drive_url,uploaded_at&order=uploaded_at.desc`,
         { headers: H },
       ),
-      fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=eq.line_qr&select=value&limit=1`, { headers: H }),
+      fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=in.(line_qr,contacts)&select=key,value`, { headers: H }),
     ])
     const sRows = sRes.ok ? await sRes.json() : []
     const settings = {}
@@ -92,11 +92,14 @@ export default async function handler(req) {
       nationality: app.nationality ?? student.nationality ?? '',
     }
 
-    // LINE 群組 QR（enroll_config，key='line_qr'，value = {台北,高雄} 或字串通用）
+    // 全域設定（enroll_config）：line_qr = {台北,高雄}；contacts = {台北:{name,email,phone},高雄:{...}}
     const cRows = cRes.ok ? await cRes.json() : []
-    const line_qr = (Array.isArray(cRows) && cRows[0]?.value) || {}
+    const cfg = {}
+    for (const r of Array.isArray(cRows) ? cRows : []) cfg[r.key] = r.value
+    const line_qr = cfg.line_qr || {}
+    const contacts = cfg.contacts || {}
 
-    return json({ ok: true, student, progress, settings, prefill, files, line_qr })
+    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts })
   }
 
   // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────
