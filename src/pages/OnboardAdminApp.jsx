@@ -4,7 +4,7 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
-  onboardAdminImportStudents } from '../api'
+  onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
 
@@ -148,6 +148,36 @@ export default function OnboardAdminApp() {
       await onboardAdminAbandon(teacher.username, pw, stu.account, reason.trim())
       showToast(`已將 ${stu.name || stu.account} 標記為放棄`)
       await load()
+    } catch (e) { showToast('操作失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  // ── 中文姓名更改待審（步驟1分頁內）─────────────────────────────────────────
+  const [nameReqs, setNameReqs] = useState([])
+  const loadNameReqs = useCallback(async (password) => {
+    try {
+      const res = await onboardAdminNameRequests(teacher.username, password ?? pw)
+      setNameReqs(res.list || [])
+    } catch (e) { showToast('載入更名申請失敗：' + e.message, 'error') }
+  }, [pw, teacher, showToast])
+
+  useEffect(() => { if (authed && tab === '1') loadNameReqs() }, [authed, tab, loadNameReqs])
+
+  const doNameReview = async (r, decision) => {
+    if (busy) return
+    let note = ''
+    if (decision === 'approve') {
+      if (!window.confirm(`核准更名「${r.old_name || '—'} → ${r.new_name}」？\n將直接更新學生（${r.account}）的中文姓名。`)) return
+    } else {
+      const v = window.prompt(`駁回「${r.old_name || '—'} → ${r.new_name}」的更名申請？\n可填寫備註（將記錄於申請，可留空）：`, '')
+      if (v === null) return   // 取消
+      note = v.trim()
+    }
+    setBusy(true)
+    try {
+      await onboardAdminNameReview(teacher.username, pw, { id: r.id, decision, note })
+      showToast(decision === 'approve' ? `已核准更名：${r.old_name || r.account} → ${r.new_name}` : '已駁回更名申請')
+      await Promise.all([loadNameReqs(), load()])   // 名單姓名可能已變，一併重抓
     } catch (e) { showToast('操作失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
@@ -399,10 +429,52 @@ export default function OnboardAdminApp() {
   const right = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {loading && <span style={{ fontSize: 12, color: '#fde7d4' }}>載入中…</span>}
-      <Btn style={headerBtn} disabled={busy} onClick={() => (tab === 'settings' ? loadSettings() : load())}>↻</Btn>
+      <Btn style={headerBtn} disabled={busy} onClick={() => { if (tab === 'settings') loadSettings(); else { load(); if (tab === '1') loadNameReqs() } }}>↻</Btn>
       <span style={{ fontSize: 12, color: '#fde7d4' }}>{teacher.display_name || teacher.username}</span>
       <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>
     </div>
+  )
+
+  // 中文姓名更改待審區塊（只出現在步驟1分頁；核准才真的改 enroll_students.name）
+  const nameReqBlock = (
+    <Card style={{ marginBottom: 16 }}>
+      <CardHead left={`中文姓名更改待審（${nameReqs.length}）`} />
+      {nameReqs.length ? (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: '#faf9f6' }}>
+              {['帳號', '原名 → 新名', '系所', '校區', '原因', '申請時間', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {nameReqs.map((r) => (
+                <tr key={r.id}>
+                  <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{r.account}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    <span style={{ color: '#888' }}>{r.old_name || '—'}</span>
+                    <span style={{ margin: '0 6px', color: '#bbb' }}>→</span>
+                    <b>{r.new_name}</b>
+                  </td>
+                  <td style={td}>{deptZhFull(r.department) || r.department || '—'}</td>
+                  <td style={td}>{r.campus || '—'}</td>
+                  <td style={{ ...td, color: '#666' }}>{r.reason || '—'}</td>
+                  <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => doNameReview(r, 'approve')} disabled={busy}
+                        style={{ ...s.btn, ...s.btnSm, background: '#15803d', color: '#fff', borderColor: '#15803d' }}>核准</button>
+                      <button onClick={() => doNameReview(r, 'reject')} disabled={busy}
+                        style={{ ...s.btn, ...s.btnSm, color: '#b91c1c', borderColor: '#fecaca' }}>駁回</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ padding: '12px 2px', fontSize: 13, color: '#aaa' }}>目前無待審的更名申請</div>
+      )}
+    </Card>
   )
 
   // 名單表（每個步驟分頁共用）
@@ -410,6 +482,7 @@ export default function OnboardAdminApp() {
     const rows = stuckAt(step)
     return (
       <>
+        {step === 1 && nameReqBlock}
         <StatStrip items={[
           { label: '待處理', value: countState(step, 'open'), color: '#7c2d12', bg: '#fff7ed', border: '#fed7aa' },
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },

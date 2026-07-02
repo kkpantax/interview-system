@@ -70,7 +70,7 @@ export default async function handler(req) {
     const student = await findStudent(token, H)
     if (!student) return json({ ok: false, error: '連結無效或已失效' }, 401)
 
-    const [progress, sRes, aRes, fRes, cRes] = await Promise.all([
+    const [progress, sRes, aRes, fRes, cRes, nRes] = await Promise.all([
       fetchProgress(student.account, H),
       fetch(
         `${SUPABASE_URL}/rest/v1/enroll_settings?batch=eq.${encodeURIComponent(student.batch ?? '')}&select=step,open,deadline,contact_name,contact_email,contact_phone,extra`,
@@ -85,6 +85,10 @@ export default async function handler(req) {
         { headers: H },
       ),
       fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=in.(line_qr,contacts)&select=key,value`, { headers: H }),
+      fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_name_requests?account=eq.${encodeURIComponent(student.account)}&status=eq.pending&select=new_name,created_at&limit=1`,
+        { headers: H },
+      ),
     ])
     const sRows = sRes.ok ? await sRes.json() : []
     const settings = {}
@@ -117,14 +121,18 @@ export default async function handler(req) {
     const line_qr = cfg.line_qr || {}
     const contacts = cfg.contacts || {}
 
-    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts })
+    // 待審核的更名申請（有的話前端顯示「審核中」並隱藏申請鈕）
+    const nRows = nRes.ok ? await nRes.json() : []
+    const name_request = (Array.isArray(nRows) && nRows[0]) || null
+
+    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request })
   }
 
   // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────
   if (req.method === 'POST') {
     let payload
     try { payload = await req.json() } catch { return json({ ok: false, error: '無效的請求內容' }, 400) }
-    const { token, step, data, line_joined, ack } = payload || {}
+    const { token, step, data, line_joined, ack, action } = payload || {}
     const stepN = Number(step)
 
     if (!token || typeof token !== 'string') return json({ ok: false, error: '缺少確認碼' }, 400)
@@ -138,6 +146,30 @@ export default async function handler(req) {
       method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
       body: JSON.stringify({ account: student.account, step: plStep, action, actor: 'student', payload: plPayload }),
     }).catch(() => { /* log 失敗不影響主流程 */ })
+
+    // ── 中文姓名更改申請（不動 enroll_students.name，待行政核准）──────────────────
+    if (action === 'name-change-request') {
+      const newName = String(payload.new_name ?? '').trim()
+      const reason = String(payload.reason ?? '').trim()
+      if (!newName || !reason) return json({ ok: false, error: '請填寫新姓名與更改原因' }, 400)
+
+      // 一個帳號同時只允許一筆 pending
+      const dupRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_name_requests?account=eq.${encodeURIComponent(student.account)}&status=eq.pending&select=id&limit=1`,
+        { headers: H },
+      )
+      const dup = dupRes.ok ? await dupRes.json() : []
+      if (Array.isArray(dup) && dup.length) return json({ ok: false, error: '已有一筆待審核的更名申請' }, 409)
+
+      const ins = await fetch(`${SUPABASE_URL}/rest/v1/enroll_name_requests`, {
+        method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ account: student.account, old_name: student.name ?? '', new_name: newName, reason, status: 'pending' }),
+      })
+      if (!ins.ok) return json({ ok: false, error: '申請失敗：' + (await ins.text()) }, 500)
+
+      await logRow('name_change_request', 1, { new_name: newName, reason })
+      return json({ ok: true })
+    }
 
     // ── 步驟1：資料確認（→ confirmed，並自動開步驟2）─────────────────────────
     if (stepN === 1) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { onboardInfo, onboardSubmit, onboardUpload } from '../api'
+import { onboardInfo, onboardSubmit, onboardUpload, onboardNameChangeRequest } from '../api'
 import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS, ONBOARD_STEP4_FIELDS } from '../constants'
 
 // 學生端「入學準備」落地頁。
@@ -40,6 +40,18 @@ const T = {
   s1ReqNote:      { zh: '* 為必填欄位', en: '* Required fields', vi: '* Mục bắt buộc', id: '* Wajib diisi' },
   noPassport:     { zh: '尚未辦理護照', en: 'I do not have a passport yet', vi: 'Tôi chưa làm hộ chiếu', id: 'Belum memiliki paspor' },
   natOtherPh:     { zh: '請輸入國籍', en: 'Please enter your nationality', vi: 'Vui lòng nhập quốc tịch', id: 'Silakan masukkan kewarganegaraan' },
+  // 中文姓名更改申請
+  ncBtn:     { zh: '申請更改', en: 'Request change', vi: 'Yêu cầu thay đổi', id: 'Ajukan perubahan' },
+  ncTitle:   { zh: '中文姓名更改申請', en: 'Chinese Name Change Request', vi: 'Yêu cầu thay đổi tên chữ Hán', id: 'Permintaan Perubahan Nama Mandarin' },
+  ncCurrent: { zh: '目前姓名', en: 'Current name', vi: 'Tên hiện tại', id: 'Nama saat ini' },
+  ncNewName: { zh: '新姓名', en: 'New name', vi: 'Tên mới', id: 'Nama baru' },
+  ncReason:  { zh: '更改原因', en: 'Reason', vi: 'Lý do', id: 'Alasan' },
+  ncSend:    { zh: '送出申請', en: 'Submit request', vi: 'Gửi yêu cầu', id: 'Kirim permintaan' },
+  ncCancel:  { zh: '取消', en: 'Cancel', vi: 'Hủy', id: 'Batal' },
+  ncPending: { zh: '更名審核中：{n}（待校方核准）', en: 'Name change under review: {n} (pending approval)', vi: 'Đang xét duyệt đổi tên: {n} (chờ nhà trường phê duyệt)', id: 'Perubahan nama sedang ditinjau: {n} (menunggu persetujuan)' },
+  ncMissing: { zh: '請填寫新姓名與更改原因', en: 'Please fill in the new name and reason.', vi: 'Vui lòng điền tên mới và lý do.', id: 'Mohon isi nama baru dan alasan.' },
+  ncDup:     { zh: '您已有一筆待審核的更名申請', en: 'You already have a pending name change request.', vi: 'Bạn đã có một yêu cầu đổi tên đang chờ duyệt.', id: 'Anda sudah memiliki permintaan perubahan nama yang tertunda.' },
+  ncDone:    { zh: '✓ 已送出更名申請，請等待校方審核。', en: '✓ Request submitted. Please wait for the university to review it.', vi: '✓ Đã gửi yêu cầu. Vui lòng chờ nhà trường xét duyệt.', id: '✓ Permintaan terkirim. Mohon tunggu peninjauan dari universitas.' },
   s1LineTitle:    { zh: '加入新生 LINE 群組', en: 'Join the LINE group for new students', vi: 'Tham gia nhóm LINE tân sinh viên', id: 'Gabung grup LINE mahasiswa baru' },
   s1LineHint:     { zh: '請掃描 QR Code 加入群組，重要通知將在群組發布。', en: 'Please scan the QR code to join. Important notices will be posted in the group.', vi: 'Vui lòng quét mã QR để tham gia. Các thông báo quan trọng sẽ được đăng trong nhóm.', id: 'Silakan pindai kode QR untuk bergabung. Pengumuman penting akan diposting di grup.' },
   s1LineNoQr:     { zh: 'QR Code 稍後提供', en: 'QR code will be provided later.', vi: 'Mã QR sẽ được cung cấp sau.', id: 'Kode QR akan tersedia nanti.' },
@@ -138,6 +150,8 @@ export default function OnboardApp({ token }) {
   const [lineJoined, setLineJoined] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)       // 步驟1剛送出成功
+  const [nameModal, setNameModal] = useState(false)
+  const [ncForm, setNcForm] = useState({ new_name: '', reason: '' })   // 更名申請 modal
   const langInited = useRef(false)
   const tr = (k, vars = {}) => Object.entries(vars).reduce((str, [kk, vv]) => str.split(`{${kk}}`).join(vv), T[k]?.[lang] || T[k]?.zh || k)
 
@@ -193,6 +207,20 @@ export default function OnboardApp({ token }) {
       await load()
     } catch (e) {
       alert(e.message)
+    } finally { setBusy(false) }
+  }
+
+  // 中文姓名更改申請（不動 name；插入 enroll_name_requests 待行政審核）
+  const submitNameChange = async () => {
+    if (!ncForm.new_name.trim() || !ncForm.reason.trim()) { alert(tr('ncMissing')); return }
+    setBusy(true)
+    try {
+      await onboardNameChangeRequest({ token, new_name: ncForm.new_name.trim(), reason: ncForm.reason.trim() })
+      setNameModal(false)
+      alert(tr('ncDone'))
+      await load()
+    } catch (e) {
+      alert(e.status === 409 ? tr('ncDup') : e.message)
     } finally { setBusy(false) }
   }
 
@@ -281,6 +309,31 @@ export default function OnboardApp({ token }) {
       </label>
     )
     const set = (k, v) => setForm((p) => ({ ...p, [k]: v }))
+    // 中文姓名：唯讀 + 「申請更改」鈕；已有 pending 申請時顯示審核中並隱藏鈕
+    if (f.key === 'name') {
+      const pendingReq = info?.name_request
+      return (
+        <div key={f.key} style={{ marginBottom: 10 }}>
+          {label}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input style={{ ...inputStyle, flex: 1, width: 'auto', background: '#f3f4f6', color: '#888' }}
+              value={form.name ?? ''} readOnly />
+            {!pendingReq && (
+              <button onClick={() => { setNcForm({ new_name: '', reason: '' }); setNameModal(true) }}
+                style={{ padding: '0 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit',
+                  cursor: 'pointer', border: '1px solid ' + ACCENT, background: 'white', color: ACCENT, whiteSpace: 'nowrap' }}>
+                {tr('ncBtn')}
+              </button>
+            )}
+          </div>
+          {pendingReq && (
+            <div style={{ fontSize: 12, color: '#b45309', marginTop: 4, lineHeight: 1.6 }}>
+              {tr('ncPending', { n: pendingReq.new_name })}
+            </div>
+          )}
+        </div>
+      )
+    }
     if (f.type === 'select') {
       return (
         <div key={f.key} style={{ marginBottom: 10 }}>
@@ -648,6 +701,44 @@ export default function OnboardApp({ token }) {
           <p style={{ fontSize: 11.5, color: '#bbb', textAlign: 'center', margin: '18px 0 0' }}>{tr('unit')}</p>
         </div>
       </div>
+
+      {/* 中文姓名更改申請 modal */}
+      {nameModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }}
+          onClick={() => !busy && setNameModal(false)}>
+          <div style={{ background: 'white', borderRadius: 14, maxWidth: 420, width: '100%', padding: 20, boxSizing: 'border-box' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: ACCENT, marginBottom: 12 }}>{tr('ncTitle')}</div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={labelStyle}>{tr('ncCurrent')}</label>
+              <input style={{ ...inputStyle, background: '#f3f4f6', color: '#888' }} value={form.name ?? ''} readOnly />
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={labelStyle}>{tr('ncNewName')}<span style={{ color: '#b91c1c' }}> *</span></label>
+              <input style={inputStyle} value={ncForm.new_name}
+                onChange={(e) => setNcForm((p) => ({ ...p, new_name: e.target.value }))} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>{tr('ncReason')}<span style={{ color: '#b91c1c' }}> *</span></label>
+              <textarea rows={3} style={{ ...inputStyle, resize: 'vertical' }} value={ncForm.reason}
+                onChange={(e) => setNcForm((p) => ({ ...p, reason: e.target.value }))} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setNameModal(false)} disabled={busy}
+                style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+                  border: '1px solid #ddd', background: 'white', color: '#666', cursor: 'pointer' }}>
+                {tr('ncCancel')}
+              </button>
+              <button onClick={submitNameChange} disabled={busy}
+                style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+                  border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                  background: busy ? '#e5e7eb' : ACCENT, color: busy ? '#9ca3af' : 'white' }}>
+                {busy ? tr('submitting') : tr('ncSend')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

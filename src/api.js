@@ -1235,6 +1235,24 @@ export async function onboardSubmit(payload) {
   if (!res.ok || data.ok === false) throw new Error(data.error || '入學準備服務請求失敗')
   return data
 }
+// 中文姓名更改申請（token-only；同帳號同時只允許一筆 pending）。
+// 錯誤帶 err.status 讓前端可分辨 409（已有待審申請）。
+export async function onboardNameChangeRequest(payload) {
+  const res = await fetch('/api/onboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'name-change-request', ...payload }),
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) {
+    const err = new Error(data.error || '入學準備服務請求失敗')
+    err.status = res.status
+    throw err
+  }
+  return data
+}
 // 上傳檔案到學生的 Drive 資料夾（走 /api/onboard-upload → Apps Script）。
 // 參數物件：{ token, step, kind, file }；file 為 <input type="file"> 的 File 物件，
 // kind 為檔案類別（如 'receipt'）。前端先擋 >10MB 與非 image/PDF 類型（真正上限由 Edge 再把關）。
@@ -1313,6 +1331,12 @@ export const onboardAdminSaveContacts = (username, password, value) =>
 // fields 只含有值欄＝空欄不覆蓋）；回 { updated, skipped }
 export const onboardAdminImportStudents = (username, password, rows) =>
   onboardAdminPost({ action: 'import-students', username, password, rows })
+// pending 更名申請清單（含系所/校區）
+export const onboardAdminNameRequests = (username, password) =>
+  onboardAdminPost({ action: 'name-requests', username, password })
+// 審核更名申請（payload = { id, decision: 'approve'|'reject', note? }；approve 才真的改 name）
+export const onboardAdminNameReview = (username, password, payload) =>
+  onboardAdminPost({ action: 'name-review', username, password, ...payload })
 
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {

@@ -17,6 +17,9 @@
 //   - save-line-qr：{value: {台北, 高雄}} → 更新 enroll_config key='line_qr'；log config_save。
 //   - import-students：{rows: [{account, fields:{student_id?,dorm_room?,dorm_bed?,classroom?}}]}
 //     → 逐筆 PATCH enroll_students（以 account 對應，只更新收到的欄＝空欄不覆蓋）；log import。
+//   - name-requests：回 pending 更名申請（join enroll_students 帶系所/校區）。
+//   - name-review：{id, decision:'approve'|'reject', note?} → approve 才真的改 enroll_students.name；
+//     兩者皆寫 reviewed_by/at（reject 另存 review_note）；log name_review。
 // 總覽漏斗統計由前端就地從 list 推導（比照 Stage4App 的 client-side 統計慣例）。
 export const config = { runtime: 'edge' }
 
@@ -283,6 +286,67 @@ export default async function handler(req) {
     }
     await logRow(null, null, 'import', { updated, skipped_accounts: skipped })
     return json({ ok: true, updated, skipped })
+  }
+
+  // ── name-requests：pending 更名申請清單（join enroll_students 帶系所/校區）─────
+  if (action === 'name-requests') {
+    const rRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_name_requests?status=eq.pending&select=id,account,old_name,new_name,reason,created_at&order=created_at.asc`,
+      { headers: H },
+    )
+    if (!rRes.ok) return json({ ok: false, error: '查詢更名申請失敗' }, 500)
+    const reqs = await rRes.json()
+    const accts = [...new Set((Array.isArray(reqs) ? reqs : []).map((r) => r.account))]
+    const stuMap = {}
+    if (accts.length) {
+      const sRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_students?account=in.(${encodeURIComponent(accts.join(','))})&select=account,name,department,campus`,
+        { headers: H },
+      )
+      const sRows = sRes.ok ? await sRes.json() : []
+      for (const st of Array.isArray(sRows) ? sRows : []) stuMap[st.account] = st
+    }
+    const list = (Array.isArray(reqs) ? reqs : []).map((r) => ({
+      ...r,
+      name: stuMap[r.account]?.name ?? r.old_name,
+      department: stuMap[r.account]?.department ?? '',
+      campus: stuMap[r.account]?.campus ?? '',
+    }))
+    return json({ ok: true, list })
+  }
+
+  // ── name-review：核准/駁回更名申請；核准才真的改 enroll_students.name ──────────
+  if (action === 'name-review') {
+    const { id, decision } = body
+    const note = String(body.note ?? '').trim()
+    if (!id || !['approve', 'reject'].includes(decision)) return json({ ok: false, error: '參數錯誤' }, 400)
+
+    const rRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_name_requests?id=eq.${encodeURIComponent(id)}&select=id,account,old_name,new_name,status&limit=1`,
+      { headers: H },
+    )
+    const rRows = rRes.ok ? await rRes.json() : []
+    const reqRow = (Array.isArray(rRows) && rRows[0]) || null
+    if (!reqRow) return json({ ok: false, error: '找不到這筆更名申請' }, 404)
+    if (reqRow.status !== 'pending') return json({ ok: false, error: '這筆申請已處理過' }, 409)
+
+    if (decision === 'approve') {
+      // 先改學生姓名、成功才標記 approved（失敗時申請仍保持 pending，可重試）
+      const upS = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(reqRow.account)}`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ name: reqRow.new_name }) },
+      )
+      if (!upS.ok) return json({ ok: false, error: '更新學生姓名失敗：' + (await upS.text()) }, 500)
+    }
+    const upR = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_name_requests?id=eq.${encodeURIComponent(id)}`,
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: decision === 'approve' ? 'approved' : 'rejected', reviewed_by: username, reviewed_at: nowIso, review_note: note || null }) },
+    )
+    if (!upR.ok) return json({ ok: false, error: '更新申請狀態失敗：' + (await upR.text()) }, 500)
+
+    await logRow(reqRow.account, null, 'name_review', { id, action: decision })
+    return json({ ok: true })
   }
 
   return json({ ok: false, error: '未知的操作' }, 400)
