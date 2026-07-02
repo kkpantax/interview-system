@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { onboardInfo, onboardSubmit, onboardUpload } from '../api'
-import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS } from '../constants'
+import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS, ONBOARD_STEP4_FIELDS } from '../constants'
 
 // 學生端「入學準備」落地頁。
 // Phase 1：token landing + 五步進度條（唯讀）。
@@ -61,6 +61,22 @@ const T = {
   s2ReceiptHint:  { zh: '完成匯款後，請上傳銀行匯款收據或繳費證明（JPG／PNG／PDF）。', en: 'After payment, please upload your bank transfer receipt or proof of payment (JPG/PNG/PDF).', vi: 'Sau khi chuyển khoản, vui lòng tải lên biên lai chuyển khoản ngân hàng hoặc chứng từ nộp tiền (JPG/PNG/PDF).', id: 'Setelah membayar, unggah bukti transfer bank atau bukti pembayaran (JPG/PNG/PDF).' },
   s2Submitted:    { zh: '✓ 已收到您的繳費收據，待本校審核確認。', en: '✓ Your receipt has been received and is under review.', vi: '✓ Đã nhận được biên lai của bạn, đang chờ nhà trường xác nhận.', id: '✓ Bukti Anda telah diterima dan sedang ditinjau.' },
   s2Uploaded:     { zh: '已上傳', en: 'Uploaded', vi: 'Đã tải lên', id: 'Terunggah' },
+  // 步驟3 簽證
+  s3Title:     { zh: '上傳簽證', en: 'Upload Visa', vi: 'Tải lên thị thực', id: 'Unggah Visa' },
+  s3Hint:      { zh: '取得學生簽證後，請上傳簽證頁掃描或清晰照片（JPG／PNG／PDF）。', en: 'After obtaining your student visa, please upload a scan or clear photo of the visa page (JPG/PNG/PDF).', vi: 'Sau khi có thị thực du học, vui lòng tải lên bản quét hoặc ảnh rõ nét trang thị thực (JPG/PNG/PDF).', id: 'Setelah memperoleh visa pelajar, unggah pindaian atau foto jelas halaman visa (JPG/PNG/PDF).' },
+  s3Submitted: { zh: '✓ 已收到您的簽證檔案，待本校審核確認。', en: '✓ Your visa file has been received and is under review.', vi: '✓ Đã nhận được tệp thị thực của bạn, đang chờ nhà trường xác nhận.', id: '✓ Berkas visa Anda telah diterima dan sedang ditinjau.' },
+  // 步驟4 來台時間
+  s4Title:     { zh: '來台航班資訊', en: 'Arrival Flight Information', vi: 'Thông tin chuyến bay đến', id: 'Informasi Penerbangan Kedatangan' },
+  s4Yes:       { zh: '需要', en: 'Yes', vi: 'Có', id: 'Ya' },
+  s4No:        { zh: '不需要', en: 'No', vi: 'Không', id: 'Tidak' },
+  // 步驟5 行前通知
+  s5NoticeTitle: { zh: '行前須知', en: 'Pre-departure Notice', vi: 'Lưu ý trước khi khởi hành', id: 'Panduan Pra-keberangkatan' },
+  s5InfoTitle:   { zh: '個人報到資訊', en: 'Your Check-in Information', vi: 'Thông tin nhập học của bạn', id: 'Informasi Registrasi Anda' },
+  s5Dorm:        { zh: '宿舍房號', en: 'Dorm Room', vi: 'Phòng ký túc xá', id: 'Kamar Asrama' },
+  s5Bed:         { zh: '床位', en: 'Bed', vi: 'Giường', id: 'Tempat Tidur' },
+  s5Classroom:   { zh: '上課教室', en: 'Classroom', vi: 'Phòng học', id: 'Ruang Kelas' },
+  s5Pending:     { zh: '宿舍與教室資訊尚未公佈，請稍後再回來查看。', en: 'Dormitory and classroom information has not been announced yet. Please check back later.', vi: 'Thông tin ký túc xá và phòng học chưa được công bố. Vui lòng quay lại sau.', id: 'Informasi asrama dan ruang kelas belum diumumkan. Silakan periksa kembali nanti.' },
+  s5Ack:         { zh: '我已閱讀，確認知悉', en: 'I have read and acknowledge', vi: 'Tôi đã đọc và xác nhận', id: 'Saya telah membaca dan memahami' },
 }
 
 const CAMPUS_I18N = {
@@ -116,6 +132,7 @@ export default function OnboardApp({ token }) {
   const [lang, setLang] = useState('zh')
   const [info, setInfo] = useState(undefined)   // undefined=載入中, null=無效
   const [form, setForm] = useState({})
+  const [form4, setForm4] = useState({})
   const [lineJoined, setLineJoined] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)       // 步驟1剛送出成功
@@ -135,6 +152,8 @@ export default function OnboardApp({ token }) {
       const saved = res.progress?.[1]?.data || {}
       setForm({ ...(res.prefill || {}), ...saved })
       if (saved.line_joined) setLineJoined(true)
+      // 步驟4表單回填（若曾送出過）
+      setForm4(res.progress?.[4]?.data || {})
     } catch {
       setInfo(null)
     }
@@ -153,6 +172,33 @@ export default function OnboardApp({ token }) {
     try {
       await onboardSubmit({ token, step: 1, data: form, line_joined: lineJoined })
       setDone(true)
+      await load()
+    } catch (e) {
+      alert(e.message)
+    } finally { setBusy(false) }
+  }
+
+  const submitStep4 = async () => {
+    const missing = ONBOARD_STEP4_FIELDS.filter((f) => f.req && (
+      f.type === 'bool' ? typeof form4[f.key] !== 'boolean' : !String(form4[f.key] || '').trim()
+    ))
+    if (missing.length) {
+      alert(tr('s1Missing') + missing.map((f) => f[lang] || f.zh).join('、'))
+      return
+    }
+    setBusy(true)
+    try {
+      await onboardSubmit({ token, step: 4, data: form4 })
+      await load()
+    } catch (e) {
+      alert(e.message)
+    } finally { setBusy(false) }
+  }
+
+  const submitStep5 = async () => {
+    setBusy(true)
+    try {
+      await onboardSubmit({ token, step: 5, ack: true })
       await load()
     } catch (e) {
       alert(e.message)
@@ -321,6 +367,131 @@ export default function OnboardApp({ token }) {
     </div>
   )
 
+  // 共用：期限 / 聯絡窗口小方塊（步驟3/4/5 共用）
+  const metaBox = (setting) => (setting?.deadline || setting?.contact_name || setting?.contact_email) ? (
+    <div style={sectionBox}>
+      {setting?.deadline && <Row label={tr('deadline')} value={fmtDate(setting.deadline)} />}
+      {(setting?.contact_name || setting?.contact_email) && (
+        <Row label={tr('contact')} value={
+          <span>
+            {setting.contact_name || ''}
+            {setting.contact_email && (<a href={`mailto:${setting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{setting.contact_email}</a>)}
+          </span>
+        } />
+      )}
+    </div>
+  ) : null
+
+  const bigBtn = (disabled) => ({ width: '100%', marginTop: 14, padding: '13px', borderRadius: 10, fontSize: 15, fontWeight: 700, fontFamily: 'inherit',
+    border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', background: disabled ? '#e5e7eb' : ACCENT, color: disabled ? '#9ca3af' : 'white' })
+
+  // ── 步驟3：簽證上傳 ──────────────────────────────────────────────────────────
+  const visaFiles = (info.files || []).filter((f) => f.step === 3 && f.kind === 'visa')
+  const step3Content = (
+    <div>
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s3Title')}</div>
+        <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>{tr('s3Hint')}</div>
+        {states[3] === 'submitted' && (
+          <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#b45309', marginBottom: 10, lineHeight: 1.6 }}>
+            {tr('s3Submitted')}
+          </div>
+        )}
+        {visaFiles.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            {visaFiles.map((f, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, padding: '4px 0', color: '#555' }}>
+                <span>{tr('s2Uploaded')} · {fmtDate(f.uploaded_at)}</span>
+                {f.drive_url && <a href={f.drive_url} target="_blank" rel="noreferrer" style={{ color: ACCENT, flexShrink: 0 }}>{tr('uView')}</a>}
+              </div>
+            ))}
+          </div>
+        )}
+        <FileUpload token={token} step={3} kind="visa" tr={tr} onDone={onUploadDone} />
+      </div>
+      {metaBox(currentSetting)}
+    </div>
+  )
+
+  // ── 步驟4：來台時間 ──────────────────────────────────────────────────────────
+  const field4 = (f) => {
+    if (f.type === 'bool') {
+      return (
+        <div key={f.key} style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>{f[lang] || f.zh}{f.req && <span style={{ color: '#b91c1c' }}> *</span>}</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[true, false].map((val) => {
+              const on = form4[f.key] === val
+              return (
+                <button key={String(val)} onClick={() => setForm4((p) => ({ ...p, [f.key]: val }))}
+                  style={{ flex: 1, padding: '9px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                    border: '1px solid ' + (on ? ACCENT : '#ddd'), background: on ? ACCENT : 'white', color: on ? '#fff' : '#666' }}>
+                  {val ? tr('s4Yes') : tr('s4No')}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+    const inputType = f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : 'text'
+    return (
+      <div key={f.key} style={{ marginBottom: 10 }}>
+        <label style={labelStyle}>{f[lang] || f.zh}{f.req && <span style={{ color: '#b91c1c' }}> *</span>}</label>
+        <input type={inputType} style={inputStyle} value={form4[f.key] ?? ''} onChange={(e) => setForm4((p) => ({ ...p, [f.key]: e.target.value }))} />
+      </div>
+    )
+  }
+  const step4Content = (
+    <div>
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s4Title')}</div>
+        <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 8 }}>{tr('s1ReqNote')}</div>
+        {ONBOARD_STEP4_FIELDS.map(field4)}
+      </div>
+      {metaBox(currentSetting)}
+      <button onClick={submitStep4} disabled={busy} style={bigBtn(busy)}>{busy ? tr('submitting') : tr('s1Submit')}</button>
+    </div>
+  )
+
+  // ── 步驟5：行前通知 ──────────────────────────────────────────────────────────
+  const s5extra = info.settings?.[5]?.extra
+  const noticeText = (() => {
+    const ex = s5extra
+    if (!ex) return ''
+    if (typeof ex === 'string') return ex
+    const byCampus = ex.by_campus || ex.campus || null
+    if (byCampus && student.campus && byCampus[student.campus]) return byCampus[student.campus]
+    return ex.common || ex.notice || ex.text || ex.content || ''
+  })()
+  const hasCheckin = !!(student.dorm_room || student.dorm_bed || student.classroom)
+  const step5Content = (
+    <div>
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s5NoticeTitle')}</div>
+        <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, color: '#555', lineHeight: 1.8, padding: '4px 0' }}>
+          {noticeText || tr('placeholder')}
+        </div>
+      </div>
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s5InfoTitle')}</div>
+        {hasCheckin ? (
+          <>
+            <Row label={tr('s5Dorm')} value={student.dorm_room || '—'} />
+            <Row label={tr('s5Bed')} value={student.dorm_bed || '—'} />
+            <Row label={tr('s5Classroom')} value={student.classroom || '—'} />
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: '#888', lineHeight: 1.7, padding: '6px 0' }}>{tr('s5Pending')}</div>
+        )}
+      </div>
+      {metaBox(currentSetting)}
+      <button onClick={submitStep5} disabled={!hasCheckin || busy} style={bigBtn(!hasCheckin || busy)}>
+        {busy ? tr('submitting') : tr('s5Ack')}
+      </button>
+    </div>
+  )
+
   return (
     <div style={wrap}>
       {langBar}
@@ -383,6 +554,12 @@ export default function OnboardApp({ token }) {
               step1Form
             ) : currentStep.step === 2 && (states[2] === 'open' || states[2] === 'submitted') ? (
               step2Content
+            ) : currentStep.step === 3 && (states[3] === 'open' || states[3] === 'submitted') ? (
+              step3Content
+            ) : currentStep.step === 4 && states[4] === 'open' ? (
+              step4Content
+            ) : currentStep.step === 5 && states[5] === 'open' ? (
+              step5Content
             ) : (
               <div style={sectionBox}>
                 <div style={sectionTitle}>{currentStep[lang] || currentStep.zh} · {tr(STATE_LABEL_KEY[states[currentStep.step]])}</div>

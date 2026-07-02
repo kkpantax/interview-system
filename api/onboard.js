@@ -22,7 +22,7 @@ const STEP1_KEYS = [
 
 // 依 token 撈學生（只取安全欄位）；查無回 null
 async function findStudent(token, H) {
-  const sel = 'select=account,name,name_en,department,campus,batch,nationality,status'
+  const sel = 'select=account,name,name_en,department,campus,batch,nationality,status,dorm_room,dorm_bed,classroom'
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/enroll_students?confirm_token=eq.${encodeURIComponent(token)}&${sel}&limit=1`,
     { headers: H },
@@ -94,76 +94,139 @@ export default async function handler(req) {
     return json({ ok: true, student, progress, settings, prefill, files })
   }
 
-  // ── POST：送出步驟表單（目前只開放 step 1，server 權威驗證）─────────────────
+  // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────
   if (req.method === 'POST') {
     let payload
     try { payload = await req.json() } catch { return json({ ok: false, error: '無效的請求內容' }, 400) }
-    const { token, step, data, line_joined } = payload || {}
+    const { token, step, data, line_joined, ack } = payload || {}
+    const stepN = Number(step)
 
     if (!token || typeof token !== 'string') return json({ ok: false, error: '缺少確認碼' }, 400)
-    if (Number(step) !== 1) return json({ ok: false, error: '此步驟尚未開放送出' }, 400)
-    if (line_joined !== true) return json({ ok: false, error: '請先加入 LINE 群組並勾選確認' }, 400)
 
     const student = await findStudent(token, H)
     if (!student) return json({ ok: false, error: '連結無效或已失效' }, 401)
 
-    // 只收白名單欄位、一律轉字串修剪
-    const clean = {}
-    for (const k of STEP1_KEYS) {
-      if (data && data[k] != null) clean[k] = String(data[k]).trim()
-    }
-    clean.line_joined = true
-
     const nowIso = new Date().toISOString()
     const upsertH = { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' }
+    const logRow = (action, plStep, plPayload) => fetch(`${SUPABASE_URL}/rest/v1/enroll_log`, {
+      method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+      body: JSON.stringify({ account: student.account, step: plStep, action, actor: 'student', payload: plPayload }),
+    }).catch(() => { /* log 失敗不影響主流程 */ })
 
-    // 1) 步驟1 → confirmed（免行政確認），保存表單內容
-    const up1 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
-      method: 'POST',
-      headers: upsertH,
-      body: JSON.stringify({
-        account: student.account, step: 1, state: 'confirmed',
-        data: clean, submitted_at: nowIso, confirmed_at: nowIso,
-      }),
-    })
-    if (!up1.ok) return json({ ok: false, error: '寫入失敗：' + (await up1.text()) }, 500)
+    // ── 步驟1：資料確認（→ confirmed，並自動開步驟2）─────────────────────────
+    if (stepN === 1) {
+      if (line_joined !== true) return json({ ok: false, error: '請先加入 LINE 群組並勾選確認' }, 400)
 
-    // 2) 步驟2 → open（自動進下一步；已是 submitted/confirmed 則不動，避免倒退）
-    const before = await fetchProgress(student.account, H)
-    const s2 = before[2]?.state
-    if (!s2 || s2 === 'locked' || s2 === 'open') {
-      const up2 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
+      // 只收白名單欄位、一律轉字串修剪
+      const clean = {}
+      for (const k of STEP1_KEYS) {
+        if (data && data[k] != null) clean[k] = String(data[k]).trim()
+      }
+      clean.line_joined = true
+
+      // 1) 步驟1 → confirmed（免行政確認），保存表單內容
+      const up1 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
         method: 'POST',
         headers: upsertH,
-        body: JSON.stringify({ account: student.account, step: 2, state: 'open' }),
+        body: JSON.stringify({
+          account: student.account, step: 1, state: 'confirmed',
+          data: clean, submitted_at: nowIso, confirmed_at: nowIso,
+        }),
       })
-      if (!up2.ok) return json({ ok: false, error: '寫入失敗：' + (await up2.text()) }, 500)
+      if (!up1.ok) return json({ ok: false, error: '寫入失敗：' + (await up1.text()) }, 500)
+
+      // 2) 步驟2 → open（自動進下一步；已是 submitted/confirmed 則不動，避免倒退）
+      const before = await fetchProgress(student.account, H)
+      const s2 = before[2]?.state
+      if (!s2 || s2 === 'locked' || s2 === 'open') {
+        const up2 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
+          method: 'POST',
+          headers: upsertH,
+          body: JSON.stringify({ account: student.account, step: 2, state: 'open' }),
+        })
+        if (!up2.ok) return json({ ok: false, error: '寫入失敗：' + (await up2.text()) }, 500)
+      }
+
+      // 3) 英文姓名同步回 enroll_students（失敗不阻斷）
+      if (clean.name_en) {
+        try {
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(student.account)}`,
+            { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ name_en: clean.name_en }) },
+          )
+        } catch { /* 同步失敗不影響主流程 */ }
+      }
+
+      await logRow('step1_submit', 1, clean)
+      const progress = await fetchProgress(student.account, H)
+      return json({ ok: true, progress })
     }
 
-    // 3) 英文姓名同步回 enroll_students（失敗不阻斷）
-    if (clean.name_en) {
+    // ── 步驟4：來台時間（→ confirmed 免行政確認，並自動開步驟5）──────────────────
+    if (stepN === 4) {
+      // 白名單：字串欄位轉字串修剪；need_pickup 一律轉布林
+      const clean = {}
+      for (const k of ['flight_no', 'arrival_date', 'arrival_time', 'note']) {
+        if (data && data[k] != null) clean[k] = String(data[k]).trim()
+      }
+      clean.need_pickup = data?.need_pickup === true || data?.need_pickup === 'true'
+
+      const up4 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
+        method: 'POST',
+        headers: upsertH,
+        body: JSON.stringify({
+          account: student.account, step: 4, state: 'confirmed',
+          data: clean, submitted_at: nowIso, confirmed_at: nowIso,
+        }),
+      })
+      if (!up4.ok) return json({ ok: false, error: '寫入失敗：' + (await up4.text()) }, 500)
+
+      // 步驟5 → open（已是 submitted/confirmed 則不動）
+      const before = await fetchProgress(student.account, H)
+      const s5 = before[5]?.state
+      if (!s5 || s5 === 'locked' || s5 === 'open') {
+        const up5 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
+          method: 'POST',
+          headers: upsertH,
+          body: JSON.stringify({ account: student.account, step: 5, state: 'open' }),
+        })
+        if (!up5.ok) return json({ ok: false, error: '寫入失敗：' + (await up5.text()) }, 500)
+      }
+
+      await logRow('step4_submit', 4, clean)
+      const progress = await fetchProgress(student.account, H)
+      return json({ ok: true, progress })
+    }
+
+    // ── 步驟5：行前通知已閱讀（→ confirmed，並把學生 status 標為 completed）──────────
+    if (stepN === 5) {
+      if (ack !== true) return json({ ok: false, error: '請先閱讀並勾選確認知悉' }, 400)
+
+      const up = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
+        method: 'POST',
+        headers: upsertH,
+        body: JSON.stringify({
+          account: student.account, step: 5, state: 'confirmed',
+          submitted_at: nowIso, confirmed_at: nowIso,
+        }),
+      })
+      if (!up.ok) return json({ ok: false, error: '寫入失敗：' + (await up.text()) }, 500)
+
+      // 全流程完成 → enroll_students.status = 'completed'（失敗不阻斷）
       try {
         await fetch(
           `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(student.account)}`,
-          { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ name_en: clean.name_en }) },
+          { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) },
         )
-      } catch { /* 同步失敗不影響主流程 */ }
+      } catch { /* 標記失敗不影響主流程 */ }
+
+      await logRow('step5_ack', 5, { ack: true })
+      const progress = await fetchProgress(student.account, H)
+      return json({ ok: true, progress })
     }
 
-    // 4) 稽核軌跡（失敗不阻斷）
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/enroll_log`, {
-        method: 'POST',
-        headers: { ...H, Prefer: 'return=minimal' },
-        body: JSON.stringify({
-          account: student.account, step: 1, action: 'step1_submit', actor: 'student', payload: clean,
-        }),
-      })
-    } catch { /* log 失敗不影響主流程 */ }
-
-    // 回更新後的五步 state
-    const progress = await fetchProgress(student.account, H)
-    return json({ ok: true, progress })
+    // 其餘步驟（2 繳費 / 3 簽證）走檔案上傳端點，不經此 POST
+    return json({ ok: false, error: '此步驟尚未開放送出' }, 400)
   }
 
   return json({ ok: false, error: 'Method not allowed' }, 405)

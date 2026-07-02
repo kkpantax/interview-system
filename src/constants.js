@@ -251,3 +251,13 @@ export const ONBOARD_STEP1_FIELDS = {
     { key: 'grad_year',       zh: '畢業年度',   en: 'Year of Graduation',        vi: 'Năm tốt nghiệp',              id: 'Tahun Lulus',                req: true },
   ],
 }
+
+// ── 入學準備 · 步驟4「來台時間」表單欄位 ──────────────────────────────────────
+// type: 'date' / 'time' 走 <input type>；'bool' 用是/否選項；其餘純文字。req 為必填。
+export const ONBOARD_STEP4_FIELDS = [
+  { key: 'flight_no',    zh: '航班編號',       en: 'Flight No.',           vi: 'Số hiệu chuyến bay',    id: 'Nomor Penerbangan',        req: true },
+  { key: 'arrival_date', zh: '抵台日期',       en: 'Arrival Date',         vi: 'Ngày đến Đài Loan',     id: 'Tanggal Tiba',   type: 'date', req: true },
+  { key: 'arrival_time', zh: '抵台時間',       en: 'Arrival Time',         vi: 'Giờ đến',               id: 'Waktu Tiba',     type: 'time', req: true },
+  { key: 'need_pickup',  zh: '是否需要接機',   en: 'Need airport pickup?', vi: 'Cần đón tại sân bay?',  id: 'Perlu penjemputan?', type: 'bool', req: true },
+  { key: 'note',         zh: '備註（選填）',   en: 'Notes (optional)',     vi: 'Ghi chú (tùy chọn)',    id: 'Catatan (opsional)' },
+]
