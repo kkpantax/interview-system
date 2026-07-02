@@ -770,6 +770,8 @@ export default function Stage4App() {
             ✉ 寄送預錄取意願調查{notifyList.length ? `（未回應 ${notifyList.length}）` : ''}
           </Btn>
         )}
+        {/* 轉報入口（原 StageNav 的 ↻轉報 pill 移入此處） */}
+        <Btn style={{ marginLeft: 8 }} onClick={() => { window.location.hash = '#/transfers' }}>🔄 轉報</Btn>
         {tab === 'declined' && (
           <Btn variant="primary" style={{ marginLeft: 8 }} disabled={busy || !declinedItems.some((it) => it.email)}
             onClick={() => openMail(declinedItems.filter((it) => it.email).map((it) => it._raw), 's4_admit_declined')}>
