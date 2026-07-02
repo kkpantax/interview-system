@@ -265,8 +265,11 @@ export default function OnboardApp({ token }) {
     </div>
   )
 
-  const step1Setting = info.settings?.[1]
-  const lineQr = step1Setting?.extra?.line_qr_url
+  // LINE 群組 QR：讀 enroll_config.line_qr（{台北,高雄} 分校區或字串通用），依學生校區取對應網址；
+  // 校區未設定或該校區無 QR 時顯示「稍後提供」佔位，不擋送出
+  const qrCfg = info.line_qr
+  const lineQr = typeof qrCfg === 'string' ? qrCfg.trim()
+    : ((student.campus && qrCfg?.[student.campus]) || '').trim()
 
   const step1Form = (
     <div>
@@ -460,9 +463,11 @@ export default function OnboardApp({ token }) {
     const ex = s5extra
     if (!ex) return ''
     if (typeof ex === 'string') return ex
-    const byCampus = ex.by_campus || ex.campus || null
-    if (byCampus && student.campus && byCampus[student.campus]) return byCampus[student.campus]
-    return ex.common || ex.notice || ex.text || ex.content || ''
+    // extra.notice 可為字串（通用）或 {台北,高雄}（分校區）；其餘鍵名為舊格式相容
+    const n = ex.notice ?? ex.by_campus ?? ex.campus ?? ex.common ?? ex.text ?? ex.content ?? ''
+    if (typeof n === 'string') return n
+    if (n && typeof n === 'object') return (student.campus && n[student.campus]) || n['台北'] || n['高雄'] || ''
+    return ''
   })()
   const hasCheckin = !!(student.dorm_room || student.dorm_bed || student.classroom)
   const step5Content = (

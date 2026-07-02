@@ -57,7 +57,7 @@ export default async function handler(req) {
     const student = await findStudent(token, H)
     if (!student) return json({ ok: false, error: '連結無效或已失效' }, 401)
 
-    const [progress, sRes, aRes, fRes] = await Promise.all([
+    const [progress, sRes, aRes, fRes, cRes] = await Promise.all([
       fetchProgress(student.account, H),
       fetch(
         `${SUPABASE_URL}/rest/v1/enroll_settings?batch=eq.${encodeURIComponent(student.batch ?? '')}&select=step,open,deadline,contact_name,contact_email,contact_phone,extra`,
@@ -71,6 +71,7 @@ export default async function handler(req) {
         `${SUPABASE_URL}/rest/v1/enroll_files?account=eq.${encodeURIComponent(student.account)}&select=step,kind,drive_url,uploaded_at&order=uploaded_at.desc`,
         { headers: H },
       ),
+      fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=eq.line_qr&select=value&limit=1`, { headers: H }),
     ])
     const sRows = sRes.ok ? await sRes.json() : []
     const settings = {}
@@ -91,7 +92,11 @@ export default async function handler(req) {
       nationality: app.nationality ?? student.nationality ?? '',
     }
 
-    return json({ ok: true, student, progress, settings, prefill, files })
+    // LINE 群組 QR（enroll_config，key='line_qr'，value = {台北,高雄} 或字串通用）
+    const cRows = cRes.ok ? await cRes.json() : []
+    const line_qr = (Array.isArray(cRows) && cRows[0]?.value) || {}
+
+    return json({ ok: true, student, progress, settings, prefill, files, line_qr })
   }
 
   // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────

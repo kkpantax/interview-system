@@ -1297,6 +1297,15 @@ export const onboardAdminAbandon = (username, password, account, reason) =>
 // 放棄復原（回 active）
 export const onboardAdminReactivate = (username, password, account) =>
   onboardAdminPost({ action: 'reactivate', username, password, account })
+// 撈設定：全部 enroll_settings（batch×step 10 列）＋ LINE 群組 QR（enroll_config.line_qr）
+export const onboardAdminGetSettings = (username, password) =>
+  onboardAdminPost({ action: 'settings', username, password })
+// 儲存某 (batch, step) 的截止日／承辦資訊；step=5 可帶 notice（字串或 {台北,高雄} 物件）
+export const onboardAdminSaveSettings = (username, password, payload) =>
+  onboardAdminPost({ action: 'save-settings', username, password, ...payload })
+// 儲存 LINE 群組 QR 圖片網址（value = {台北, 高雄}）
+export const onboardAdminSaveLineQr = (username, password, value) =>
+  onboardAdminPost({ action: 'save-line-qr', username, password, value })
 
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {

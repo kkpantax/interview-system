@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
-import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate } from '../api'
+import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
+  onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
 
@@ -23,6 +24,7 @@ const TABS = [
   { key: 'overview',  label: '總覽' },
   ...ENROLL_STEPS.map((st) => ({ key: String(st.step), label: `${'①②③④⑤'[st.step - 1]} ${st.zh}` })),
   { key: 'abandoned', label: '✕ 已放棄' },
+  { key: 'settings',  label: '⚙ 設定' },
 ]
 
 // 步驟2/3 需要行政確認（步驟1/4 學生送出即過、步驟5 學生閱讀即過）
@@ -36,6 +38,17 @@ const fmtTime = (iso) => {
 }
 
 const stepStateOf = (stu, step) => stu.steps?.[step]?.state || 'locked'
+
+// timestamptz ISO ↔ <input type="datetime-local"> 的本地時間字串
+const isoToLocal = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d)) return ''
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+const CAMPUSES = ['台北', '高雄']
 
 // 頂端統計卡片（同 Stage4App 風格）
 function StatStrip({ items }) {
@@ -133,6 +146,85 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
+  // ── 設定分頁：每步截止/承辦 + 步驟5行前須知 + LINE QR ─────────────────────────
+  const [cfgLoaded, setCfgLoaded] = useState(false)
+  const [rowForm, setRowForm] = useState({})   // { `${batch}-${step}`: {deadline, contact_name, contact_email, contact_phone} }
+  const [notice, setNotice] = useState({ 台北: '', 高雄: '' })
+  const [qrForm, setQrForm] = useState({ 台北: '', 高雄: '' })
+
+  const loadSettings = useCallback(async (password) => {
+    const pp = password ?? pw
+    setLoading(true)
+    try {
+      const res = await onboardAdminGetSettings(teacher.username, pp)
+      const rows = res.settings || []
+      const f = {}
+      for (const r of rows) {
+        f[`${r.batch}-${r.step}`] = {
+          deadline: isoToLocal(r.deadline),
+          contact_name: r.contact_name || '',
+          contact_email: r.contact_email || '',
+          contact_phone: r.contact_phone || '',
+        }
+      }
+      setRowForm(f)
+      // 行前須知以第一梯 step5 為準（兩梯共通儲存）；舊資料為字串時兩校區同值帶入
+      const n5 = rows.find((r) => String(r.batch) === '1' && Number(r.step) === 5)?.extra?.notice
+      if (typeof n5 === 'string') setNotice({ 台北: n5, 高雄: n5 })
+      else if (n5 && typeof n5 === 'object') setNotice({ 台北: n5['台北'] || '', 高雄: n5['高雄'] || '' })
+      else setNotice({ 台北: '', 高雄: '' })
+      setQrForm({ 台北: res.line_qr?.['台北'] || '', 高雄: res.line_qr?.['高雄'] || '' })
+      setCfgLoaded(true)
+    } catch (e) { showToast('載入設定失敗：' + e.message, 'error') }
+    finally { setLoading(false) }
+  }, [pw, teacher, showToast])
+
+  useEffect(() => {
+    if (authed && tab === 'settings' && !cfgLoaded) loadSettings()
+  }, [authed, tab, cfgLoaded, loadSettings])
+
+  const saveRow = async (b, step) => {
+    if (busy) return
+    const f = rowForm[`${b}-${step}`] || {}
+    setBusy(true)
+    try {
+      await onboardAdminSaveSettings(teacher.username, pw, {
+        batch: b, step,
+        deadline: f.deadline ? new Date(f.deadline).toISOString() : null,
+        contact_name: (f.contact_name || '').trim() || null,
+        contact_email: (f.contact_email || '').trim() || null,
+        contact_phone: (f.contact_phone || '').trim() || null,
+      })
+      showToast(`已儲存 ${b === '1' ? '第一梯' : '第二梯'}「${ENROLL_STEPS[step - 1]?.zh}」設定`)
+      await loadSettings()
+    } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const saveNotice = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const n = { 台北: notice['台北'], 高雄: notice['高雄'] }
+      await onboardAdminSaveSettings(teacher.username, pw, { batch: '1', step: 5, notice: n })
+      await onboardAdminSaveSettings(teacher.username, pw, { batch: '2', step: 5, notice: n })
+      showToast('已儲存行前須知（兩梯次共通）')
+      await loadSettings()
+    } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const saveLineQr = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await onboardAdminSaveLineQr(teacher.username, pw, { 台北: qrForm['台北'].trim(), 高雄: qrForm['高雄'].trim() })
+      showToast('已儲存 LINE 群組 QR 設定')
+      await loadSettings()
+    } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
   const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fde7d4' }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
@@ -191,7 +283,7 @@ export default function OnboardAdminApp() {
   const right = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {loading && <span style={{ fontSize: 12, color: '#fde7d4' }}>載入中…</span>}
-      <Btn style={headerBtn} disabled={busy} onClick={() => load()}>↻</Btn>
+      <Btn style={headerBtn} disabled={busy} onClick={() => (tab === 'settings' ? loadSettings() : load())}>↻</Btn>
       <span style={{ fontSize: 12, color: '#fde7d4' }}>{teacher.display_name || teacher.username}</span>
       <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>
     </div>
@@ -394,6 +486,97 @@ export default function OnboardAdminApp() {
           </div>
         </Card>
       )}
+
+      {/* ── 設定 ── */}
+      {tab === 'settings' && (!cfgLoaded ? (
+        <Card><div style={{ padding: 28, textAlign: 'center', color: '#aaa' }}>{loading ? '載入設定中…' : '設定載入失敗，請按右上 ↻ 重試'}</div></Card>
+      ) : (
+        <>
+          {/* A. 每步設定：截止日 + 承辦資訊（依梯次分兩組） */}
+          {['1', '2'].map((b) => (
+            <Card key={b} style={{ marginBottom: 16 }}>
+              <CardHead left={`${b === '1' ? '第一梯' : '第二梯'}：各步驟截止時間與承辦資訊`} />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ background: '#faf9f6' }}>
+                    {['步驟', '截止時間', '承辦人姓名', 'Email', '電話', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {ENROLL_STEPS.map((st) => {
+                      const k = `${b}-${st.step}`
+                      const f = rowForm[k] || { deadline: '', contact_name: '', contact_email: '', contact_phone: '' }
+                      const upd = (key, v) => setRowForm((p) => ({ ...p, [k]: { ...f, [key]: v } }))
+                      const cell = { ...s.input, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }
+                      return (
+                        <tr key={st.step}>
+                          <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 500 }}>{'①②③④⑤'[st.step - 1]} {st.zh}</td>
+                          <td style={td}><input type="datetime-local" value={f.deadline} onChange={(e) => upd('deadline', e.target.value)} style={cell} /></td>
+                          <td style={td}><input value={f.contact_name} onChange={(e) => upd('contact_name', e.target.value)} style={{ ...cell, width: 110 }} /></td>
+                          <td style={td}><input value={f.contact_email} onChange={(e) => upd('contact_email', e.target.value)} style={{ ...cell, width: 190 }} /></td>
+                          <td style={td}><input value={f.contact_phone} onChange={(e) => upd('contact_phone', e.target.value)} style={{ ...cell, width: 130 }} /></td>
+                          <td style={td}><button onClick={() => saveRow(b, st.step)} disabled={busy} style={{ ...s.btn, ...s.btnSm, background: ACCENT, color: '#fff', borderColor: ACCENT }}>儲存</button></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ))}
+
+          {/* B. 步驟5 行前須知（分校區，兩梯次共通儲存） */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardHead left="⑤ 行前須知（依校區顯示，兩梯次共通）" />
+            <div style={{ padding: '4px 2px' }}>
+              <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
+                學生端「⑤ 行前通知」會依學生校區顯示對應內容；儲存時同步寫入第一、二梯的步驟5設定。
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                {CAMPUSES.map((c) => (
+                  <div key={c} style={{ flex: '1 1 320px' }}>
+                    <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{c}校區</div>
+                    <textarea rows={8} value={notice[c]}
+                      onChange={(e) => setNotice((p) => ({ ...p, [c]: e.target.value }))}
+                      style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, resize: 'vertical' }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Btn variant="primary" disabled={busy} onClick={saveNotice}>儲存行前須知</Btn>
+              </div>
+            </div>
+          </Card>
+
+          {/* C. LINE 群組 QR（學生端步驟①依校區顯示） */}
+          <Card>
+            <CardHead left="LINE 群組 QR Code（學生端步驟①）" />
+            <div style={{ padding: '4px 2px' }}>
+              <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
+                貼上 QR 圖片網址（公開可讀的圖片連結），學生端步驟①會依學生校區顯示對應 QR Code。
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                {CAMPUSES.map((c) => (
+                  <div key={c} style={{ flex: '1 1 320px' }}>
+                    <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{c}校區</div>
+                    <input value={qrForm[c]} placeholder="https://…（圖片網址）"
+                      onChange={(e) => setQrForm((p) => ({ ...p, [c]: e.target.value }))}
+                      style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontSize: 13 }} />
+                    {qrForm[c].trim() ? (
+                      <img src={qrForm[c].trim()} alt={`${c} LINE QR`}
+                        style={{ width: 140, height: 140, objectFit: 'contain', border: '1px solid #eee', borderRadius: 8, marginTop: 8, background: 'white' }} />
+                    ) : (
+                      <div style={{ width: 140, height: 140, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #ccc', borderRadius: 8, color: '#bbb', fontSize: 12 }}>尚未設定</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Btn variant="primary" disabled={busy} onClick={saveLineQr}>儲存 QR 設定</Btn>
+              </div>
+            </div>
+          </Card>
+        </>
+      ))}
     </PageShell>
   )
 }
