@@ -124,7 +124,8 @@ export const CAMPUSES = [
   { name: '高雄校區', keywords: ['休閒產業', '資訊科技與通訊', '資訊管理'] },
 ]
 export const campusOf = (dept = '') => {
-  for (const c of CAMPUSES) if (c.keywords.some((k) => dept.includes(k))) return c.name
+  const d = String(dept || '')
+  for (const c of CAMPUSES) if (c.keywords.some((k) => d.includes(k))) return c.name
   return '其他'
 }
 
@@ -142,8 +143,9 @@ export const DEPT_SHORT = [
   ['休閒產業',       '休產'],
 ]
 export const deptShort = (dept = '') => {
-  for (const [k, v] of DEPT_SHORT) if (dept.includes(k)) return v
-  return (dept.replace(/學系\(專\)$/, '') || dept).slice(0, 8)
+  const d = String(dept || '')
+  for (const [k, v] of DEPT_SHORT) if (d.includes(k)) return v
+  return (d.replace(/學系\(專\)$/, '') || d).slice(0, 8)
 }
 
 // 系所名稱多語對照（vi 越南文 / id 印尼文 / en 英文），供派遣通知訊息使用。
@@ -161,8 +163,9 @@ export const DEPT_I18N = [
 ]
 // 取得系所外語名稱；查無對照時退回原中文系名
 export const deptI18n = (dept = '', lang = 'en') => {
-  for (const [k, v] of DEPT_I18N) if (dept.includes(k)) return v[lang] || dept
-  return dept
+  const d = String(dept || '')
+  for (const [k, v] of DEPT_I18N) if (d.includes(k)) return v[lang] || d
+  return d
 }
 
 // 中文系所全名（學生端落地頁顯示用）；keyword includes 比對、長關鍵字在前、容忍 (專) 後綴。
