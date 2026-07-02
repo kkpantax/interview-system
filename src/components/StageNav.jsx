@@ -10,6 +10,7 @@ const ITEMS = [
   { key: 'stage2',   label: '② 系所評分', hash: '#/stage2' },
   { key: 'stage3',   label: '③ 放榜',     hash: '#/stage3' },
   { key: 'stage4',   label: '④ 就學確認', hash: '#/stage4' },
+  { key: 'onboard',  label: '⑤ 入學準備', hash: '#/onboard-admin' },
   { key: 'transfers',label: '↻ 轉報',     hash: '#/transfers' },
   { key: 'stats',    label: '📊 統計',    hash: '#/stats' },
 ]

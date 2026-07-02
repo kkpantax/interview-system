@@ -1265,6 +1265,37 @@ export async function onboardUpload({ token, step, kind, file }) {
   return data
 }
 
+// ── 入學準備後台（走 /api/onboard-admin，service role + superadmin 驗證）───────────
+// 每次操作都帶超管帳密（前端在後台頁以一次性密碼閘門取得後快取於記憶體重用）。
+async function onboardAdminPost(payload) {
+  const res = await fetch('/api/onboard-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { ok: false, error: text } }
+  if (!res.ok || data.ok === false) {
+    const err = new Error(data.error || '操作失敗')
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+// 撈全部入學準備學生 + 五步狀態 + 檔案（batch: 'all' | '1' | '2'）
+export const onboardAdminList = (username, password, batch = 'all') =>
+  onboardAdminPost({ action: 'list', username, password, batch })
+// 確認某生某步（步驟2/3），自動開下一步
+export const onboardAdminConfirm = (username, password, account, step) =>
+  onboardAdminPost({ action: 'confirm', username, password, account, step })
+// 標記放棄（帶原因）
+export const onboardAdminAbandon = (username, password, account, reason) =>
+  onboardAdminPost({ action: 'abandon', username, password, account, reason })
+// 放棄復原（回 active）
+export const onboardAdminReactivate = (username, password, account) =>
+  onboardAdminPost({ action: 'reactivate', username, password, account })
+
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {
   return updateStage4Status(id, fields)
