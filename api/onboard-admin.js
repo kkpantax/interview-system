@@ -11,6 +11,8 @@
 //   - save-settings：{batch, step, deadline?, contact_*?, notice?} → upsert 該 (batch,step) 列；
 //     step=5 時把 notice（字串或 {台北,高雄} 物件）合併寫進 extra.notice；log settings_save。
 //   - save-line-qr：{value: {台北, 高雄}} → 更新 enroll_config key='line_qr'；log config_save。
+//   - import-students：{rows: [{account, fields:{student_id?,dorm_room?,dorm_bed?,classroom?}}]}
+//     → 逐筆 PATCH enroll_students（以 account 對應，只更新收到的欄＝空欄不覆蓋）；log import。
 // 總覽漏斗統計由前端就地從 list 推導（比照 Stage4App 的 client-side 統計慣例）。
 export const config = { runtime: 'edge' }
 
@@ -217,6 +219,38 @@ export default async function handler(req) {
     if (!up.ok) return json({ ok: false, error: '儲存失敗：' + (await up.text()) }, 500)
     await logRow(null, null, 'config_save', { key: 'line_qr' })
     return json({ ok: true })
+  }
+
+  // ── import-students：批次帶入學號/宿舍資訊（account 對應鍵，只更新有值欄）──────
+  if (action === 'import-students') {
+    const rows = Array.isArray(body.rows) ? body.rows : []
+    if (!rows.length) return json({ ok: false, error: '沒有可匯入的資料' }, 400)
+    if (rows.length > 2000) return json({ ok: false, error: '一次最多匯入 2000 筆' }, 400)
+
+    const ALLOW = ['student_id', 'dorm_room', 'dorm_bed', 'classroom']
+    let updated = 0
+    const skipped = []   // 帳號查無（或無可寫入欄）的清單
+    for (const r of rows) {
+      const account = String(r?.account ?? '').trim()
+      if (!account) continue
+      // 只收白名單且有值的欄位——payload 不含空欄，後端也只更新收到的欄
+      const patch = {}
+      for (const k of ALLOW) {
+        const v = r?.fields?.[k]
+        if (v != null && String(v).trim() !== '') patch[k] = String(v).trim()
+      }
+      if (!Object.keys(patch).length) { skipped.push(account); continue }
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(account)}&select=account`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(patch) },
+      )
+      if (!up.ok) { skipped.push(account); continue }
+      const out = await up.json().catch(() => [])
+      if (Array.isArray(out) && out.length) updated++
+      else skipped.push(account)   // 帳號不存在（前端預覽已擋，後端仍防守）
+    }
+    await logRow(null, null, 'import', { updated, skipped_accounts: skipped })
+    return json({ ok: true, updated, skipped })
   }
 
   return json({ ok: false, error: '未知的操作' }, 400)

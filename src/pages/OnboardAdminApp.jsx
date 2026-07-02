@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
-  onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr } from '../api'
+  onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminImportStudents } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
 
@@ -25,6 +26,7 @@ const TABS = [
   ...ENROLL_STEPS.map((st) => ({ key: String(st.step), label: `${'①②③④⑤'[st.step - 1]} ${st.zh}` })),
   { key: 'abandoned', label: '✕ 已放棄' },
   { key: 'settings',  label: '⚙ 設定' },
+  { key: 'import',    label: '⇪ 匯入' },
 ]
 
 // 步驟2/3 需要行政確認（步驟1/4 學生送出即過、步驟5 學生閱讀即過）
@@ -49,6 +51,17 @@ const isoToLocal = (iso) => {
 }
 
 const CAMPUSES = ['台北', '高雄']
+
+// 批次匯入的欄位定義：中文標題（Excel 表頭）↔ enroll_students 欄名；account 為對應鍵
+const IMPORT_COLS = [
+  { key: 'account',    label: '帳號' },
+  { key: 'student_id', label: '學號' },
+  { key: 'dorm_room',  label: '房號' },
+  { key: 'dorm_bed',   label: '床位號' },
+  { key: 'classroom',  label: '上課教室' },
+]
+const IMPORT_FIELD_KEYS = IMPORT_COLS.slice(1).map((c) => c.key)
+const importLabel = (key) => IMPORT_COLS.find((c) => c.key === key)?.label || key
 
 // 頂端統計卡片（同 Stage4App 風格）
 function StatStrip({ items }) {
@@ -222,6 +235,91 @@ export default function OnboardAdminApp() {
       showToast('已儲存 LINE 群組 QR 設定')
       await loadSettings()
     } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  // ── 匯入分頁：Excel 解析 → 預覽 → 確認 → 批次 upsert ──────────────────────────
+  const [impFileName, setImpFileName] = useState('')
+  const [impError, setImpError] = useState('')
+  const [impPreview, setImpPreview] = useState(null)  // { updates:[{account,name,fields}], notFound:[account], emptyN }
+  const [impResult, setImpResult] = useState(null)    // { updated, skipped:[account] }
+  const impFileRef = useRef()
+
+  const downloadTemplate = () => {
+    const aoa = [
+      IMPORT_COLS.map((c) => c.label),
+      ['11510001', '', 'A-512', '2', 'M301'],
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '匯入')
+    XLSX.writeFile(wb, 'enroll_import_template.xlsx')
+  }
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''   // 清掉 value，允許重選同一個檔案
+    if (!file || busy) return
+    setImpFileName(file.name); setImpError(''); setImpPreview(null); setImpResult(null)
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      setBusy(true)
+      try {
+        // 1) 解析第一個工作表，認中文標題對欄（欄序不拘）
+        const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, blankrows: false })
+        const normH = (v) => String(v ?? '').replace(/\s+/g, '')
+        let hIdx = -1
+        for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+          if ((aoa[i] || []).some((c) => normH(c) === '帳號')) { hIdx = i; break }
+        }
+        if (hIdx < 0) throw new Error('找不到標題列：工作表需含「帳號」欄（可先下載範本）')
+        const header = (aoa[hIdx] || []).map(normH)
+        const colIdx = Object.fromEntries(IMPORT_COLS.map((c) => [c.key, header.indexOf(c.label)]))
+
+        // 2) 逐列收集：以帳號合併（同帳號多列時，後列有值欄覆蓋前列），空欄不納入
+        const byAcct = new Map()
+        for (const r of aoa.slice(hIdx + 1)) {
+          const account = String(r[colIdx.account] ?? '').trim()
+          if (!account) continue
+          const cur = byAcct.get(account) || {}
+          for (const k of IMPORT_FIELD_KEYS) {
+            const v = colIdx[k] >= 0 ? String(r[colIdx[k]] ?? '').trim() : ''
+            if (v !== '') cur[k] = v
+          }
+          byAcct.set(account, cur)
+        }
+        if (!byAcct.size) throw new Error('檔案裡沒有任何含帳號的資料列')
+
+        // 3) 撈完整名單比對帳號（batch=all，不受上方梯次/校區篩選影響）
+        const res = await onboardAdminList(teacher.username, pw, 'all')
+        const known = new Map((res.list || []).map((x) => [x.account, x]))
+        const updates = [], notFound = []
+        let emptyN = 0
+        for (const [account, fields] of byAcct) {
+          if (!known.has(account)) { notFound.push(account); continue }
+          if (!Object.keys(fields).length) { emptyN++; continue }
+          updates.push({ account, name: known.get(account)?.name, fields })
+        }
+        setImpPreview({ updates, notFound, emptyN })
+      } catch (err) { setImpError(err.message) }
+      finally { setBusy(false) }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const doImport = async () => {
+    if (!impPreview?.updates.length || busy) return
+    if (!window.confirm(`確認匯入？將更新 ${impPreview.updates.length} 筆學生的學號／宿舍資訊（空欄不覆蓋）。`)) return
+    setBusy(true)
+    try {
+      const res = await onboardAdminImportStudents(teacher.username, pw,
+        impPreview.updates.map((u) => ({ account: u.account, fields: u.fields })))
+      setImpResult({ updated: res.updated ?? 0, skipped: res.skipped || [] })
+      setImpPreview(null); setImpFileName('')
+      showToast(`匯入完成：更新 ${res.updated ?? 0} 筆`)
+      await load()   // 重抓名單
+    } catch (e) { showToast('匯入失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
 
@@ -577,6 +675,93 @@ export default function OnboardAdminApp() {
           </Card>
         </>
       ))}
+
+      {/* ── 匯入 ── */}
+      {tab === 'import' && (
+        <>
+          <Card style={{ marginBottom: 16 }}>
+            <CardHead left="批次匯入：學號＋宿舍資訊"
+              right={<Btn onClick={downloadTemplate}>⬇ 下載範本</Btn>} />
+            <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.8, marginBottom: 12, padding: '0 2px' }}>
+              上傳 Excel（.xlsx / .xls），以<b>帳號</b>對應學生，一次帶入<b>學號、房號、床位號、上課教室</b>。
+              標題列需用中文欄名（帳號／學號／房號／床位號／上課教室，欄序不拘）。
+              <b>空欄不會覆蓋</b>既有資料；重傳同一份檔會覆蓋有值的欄。先預覽、按「確認匯入」才寫入。
+            </div>
+            <div
+              style={{ border: '2px dashed #ddd', borderRadius: 10, padding: 24, textAlign: 'center', background: '#fafaf8', cursor: 'pointer' }}
+              onClick={() => !busy && impFileRef.current.click()}>
+              <input ref={impFileRef} type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={handleImportFile} />
+              <div style={{ fontSize: 26, marginBottom: 6 }}>⇪</div>
+              <div style={{ fontSize: 14, color: '#555' }}>{busy ? '處理中…' : (impFileName || '點此選擇 Excel 檔（.xls / .xlsx）')}</div>
+              <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>選檔後先顯示預覽，不會立即寫入</div>
+            </div>
+            {impError && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 12, whiteSpace: 'pre-line' }}>{impError}</div>}
+          </Card>
+
+          {impPreview && (
+            <>
+              <StatStrip items={[
+                { label: '將更新', value: impPreview.updates.length, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+                { label: '跳過（帳號不在庫）', value: impPreview.notFound.length, color: impPreview.notFound.length ? '#dc2626' : '#1a1a18', bg: '#fef2f2', border: '#fecaca' },
+                ...(impPreview.emptyN ? [{ label: '略過（整列無可寫入值）', value: impPreview.emptyN, color: '#b45309', bg: '#fffbeb', border: '#fde68a' }] : []),
+              ]} />
+              {impPreview.notFound.length > 0 && (
+                <Card style={{ marginBottom: 16 }}>
+                  <CardHead left={`跳過的帳號（庫裡查無，共 ${impPreview.notFound.length} 筆）`} />
+                  <div style={{ fontSize: 13, color: '#b45309', lineHeight: 2, padding: '4px 2px', wordBreak: 'break-all' }}>
+                    {impPreview.notFound.join('、')}
+                  </div>
+                </Card>
+              )}
+              <Card style={{ marginBottom: 16 }}>
+                <CardHead left={`將更新的學生（${impPreview.updates.length}）`} />
+                <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#faf9f6' }}>
+                      {['帳號', '姓名', '將寫入的欄位'].map((h) => <th key={h} style={th}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {impPreview.updates.map((u) => (
+                        <tr key={u.account}>
+                          <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{u.account}</td>
+                          <td style={{ ...td, fontWeight: 500, whiteSpace: 'nowrap' }}>{u.name || '—'}</td>
+                          <td style={td}>
+                            {Object.entries(u.fields).map(([k, v]) => (
+                              <span key={k} style={{ display: 'inline-block', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '2px 8px', margin: '2px 6px 2px 0', fontSize: 12 }}>
+                                {importLabel(k)}＝{v}
+                              </span>
+                            ))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                  <Btn disabled={busy} onClick={() => { setImpPreview(null); setImpFileName(''); setImpError('') }}>取消</Btn>
+                  <Btn variant="primary" disabled={busy || !impPreview.updates.length} onClick={doImport}>
+                    {busy ? '匯入中…' : `確認匯入（${impPreview.updates.length} 筆）`}
+                  </Btn>
+                </div>
+              </Card>
+            </>
+          )}
+
+          {impResult && (
+            <Card>
+              <CardHead left="匯入結果" />
+              <div style={{ fontSize: 13.5, lineHeight: 2, padding: '4px 2px' }}>
+                <div style={{ color: '#15803d', fontWeight: 600 }}>✓ 成功更新 {impResult.updated} 筆</div>
+                {impResult.skipped.length > 0 && (
+                  <div style={{ color: '#b45309', wordBreak: 'break-all' }}>
+                    後端跳過 {impResult.skipped.length} 筆：{impResult.skipped.join('、')}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
     </PageShell>
   )
 }

@@ -1306,6 +1306,10 @@ export const onboardAdminSaveSettings = (username, password, payload) =>
 // 儲存 LINE 群組 QR 圖片網址（value = {台北, 高雄}）
 export const onboardAdminSaveLineQr = (username, password, value) =>
   onboardAdminPost({ action: 'save-line-qr', username, password, value })
+// 批次匯入學號/宿舍資訊（rows = [{account, fields:{student_id?,dorm_room?,dorm_bed?,classroom?}}]，
+// fields 只含有值欄＝空欄不覆蓋）；回 { updated, skipped }
+export const onboardAdminImportStudents = (username, password, rows) =>
+  onboardAdminPost({ action: 'import-students', username, password, rows })
 
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {
