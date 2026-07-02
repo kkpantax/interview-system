@@ -38,6 +38,8 @@ const T = {
   s1PrefillTitle: { zh: '基本資料（請確認並可修正）', en: 'Basic Information (please check and correct if needed)', vi: 'Thông tin cơ bản (vui lòng kiểm tra và sửa nếu cần)', id: 'Data Dasar (mohon periksa dan perbaiki jika perlu)' },
   s1FillTitle:    { zh: '請填寫以下資料', en: 'Please fill in the following', vi: 'Vui lòng điền các thông tin sau', id: 'Mohon isi data berikut' },
   s1ReqNote:      { zh: '* 為必填欄位', en: '* Required fields', vi: '* Mục bắt buộc', id: '* Wajib diisi' },
+  noPassport:     { zh: '尚未辦理護照', en: 'I do not have a passport yet', vi: 'Tôi chưa làm hộ chiếu', id: 'Belum memiliki paspor' },
+  natOtherPh:     { zh: '請輸入國籍', en: 'Please enter your nationality', vi: 'Vui lòng nhập quốc tịch', id: 'Silakan masukkan kewarganegaraan' },
   s1LineTitle:    { zh: '加入新生 LINE 群組', en: 'Join the LINE group for new students', vi: 'Tham gia nhóm LINE tân sinh viên', id: 'Gabung grup LINE mahasiswa baru' },
   s1LineHint:     { zh: '請掃描 QR Code 加入群組，重要通知將在群組發布。', en: 'Please scan the QR code to join. Important notices will be posted in the group.', vi: 'Vui lòng quét mã QR để tham gia. Các thông báo quan trọng sẽ được đăng trong nhóm.', id: 'Silakan pindai kode QR untuk bergabung. Pengumuman penting akan diposting di grup.' },
   s1LineNoQr:     { zh: 'QR Code 稍後提供', en: 'QR code will be provided later.', vi: 'Mã QR sẽ được cung cấp sau.', id: 'Kode QR akan tersedia nanti.' },
@@ -150,7 +152,15 @@ export default function OnboardApp({ token }) {
       }
       // 步驟1表單回填：已存過的 data 優先，否則帶 prefill
       const saved = res.progress?.[1]?.data || {}
-      setForm({ ...(res.prefill || {}), ...saved })
+      const merged = { ...(res.prefill || {}), ...saved }
+      // 國籍不在下拉選單內（歷史/自由填資料）→ 折成「其他」+ 自填框帶原值
+      const natField = ONBOARD_STEP1_FIELDS.prefill.find((f) => f.key === 'nationality')
+      if (merged.nationality && natField && !natField.options.some((o) => o.v === merged.nationality)) {
+        merged.nationality_other = merged.nationality_other || merged.nationality
+        merged.nationality = '其他'
+      }
+      merged.no_passport = merged.no_passport === true
+      setForm(merged)
       if (saved.line_joined) setLineJoined(true)
       // 步驟4表單回填（若曾送出過）
       setForm4(res.progress?.[4]?.data || {})
@@ -163,7 +173,15 @@ export default function OnboardApp({ token }) {
 
   const submitStep1 = async () => {
     const fields = [...ONBOARD_STEP1_FIELDS.prefill, ...ONBOARD_STEP1_FIELDS.fill]
-    const missing = fields.filter((f) => f.req && !String(form[f.key] || '').trim())
+    const missing = fields.filter((f) => {
+      if (!f.req) return false
+      if (f.key === 'passport_number' && form.no_passport) return false // 勾「尚未辦理護照」免必填
+      return !String(form[f.key] || '').trim()
+    })
+    // 國籍選「其他」時自填框必填
+    if (form.nationality === '其他' && !String(form.nationality_other || '').trim()) {
+      missing.push(fields.find((f) => f.key === 'nationality'))
+    }
     if (missing.length) {
       alert(tr('s1Missing') + missing.map((f) => f[lang] || f.zh).join('、'))
       return
@@ -252,18 +270,55 @@ export default function OnboardApp({ token }) {
   const deptName = lang === 'zh' ? deptZhFull(student.department) : deptI18n(student.department, lang)
   const campusText = student.campus && student.campus !== '其他' ? campusName(student.campus, lang) : ''
 
-  const field = (f) => (
-    <div key={f.key} style={{ marginBottom: 10 }}>
+  // 步驟1欄位渲染：依 field.type 出 text / select / date；
+  // 特例：name 唯讀、passport_number 帶「尚未辦理護照」勾選、nationality 選「其他」出自填框。
+  const field = (f) => {
+    const isPassport = f.key === 'passport_number'
+    const req = f.req && !(isPassport && form.no_passport)
+    const label = (
       <label style={labelStyle}>
-        {f[lang] || f.zh}{f.req && <span style={{ color: '#b91c1c' }}> *</span>}
+        {f[lang] || f.zh}{req && <span style={{ color: '#b91c1c' }}> *</span>}
       </label>
-      <input
-        style={inputStyle}
-        value={form[f.key] ?? ''}
-        onChange={(e) => setForm((p) => ({ ...p, [f.key]: e.target.value }))}
-      />
-    </div>
-  )
+    )
+    const set = (k, v) => setForm((p) => ({ ...p, [k]: v }))
+    if (f.type === 'select') {
+      return (
+        <div key={f.key} style={{ marginBottom: 10 }}>
+          {label}
+          <select style={inputStyle} value={form[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
+            <option value="" />
+            {(f.options || []).map((o) => <option key={o.v} value={o.v}>{o[lang] || o.zh}</option>)}
+          </select>
+          {f.key === 'nationality' && form.nationality === '其他' && (
+            <input style={{ ...inputStyle, marginTop: 6 }} placeholder={tr('natOtherPh')}
+              value={form.nationality_other ?? ''} onChange={(e) => set('nationality_other', e.target.value)} />
+          )}
+        </div>
+      )
+    }
+    const dimmed = f.readonly || (isPassport && form.no_passport)
+    return (
+      <div key={f.key} style={{ marginBottom: 10 }}>
+        {label}
+        <input
+          type={f.type === 'date' ? 'date' : 'text'}
+          style={{ ...inputStyle, ...(dimmed ? { background: '#f3f4f6', color: '#888' } : {}) }}
+          value={form[f.key] ?? ''}
+          readOnly={!!f.readonly}
+          disabled={isPassport && !!form.no_passport}
+          onChange={(e) => set(f.key, e.target.value)}
+        />
+        {isPassport && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#555', marginTop: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!form.no_passport}
+              onChange={(e) => setForm((p) => ({ ...p, no_passport: e.target.checked, ...(e.target.checked ? { passport_number: '' } : {}) }))}
+              style={{ width: 15, height: 15, accentColor: ACCENT }} />
+            {tr('noPassport')}
+          </label>
+        )}
+      </div>
+    )
+  }
 
   // LINE 群組 QR：讀 enroll_config.line_qr（{台北,高雄} 分校區或字串通用），依學生校區取對應網址；
   // 校區未設定或該校區無 QR 時顯示「稍後提供」佔位，不擋送出
@@ -296,6 +351,8 @@ export default function OnboardApp({ token }) {
     <div>
       <div style={{ ...sectionBox, marginTop: 14 }}>
         <div style={sectionTitle}>{tr('s1PrefillTitle')}</div>
+        {/* 學系：唯讀顯示，不進送出資料 */}
+        <div style={{ marginBottom: 6 }}><Row label={tr('deptLabel')} value={deptName} /></div>
         {ONBOARD_STEP1_FIELDS.prefill.map(field)}
       </div>
       <div style={sectionBox}>

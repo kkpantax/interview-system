@@ -12,13 +12,26 @@ const SUPABASE_URL = 'https://lveekehjxkfvigwfwgvn.supabase.co'
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
-// 步驟1表單可寫入的欄位白名單（與 src/constants.js ONBOARD_STEP1_FIELDS 對應）
+// 步驟1表單可寫入的欄位白名單（與 src/constants.js ONBOARD_STEP1_FIELDS 對應）；
+// no_passport 為布林、另外處理（勾「尚未辦理護照」，後台可據此判讀）。
 const STEP1_KEYS = [
-  'name', 'gender', 'birth_date', 'passport_number', 'nationality',
-  'name_en', 'arc_no', 'phone', 'email', 'email2',
-  'zip_mail', 'addr_mail', 'zip_reg', 'addr_reg', 'tel',
-  'guardian_name', 'guardian_phone', 'school', 'grad_year',
+  'name', 'name_english', 'gender', 'birth_date', 'nationality', 'nationality_other',
+  'passport_number', 'phone', 'email',
+  'national_id', 'guardian_name', 'guardian_phone',
+  'zip_mail', 'addr_mail', 'tel', 'zip_reg', 'addr_reg',
+  'high_school', 'graduation_year',
 ]
+
+// 生日轉 YYYY-MM-DD：支援 Y-M-D / Y/M/D 與 M/D/Y（Excel 匯入格式）；轉不出來回空字串（不帶入 date 欄）
+function toISODate(v) {
+  const str = String(v || '').trim()
+  if (!str) return ''
+  let m = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+  m = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/)
+  if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
+  return ''
+}
 
 // 依 token 撈學生（只取安全欄位）；查無回 null
 async function findStudent(token, H) {
@@ -64,7 +77,7 @@ export default async function handler(req) {
         { headers: H },
       ),
       fetch(
-        `${SUPABASE_URL}/rest/v1/applications?account=eq.${encodeURIComponent(student.account)}&select=name,gender,birth_date,passport_number,nationality&limit=1`,
+        `${SUPABASE_URL}/rest/v1/applications?account=eq.${encodeURIComponent(student.account)}&select=name,name_english,gender,birth_date,passport_number,nationality,phone,email&limit=1`,
         { headers: H },
       ),
       fetch(
@@ -81,15 +94,20 @@ export default async function handler(req) {
     const fRows = fRes.ok ? await fRes.json() : []
     const files = Array.isArray(fRows) ? fRows : []
 
-    // 步驟1預填：applications 為主，查無時回退 enroll_students
+    // 步驟1預填：applications 為主，查無時回退 enroll_students；
+    // 國籍以 enroll_students 為主（放榜名單較新）；生日能轉 YYYY-MM-DD 才帶（date input 用）。
     const aRows = aRes.ok ? await aRes.json() : []
     const app = (Array.isArray(aRows) && aRows[0]) || {}
     const prefill = {
       name: app.name ?? student.name ?? '',
+      name_english: app.name_english ?? student.name_en ?? '',
       gender: app.gender ?? '',
-      birth_date: app.birth_date ?? '',
+      birth_date: toISODate(app.birth_date),
       passport_number: app.passport_number ?? '',
-      nationality: app.nationality ?? student.nationality ?? '',
+      nationality: student.nationality ?? app.nationality ?? '',
+      phone: app.phone ?? '',
+      email: app.email ?? '',
+      department: student.department ?? '',
     }
 
     // 全域設定（enroll_config）：line_qr = {台北,高雄}；contacts = {台北:{name,email,phone},高雄:{...}}
@@ -125,11 +143,13 @@ export default async function handler(req) {
     if (stepN === 1) {
       if (line_joined !== true) return json({ ok: false, error: '請先加入 LINE 群組並勾選確認' }, 400)
 
-      // 只收白名單欄位、一律轉字串修剪
+      // 只收白名單欄位、一律轉字串修剪；no_passport 為布林（勾選時護照號一律清空）
       const clean = {}
       for (const k of STEP1_KEYS) {
         if (data && data[k] != null) clean[k] = String(data[k]).trim()
       }
+      clean.no_passport = data?.no_passport === true
+      if (clean.no_passport) clean.passport_number = ''
       clean.line_joined = true
 
       // 1) 步驟1 → confirmed（免行政確認），保存表單內容
@@ -156,11 +176,11 @@ export default async function handler(req) {
       }
 
       // 3) 英文姓名同步回 enroll_students（失敗不阻斷）
-      if (clean.name_en) {
+      if (clean.name_english) {
         try {
           await fetch(
             `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(student.account)}`,
-            { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ name_en: clean.name_en }) },
+            { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ name_en: clean.name_english }) },
           )
         } catch { /* 同步失敗不影響主流程 */ }
       }
