@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { onboardInfo, onboardSubmit } from '../api'
+import { onboardInfo, onboardSubmit, onboardUpload } from '../api'
 import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS } from '../constants'
 
 // 學生端「入學準備」落地頁。
@@ -46,6 +46,21 @@ const T = {
   submitting:     { zh: '送出中…', en: 'Submitting…', vi: 'Đang gửi…', id: 'Mengirim…' },
   s1Saved:        { zh: '✓ 資料已送出，已為您開啟下一步。', en: '✓ Submitted. The next step is now open.', vi: '✓ Đã gửi. Bước tiếp theo đã được mở.', id: '✓ Terkirim. Langkah berikutnya sudah terbuka.' },
   s1Missing:      { zh: '請填寫必填欄位：', en: 'Please fill in the required fields: ', vi: 'Vui lòng điền các mục bắt buộc: ', id: 'Mohon isi kolom wajib: ' },
+  // 共用上傳元件
+  uChoose:    { zh: '選擇檔案', en: 'Choose file', vi: 'Chọn tệp', id: 'Pilih berkas' },
+  uUpload:    { zh: '上傳', en: 'Upload', vi: 'Tải lên', id: 'Unggah' },
+  uUploading: { zh: '上傳中…', en: 'Uploading…', vi: 'Đang tải lên…', id: 'Mengunggah…' },
+  uBadType:   { zh: '只接受圖片或 PDF 檔', en: 'Only image or PDF files are accepted', vi: 'Chỉ chấp nhận tệp ảnh hoặc PDF', id: 'Hanya berkas gambar atau PDF' },
+  uTooLarge:  { zh: '檔案過大（上限 10MB）', en: 'File too large (max 10MB)', vi: 'Tệp quá lớn (tối đa 10MB)', id: 'Berkas terlalu besar (maks 10MB)' },
+  uView:      { zh: '檢視', en: 'View', vi: 'Xem', id: 'Lihat' },
+  // 步驟2 繳費
+  s2SlipTitle:    { zh: '繳費單', en: 'Payment Slip', vi: 'Phiếu nộp học phí', id: 'Slip Pembayaran' },
+  s2SlipDownload: { zh: '下載繳費單', en: 'Download payment slip', vi: 'Tải phiếu nộp học phí', id: 'Unduh slip pembayaran' },
+  s2SlipPending:  { zh: '繳費單準備中，請稍後再回來查看。', en: 'Your payment slip is being prepared. Please check back later.', vi: 'Phiếu nộp học phí đang được chuẩn bị. Vui lòng quay lại sau.', id: 'Slip pembayaran sedang disiapkan. Silakan periksa kembali nanti.' },
+  s2ReceiptTitle: { zh: '上傳繳費收據', en: 'Upload Payment Receipt', vi: 'Tải lên biên lai nộp tiền', id: 'Unggah Bukti Pembayaran' },
+  s2ReceiptHint:  { zh: '完成匯款後，請上傳銀行匯款收據或繳費證明（JPG／PNG／PDF）。', en: 'After payment, please upload your bank transfer receipt or proof of payment (JPG/PNG/PDF).', vi: 'Sau khi chuyển khoản, vui lòng tải lên biên lai chuyển khoản ngân hàng hoặc chứng từ nộp tiền (JPG/PNG/PDF).', id: 'Setelah membayar, unggah bukti transfer bank atau bukti pembayaran (JPG/PNG/PDF).' },
+  s2Submitted:    { zh: '✓ 已收到您的繳費收據，待本校審核確認。', en: '✓ Your receipt has been received and is under review.', vi: '✓ Đã nhận được biên lai của bạn, đang chờ nhà trường xác nhận.', id: '✓ Bukti Anda telah diterima dan sedang ditinjau.' },
+  s2Uploaded:     { zh: '已上傳', en: 'Uploaded', vi: 'Đã tải lên', id: 'Terunggah' },
 }
 
 const CAMPUS_I18N = {
@@ -247,6 +262,65 @@ export default function OnboardApp({ token }) {
     </div>
   )
 
+  // ── 步驟2：繳費（下載繳費單 + 上傳收據）───────────────────────────────────────
+  const slipUrl = info.progress?.[2]?.data?.slip_url || ''
+  const receipts = (info.files || []).filter((f) => f.step === 2 && f.kind === 'receipt')
+  const linkBtn = { display: 'inline-block', padding: '9px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, textDecoration: 'none', background: ACCENT, color: '#fff' }
+  const onUploadDone = async () => { await load() }
+
+  const step2Content = (
+    <div>
+      {/* 繳費單下載 */}
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s2SlipTitle')}</div>
+        {slipUrl ? (
+          <a href={slipUrl} target="_blank" rel="noreferrer" style={linkBtn}>⬇ {tr('s2SlipDownload')}</a>
+        ) : (
+          <div style={{ fontSize: 13, color: '#888', lineHeight: 1.7, padding: '6px 0' }}>{tr('s2SlipPending')}</div>
+        )}
+      </div>
+
+      {/* 繳費收據上傳 */}
+      <div style={sectionBox}>
+        <div style={sectionTitle}>{tr('s2ReceiptTitle')}</div>
+        <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>{tr('s2ReceiptHint')}</div>
+        {states[2] === 'submitted' && (
+          <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#b45309', marginBottom: 10, lineHeight: 1.6 }}>
+            {tr('s2Submitted')}
+          </div>
+        )}
+        {receipts.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            {receipts.map((f, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, padding: '4px 0', color: '#555' }}>
+                <span>{tr('s2Uploaded')} · {fmtDate(f.uploaded_at)}</span>
+                {f.drive_url && <a href={f.drive_url} target="_blank" rel="noreferrer" style={{ color: ACCENT, flexShrink: 0 }}>{tr('uView')}</a>}
+              </div>
+            ))}
+          </div>
+        )}
+        <FileUpload token={token} step={2} kind="receipt" tr={tr} onDone={onUploadDone} />
+      </div>
+
+      {/* 期限 / 聯絡窗口 */}
+      {(currentSetting?.deadline || currentSetting?.contact_name || currentSetting?.contact_email) && (
+        <div style={sectionBox}>
+          {currentSetting?.deadline && <Row label={tr('deadline')} value={fmtDate(currentSetting.deadline)} />}
+          {(currentSetting?.contact_name || currentSetting?.contact_email) && (
+            <Row label={tr('contact')} value={
+              <span>
+                {currentSetting.contact_name || ''}
+                {currentSetting.contact_email && (
+                  <a href={`mailto:${currentSetting.contact_email}`} style={{ color: ACCENT, marginLeft: 6 }}>{currentSetting.contact_email}</a>
+                )}
+              </span>
+            } />
+          )}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div style={wrap}>
       {langBar}
@@ -307,6 +381,8 @@ export default function OnboardApp({ token }) {
           {currentStep ? (
             currentStep.step === 1 && states[1] === 'open' ? (
               step1Form
+            ) : currentStep.step === 2 && (states[2] === 'open' || states[2] === 'submitted') ? (
+              step2Content
             ) : (
               <div style={sectionBox}>
                 <div style={sectionTitle}>{currentStep[lang] || currentStep.zh} · {tr(STATE_LABEL_KEY[states[currentStep.step]])}</div>
@@ -344,6 +420,56 @@ function Row({ label, value }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '5px 0', fontSize: 13.5 }}>
       <span style={{ color: '#999', flexShrink: 0 }}>{label}</span>
       <span style={{ textAlign: 'right', fontWeight: 500 }}>{value}</span>
+    </div>
+  )
+}
+
+// 共用檔案上傳元件（選檔 → 預覽檔名 → 上傳中 → 成功/失敗）。
+// Phase 4 簽證等步驟可重用；上傳成功後呼叫 onDone(回傳資料) 由外層刷新進度。
+function FileUpload({ token, step, kind, tr, onDone }) {
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const inputRef = useRef(null)
+
+  const pick = (e) => {
+    setErr('')
+    const f = e.target.files?.[0] || null
+    if (!f) { setFile(null); return }
+    const okType = (f.type || '').startsWith('image/') || f.type === 'application/pdf'
+    if (!okType) { setErr(tr('uBadType')); setFile(null); e.target.value = ''; return }
+    if (f.size > 10 * 1024 * 1024) { setErr(tr('uTooLarge')); setFile(null); e.target.value = ''; return }
+    setFile(f)
+  }
+
+  const upload = async () => {
+    if (!file || busy) return
+    setBusy(true); setErr('')
+    try {
+      const data = await onboardUpload({ token, step, kind, file })
+      setFile(null)
+      if (inputRef.current) inputRef.current.value = ''
+      await onDone?.(data)
+    } catch (e) {
+      setErr(e.message || tr('uBadType'))
+    } finally { setBusy(false) }
+  }
+
+  const chooseBtn = { display: 'inline-block', padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1px solid ' + ACCENT, color: ACCENT, background: 'white', fontFamily: 'inherit' }
+  const upBtn = { padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', border: 'none',
+    cursor: !file || busy ? 'not-allowed' : 'pointer', background: !file || busy ? '#e5e7eb' : ACCENT, color: !file || busy ? '#9ca3af' : 'white' }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={chooseBtn}>
+          {tr('uChoose')}
+          <input ref={inputRef} type="file" accept="image/*,application/pdf" onChange={pick} style={{ display: 'none' }} />
+        </label>
+        {file && <span style={{ fontSize: 12.5, color: '#555', wordBreak: 'break-all', flex: '1 1 120px' }}>{file.name}</span>}
+        <button onClick={upload} disabled={!file || busy} style={upBtn}>{busy ? tr('uUploading') : tr('uUpload')}</button>
+      </div>
+      {err && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 8 }}>{err}</div>}
     </div>
   )
 }

@@ -1236,9 +1236,17 @@ export async function onboardSubmit(payload) {
   return data
 }
 // 上傳檔案到學生的 Drive 資料夾（走 /api/onboard-upload → Apps Script）。
-// file 為 <input type="file"> 的 File 物件；kind 為檔案類別（如 'payment_proof'）。
-// 檔案上限約 3MB（Edge 請求體限制），回傳 { ok, fileId, url, filename }
-export async function onboardUpload(token, kind, file, step) {
+// 參數物件：{ token, step, kind, file }；file 為 <input type="file"> 的 File 物件，
+// kind 為檔案類別（如 'receipt'）。前端先擋 >10MB 與非 image/PDF 類型（真正上限由 Edge 再把關）。
+// 回傳 { ok, url, kind, filename, fileId, states }（states 為更新後五步 progress）。
+export async function onboardUpload({ token, step, kind, file }) {
+  if (!file) throw new Error('請先選擇檔案')
+  const mimeType = file.type || ''
+  if (!(mimeType.startsWith('image/') || mimeType === 'application/pdf')) {
+    throw new Error('只接受圖片或 PDF 檔')
+  }
+  if (file.size > 10 * 1024 * 1024) throw new Error('檔案過大（上限 10MB）')
+
   const dataBase64 = await new Promise((resolve, reject) => {
     const r = new FileReader()
     r.onload = () => resolve(String(r.result).split(',')[1] || '')
@@ -1248,7 +1256,7 @@ export async function onboardUpload(token, kind, file, step) {
   const res = await fetch('/api/onboard-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, kind, step, filename: file.name, mimeType: file.type, dataBase64 }),
+    body: JSON.stringify({ token, step, kind, filename: file.name, mimeType, dataBase64 }),
   })
   const text = await res.text()
   let data

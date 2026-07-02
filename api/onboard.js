@@ -57,7 +57,7 @@ export default async function handler(req) {
     const student = await findStudent(token, H)
     if (!student) return json({ ok: false, error: '連結無效或已失效' }, 401)
 
-    const [progress, sRes, aRes] = await Promise.all([
+    const [progress, sRes, aRes, fRes] = await Promise.all([
       fetchProgress(student.account, H),
       fetch(
         `${SUPABASE_URL}/rest/v1/enroll_settings?batch=eq.${encodeURIComponent(student.batch ?? '')}&select=step,open,deadline,contact_name,contact_email,contact_phone,extra`,
@@ -67,10 +67,18 @@ export default async function handler(req) {
         `${SUPABASE_URL}/rest/v1/applications?account=eq.${encodeURIComponent(student.account)}&select=name,gender,birth_date,passport_number,nationality&limit=1`,
         { headers: H },
       ),
+      fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_files?account=eq.${encodeURIComponent(student.account)}&select=step,kind,drive_url,uploaded_at&order=uploaded_at.desc`,
+        { headers: H },
+      ),
     ])
     const sRows = sRes.ok ? await sRes.json() : []
     const settings = {}
     for (const r of Array.isArray(sRows) ? sRows : []) settings[r.step] = r
+
+    // 已上傳檔案（供步驟 2/4 顯示收據、簽證等；只回安全欄位，不含 drive_file_id）
+    const fRows = fRes.ok ? await fRes.json() : []
+    const files = Array.isArray(fRows) ? fRows : []
 
     // 步驟1預填：applications 為主，查無時回退 enroll_students
     const aRows = aRes.ok ? await aRes.json() : []
@@ -83,7 +91,7 @@ export default async function handler(req) {
       nationality: app.nationality ?? student.nationality ?? '',
     }
 
-    return json({ ok: true, student, progress, settings, prefill })
+    return json({ ok: true, student, progress, settings, prefill, files })
   }
 
   // ── POST：送出步驟表單（目前只開放 step 1，server 權威驗證）─────────────────
