@@ -30,6 +30,19 @@ const LANGS = [['en', '中英'], ['vi', '中越'], ['id', '中印尼']]
 const CHUNK = 8   // 每批封數（建草稿／送出皆分批，同 Stage4，避免 Apps Script 逾時）
 const SEP = '\n\n────────────────────────────\n\n'   // 外語段／中文段分隔線（同 mailTemplates 慣例）
 
+// 依通知次別自動預選收件對象：
+//   first  → 只勾「從未寄過」的新到者（sentCount===0）；
+//   second → 只勾「已收首次(first)、仍卡關」者；
+//   final  → 只勾「已收二次(second)、仍卡關」者。
+// 名單本就只含卡在該步(open/submitted)者，故「仍卡關」隱含成立。
+// 目的：行政每天開同一 tier 重寄時，不會再寄給已收過的人，毋須人腦記次數（計次存在 enroll_progress）。
+const suggestInclude = (r, tier) => {
+  const kind = r.sentKind || null
+  if (tier === 'second') return kind === 'first'
+  if (tier === 'final') return kind === 'second'
+  return (r.sentCount || 0) === 0   // first
+}
+
 export default function OnboardMailComposer({ step, initialTier = 'first', recipients, cfg, markDraft, markSent, onClose, onToast }) {
   const stepZh = ENROLL_STEPS[step - 1]?.zh || `步驟${step}`
   const hasTemplate = !!buildOnboardMail({ step, tier: 'first', lang: 'zh', data: {} })
@@ -40,17 +53,23 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
     .filter((r) => r.email)
     .map((r) => {
       const l = onboardMailLang(r.nationality)
+      const sc = r.reminder_count || 0
+      const sk = r.last_reminder_kind || null
       return {
         account: r.account, name: r.name || '', name_en: r.name_english || r.name_en || '',
         department: r.department || '', campus: r.campus || '', batch: String(r.batch ?? ''),
         nationality: r.nationality || '', confirm_token: r.confirm_token || '', email: r.email,
         lang: l === 'zh' ? 'en' : l,   // 下拉選的是外語；台/中籍預設中英
-        sentCount: r.reminder_count || 0, sentKind: r.last_reminder_kind || null,
-        sentNow: false, include: true,
+        sentCount: sc, sentKind: sk,
+        sentNow: false, include: suggestInclude({ sentCount: sc, sentKind: sk }, initialTier),
       }
-    }), [recipients])
+    }), [recipients, initialTier])
   const [rows, setRows] = useState(baseRows)
   useEffect(() => { setRows(baseRows) }, [baseRows])
+  // 切換通知次別 → 依新 tier 重新預選收件對象（見 suggestInclude）；手動勾選會被重置為建議名單
+  useEffect(() => {
+    setRows((rs) => rs.map((r) => ({ ...r, include: suggestInclude(r, tier) })))
+  }, [tier])
   const setRow = (account, p) => setRows((rs) => rs.map((r) => (r.account === account ? { ...r, ...p } : r)))
 
   const [created, setCreated] = useState({})   // { account: draftId }（僅本視窗有效）
@@ -224,6 +243,10 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
 
       {/* 名單 */}
       <span style={s.secLabel}>收件名單</span>
+      <div style={{ fontSize: 12, color: '#666', margin: '4px 0 8px', lineHeight: 1.7 }}>
+        依「{TIERS.find(([v]) => v === tier)?.[1]}」自動預選 <b>{rows.filter((r) => suggestInclude(r, tier)).length}</b> 位；
+        已寄過本階段信的 {rows.filter((r) => (r.sentCount || 0) > 0).length} 位預設不勾（仍可手動加選）。
+      </div>
       <div style={{ maxHeight: '40vh', overflow: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
           <thead>
