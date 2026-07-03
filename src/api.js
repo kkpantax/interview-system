@@ -1306,6 +1306,9 @@ async function onboardAdminPost(payload) {
 // 之後的匯出等單一校區場景使用。
 export const onboardAdminList = (username, password, batch = 'all', campus = 'all') =>
   onboardAdminPost({ action: 'list', username, password, batch, campus })
+// 步驟①資料明細（BA0203 匯出＋檢視彈窗共用）：不帶 account＝全體(非測試)；帶 account＝單筆
+export const onboardAdminStep1Data = (username, password, account = null) =>
+  onboardAdminPost({ action: 'step1-data', username, password, ...(account ? { account } : {}) })
 // 確認某生某步（步驟2/3），自動開下一步
 export const onboardAdminConfirm = (username, password, account, step) =>
   onboardAdminPost({ action: 'confirm', username, password, account, step })

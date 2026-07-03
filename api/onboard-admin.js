@@ -5,6 +5,8 @@
 //   - list：回全部 enroll_students（預設排除 is_test）＋每人五步 state＋各步檔案連結，
 //     並從 applications 以 account 補 name_english / gender / birth_date（顯示身分欄用），
 //     支援 batch(all/1/2) 與 campus(all/台北/高雄) 篩選。
+//   - step1-data：回全體(或帶 account 單筆)非測試學生的 enroll_students 基本欄＋步驟①已填內容
+//     (enroll_progress[1].data，未確認為 null)；供 BA0203 匯出與檢視彈窗共用。
 //   - confirm：{account, step} → 該步 confirmed，並自動把下一步 locked→open；log admin_confirm。
 //   - abandon：{account, reason} → enroll_students.status='abandoned'；log abandon。
 //   - reactivate：{account} → status 回 'active'；log reactivate。
@@ -189,6 +191,42 @@ export default async function handler(req) {
       files: filesByAcct[s.account] || [],
     }))
     return json({ ok: true, list })
+  }
+
+  // ── step1-data：步驟①資料明細（BA0203 匯出＋檢視彈窗共用）─────────────────────
+  // 回每位非測試學生的 enroll_students 基本欄（含 department/campus）＋步驟①已填內容
+  // （enroll_progress step=1 的 data，未確認者為 null）。帶 account 參數則只回該生（供檢視彈窗）。
+  // 這裡不做欄位轉換／篩選，純資料提供；BA0203 欄位對應與民國轉換交由前端匯出處理。
+  if (action === 'step1-data') {
+    const one = body.account ? String(body.account) : ''
+    const includeTest = body.includeTest === true
+
+    let sUrl = `${SUPABASE_URL}/rest/v1/enroll_students?select=account,name,name_en,department,campus,batch,status`
+    if (one) sUrl += `&account=eq.${encodeURIComponent(one)}`
+    else if (!includeTest) sUrl += `&is_test=eq.false`
+
+    let pUrl = `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.1&select=account,state,data`
+    if (one) pUrl += `&account=eq.${encodeURIComponent(one)}`
+
+    const [sRes, pRes] = await Promise.all([
+      fetch(sUrl, { headers: H }),
+      fetch(pUrl, { headers: H }),
+    ])
+    if (!sRes.ok) return json({ ok: false, error: '查詢學生失敗' }, 500)
+    const students = await sRes.json()
+    const prog = pRes.ok ? await pRes.json() : []
+
+    const byAcct = {}
+    for (const r of Array.isArray(prog) ? prog : []) {
+      byAcct[r.account] = { state: r.state, data: r.data || null }
+    }
+    const rows = (Array.isArray(students) ? students : []).map((s) => ({
+      account: s.account, name: s.name, name_en: s.name_en,
+      department: s.department, campus: s.campus, batch: s.batch, status: s.status,
+      step1_state: byAcct[s.account]?.state || 'locked',
+      step1: byAcct[s.account]?.data || null,
+    }))
+    return json({ ok: true, rows })
   }
 
   // ── confirm：確認某步（→ confirmed）並自動開下一步 ───────────────────────────
