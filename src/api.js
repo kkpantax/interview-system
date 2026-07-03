@@ -1312,6 +1312,9 @@ export const onboardAdminStep1Data = (username, password, account = null) =>
 // 確認某生某步（步驟2/3），自動開下一步
 export const onboardAdminConfirm = (username, password, account, step) =>
   onboardAdminPost({ action: 'confirm', username, password, account, step })
+// 退回補件：步驟①→open（保留已填內容）、步驟②未確認則收回 locked
+export const onboardAdminReopenStep1 = (username, password, account, reason = '') =>
+  onboardAdminPost({ action: 'reopen-step1', username, password, account, reason })
 // 標記放棄（帶原因）
 export const onboardAdminAbandon = (username, password, account, reason) =>
   onboardAdminPost({ action: 'abandon', username, password, account, reason })

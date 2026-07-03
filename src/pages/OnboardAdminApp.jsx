@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
-import { Btn, Card, CardHead, Pill, s } from '../components/UI'
+import { Btn, Card, CardHead, Pill, Modal, s } from '../components/UI'
 import OnboardMailComposer from '../components/OnboardMailComposer'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
-  onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft, onboardAdminStep1Data } from '../api'
+  onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft, onboardAdminStep1Data,
+  onboardAdminReopenStep1 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
-import { ENROLL_STEPS, deptZhFull } from '../constants'
+import { ENROLL_STEPS, deptZhFull, ONBOARD_STEP1_FIELDS } from '../constants'
 import { exportBA0203 } from '../lib/ba0203'
 
 // 入學準備後台（superadmin 專用）。掛 #/onboard-admin，StageNav 顯示「⑤ 入學準備」。
@@ -107,6 +108,7 @@ export default function OnboardAdminApp() {
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)   // BA0203 匯出中
+  const [detail, setDetail] = useState(null)          // 檢視資料彈窗：{account,name,loading,step1_state,data,department,campus}
   const [toast, setToast] = useState(null)
 
   const showToast = useCallback((msg, type = 'ok') => {
@@ -178,6 +180,38 @@ export default function OnboardAdminApp() {
     } catch (e) {
       showToast('匯出失敗：' + e.message, 'error')
     } finally { setExporting(false) }
+  }
+
+  // 檢視某生步驟①已填資料（單筆撈 step1-data）；退回補件在彈窗內。
+  const openDetail = async (stu) => {
+    setDetail({ account: stu.account, name: stu.name, loading: true })
+    try {
+      const res = await onboardAdminStep1Data(teacher.username, pw, stu.account)
+      const row = (res.rows || [])[0] || {}
+      setDetail({
+        account: stu.account, name: stu.name, loading: false,
+        step1_state: row.step1_state || 'locked', data: row.step1 || null,
+        department: row.department || stu.department, campus: row.campus || stu.campus,
+      })
+    } catch (e) {
+      showToast('讀取資料失敗：' + e.message, 'error')
+      setDetail(null)
+    }
+  }
+
+  // 退回補件：步驟①→open（保留原填、學生可修正）、步驟②未確認則收回 locked。
+  const doReopenStep1 = async (account, name) => {
+    if (busy) return
+    const reason = window.prompt(`確定要將「${name || account}」的資料退回補件？\n學生的「資料確認」會重新開啟、可修正；若已進到繳費(未確認)會一併收回。\n可填退回原因（記錄於稽核，可留空）：`, '')
+    if (reason === null) return
+    setBusy(true)
+    try {
+      await onboardAdminReopenStep1(teacher.username, pw, account, reason.trim())
+      showToast(`已退回 ${name || account} 補件；可至步驟①寄信催補`)
+      setDetail(null)
+      await load()
+    } catch (e) { showToast('退回失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
   }
 
   // ── 中文姓名更改待審（步驟1分頁內）─────────────────────────────────────────
@@ -665,6 +699,8 @@ export default function OnboardAdminApp() {
                       </td>
                       <td style={td}>
                         <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => openDetail(stu)} disabled={busy}
+                            style={{ ...s.btn, ...s.btnSm }}>檢視</button>
                           {canConfirm && <button onClick={() => doConfirm(stu, step)} disabled={busy} style={{ ...s.btn, ...s.btnSm, background: ACCENT, color: '#fff', borderColor: ACCENT }}>確認</button>}
                           <button onClick={() => openComposer(step, [stu.account])} disabled={busy}
                             style={{ ...s.btn, ...s.btnSm }}>✉ 寄信</button>
@@ -1057,6 +1093,48 @@ export default function OnboardAdminApp() {
           onClose={() => { const st = composer.step; setComposer(null); loadMailRecips(st) }}
           onToast={showToast}
         />
+      )}
+
+      {/* 檢視資料彈窗（步驟①已填內容）＋ 退回補件 */}
+      {detail && (
+        <Modal title={`檢視資料 — ${detail.name || ''}（${detail.account}）`} onClose={() => setDetail(null)} width={640}>
+          {detail.loading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#999' }}>載入中…</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12, fontSize: 13 }}>
+                <span><b>學系</b>：{deptZhFull(detail.department) || detail.department || '—'}</span>
+                <span><b>校區</b>：{detail.campus || '—'}</span>
+                <span><b>資料確認</b>：{detail.step1_state === 'confirmed' ? '已完成' : '未完成'}</span>
+              </div>
+              {detail.data ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px', fontSize: 13 }}>
+                  {[...ONBOARD_STEP1_FIELDS.prefill, ...ONBOARD_STEP1_FIELDS.fill].map((f) => {
+                    let v = detail.data[f.key]
+                    if (f.key === 'nationality' && v === '其他') v = detail.data.nationality_other || '其他'
+                    return (
+                      <div key={f.key} style={{ display: 'flex', gap: 6, padding: '5px 0', borderBottom: '1px solid #f5f4f0' }}>
+                        <span style={{ color: '#999', flexShrink: 0, minWidth: 96 }}>{f.zh}</span>
+                        <span style={{ fontWeight: 500, wordBreak: 'break-all' }}>{v == null || v === '' ? '—' : String(v)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ padding: 16, color: '#888', fontSize: 13 }}>此生尚未填寫「資料確認」，無可檢視內容。</div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+                <Btn onClick={() => doReopenStep1(detail.account, detail.name)}
+                  disabled={busy || detail.step1_state !== 'confirmed'}>↩ 退回補件</Btn>
+                <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6, flex: 1 }}>
+                  {detail.step1_state === 'confirmed'
+                    ? '退回後學生的「資料確認」重新開啟可修正；若已進到繳費(未確認)會一併收回。之後到步驟①分頁寄信催補。'
+                    : '此生尚未完成資料確認，無需退回。'}
+                </span>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
     </PageShell>
   )

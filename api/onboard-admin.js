@@ -8,6 +8,8 @@
 //   - step1-data：回全體(或帶 account 單筆)非測試學生的 enroll_students 基本欄＋步驟①已填內容
 //     (enroll_progress[1].data，未確認為 null)；供 BA0203 匯出與檢視彈窗共用。
 //   - confirm：{account, step} → 該步 confirmed，並自動把下一步 locked→open；log admin_confirm。
+//   - reopen-step1：{account, reason?} → 退回補件：步驟①→open(保留 data)、步驟②未確認則收回 locked；
+//     log reopen_step1。退回後該生回到「卡在步驟①」名單，可用現有步驟①信催補件。
 //   - abandon：{account, reason} → enroll_students.status='abandoned'；log abandon。
 //   - reactivate：{account} → status 回 'active'；log reactivate。
 //   - settings：回全部 enroll_settings（batch×step 10 列）＋ enroll_config 的 line_qr 與 contacts。
@@ -254,6 +256,32 @@ export default async function handler(req) {
       }
     }
     await logRow(account, step, 'admin_confirm', { step })
+    return json({ ok: true })
+  }
+
+  // ── reopen-step1：退回補件（步驟①→open，步驟②未確認則收回 locked）───────────────
+  // 行政檢視資料後發現需補件時使用。步驟① 保留原填 data（學生端會回填、可修正），清 confirmed_at；
+  // 步驟② 若尚未 confirmed（open/submitted）則收回 locked，避免資料未定先繳費。
+  // 退回後該生自動回到「卡在步驟①」名單，可用現有步驟①信催補件。
+  if (action === 'reopen-step1') {
+    const { account } = body
+    if (!account) return json({ ok: false, error: '缺少帳號' }, 400)
+    const before = await fetchProgress(account, H)
+    const up = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.1`,
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ state: 'open', confirmed_at: null }) },
+    )
+    if (!up.ok) return json({ ok: false, error: '退回失敗：' + (await up.text()) }, 500)
+    const s2 = before[2]?.state
+    if (s2 === 'open' || s2 === 'submitted') {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.2`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ state: 'locked' }) },
+      ).catch(() => { /* 收回步驟2 失敗不阻斷 */ })
+    }
+    await logRow(account, 1, 'reopen_step1', { reason: body.reason || '', prev_step2: s2 || null })
     return json({ ok: true })
   }
 
