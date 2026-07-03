@@ -350,7 +350,19 @@ export const ONBOARD_MAIL_S1 = {
   },
 }
 
+// 步驟①信件的放榜名單網址（全校區共用、固定，不走 enroll_config）
+export const ONBOARD_RESULT_LINK = 'https://recruit.usc.edu.tw/?p=8042'
+
+// 信件內文的校區名稱四語對照（與 OnboardApp / AdmitMailComposer 的 CAMPUS_I18N 同定稿；
+// 此處為句中片語，vi/id 用小寫開頭）
+const ONBOARD_CAMPUS_I18N = {
+  台北: { en: 'Taipei Campus', vi: 'cơ sở Đài Bắc', id: 'kampus Taipei' },
+  高雄: { en: 'Kaohsiung Campus', vi: 'cơ sở Cao Hùng', id: 'kampus Kaohsiung' },
+}
+
 // 組出步驟①通知信 { subject, body }；查無模板（目前僅 step=1）回 null。
+// data.department / data.campus 傳原始值即可：系所名依語言解析（zh→deptZhFull、外語→DEPT_I18N 定稿，
+// 查無對照退回原字串）；校區依 ONBOARD_CAMPUS_I18N 翻譯。
 // 空值省略規則：
 //   department 空 → 整個「錄取學系為…」句段省略（campus 附屬其中）；campus 空 → 只略「（…校區）」；
 //   result_link 空 → 榜單句省略；deadline 空 → 改用 confirmAsap（請儘速完成）；
@@ -362,15 +374,18 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
   const t = ONBOARD_MAIL_S1
   const p = t.paras[L]
 
-  const dept = String(data.department || '').trim()
+  const deptRaw = String(data.department || '').trim()
+  const dept = deptRaw ? (L === 'zh' ? deptZhFull(deptRaw) : deptI18n(deptRaw, L)) : ''
   const campus = String(data.campus || '').trim()
   const rl = String(data.result_link || '').trim()
+  const campusName = campus ? (ONBOARD_CAMPUS_I18N[campus]?.[L] || campus) : ''
   const campusSeg = campus
-    ? { zh: `（${campus}校區）`, en: ` (${campus} campus)`, vi: ` (cơ sở ${campus})`, id: ` (kampus ${campus})` }[L]
+    ? (L === 'zh' ? `（${campus}校區）` : ` (${campusName})`)
     : ''
   const deptSeg = dept
     ? { zh: `，錄取學系為 ${dept}${campusSeg}`, en: `, in the ${dept}${campusSeg}`,
-        vi: `, ngành ${dept}${campusSeg}`, id: `, pada program studi ${dept}${campusSeg}` }[L]
+        // id 的 DEPT_I18N 定稿已自帶「Jurusan」（＝學系），故不再重複 program studi
+        vi: `, ngành ${dept}${campusSeg}`, id: `, pada ${dept}${campusSeg}` }[L]
     : ''
   const resultSeg = rl
     ? { zh: `完整放榜名單請見：${rl}`, en: ` The full admission list is available here: ${rl}`,

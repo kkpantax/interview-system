@@ -32,7 +32,7 @@
 // 總覽漏斗統計由前端就地從 list 推導（比照 Stage4App 的 client-side 統計慣例）。
 export const config = { runtime: 'edge' }
 
-import { buildOnboardMail, onboardMailLang } from '../src/constants.js'
+import { buildOnboardMail, onboardMailLang, ONBOARD_RESULT_LINK } from '../src/constants.js'
 
 const SUPABASE_URL = 'https://lveekehjxkfvigwfwgvn.supabase.co'
 
@@ -528,7 +528,7 @@ export default async function handler(req) {
           name: r.name || '', name_english: r.name_english || r.name_en || '',
           department: r.department || '', campus: r.campus || '',
           link: `${origin}/#/onboard?t=${r.confirm_token}`,
-          result_link: String(resultLink[camp] || resultLink['台北'] || '').trim(),
+          result_link: ONBOARD_RESULT_LINK,
           deadline: deadlines[String(r.batch)] || '',
           contact_name: c.name || '', contact_email: c.email || '', contact_phone: c.phone || '',
         },

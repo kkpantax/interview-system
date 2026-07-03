@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Modal, Btn, s } from './UI'
 import { createDrafts, sendDraftBatch } from '../api'
-import { buildOnboardMail, onboardMailLang, ENROLL_STEPS, deptZhFull } from '../constants'
+import { buildOnboardMail, onboardMailLang, ENROLL_STEPS, deptZhFull, ONBOARD_RESULT_LINK } from '../constants'
 
 // 入學準備通知信寄送視窗（比照 Stage4 MailComposer 版型；模板走 constants.js buildOnboardMail）。
 // 與 Stage4 MailComposer 的差異：
@@ -60,7 +60,6 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
   const [preview, setPreview] = useState(null)
 
   const contacts = cfg?.contacts || {}
-  const resultLink = cfg?.resultLink || {}
   const deadlines = cfg?.deadlines || {}
 
   const dataFor = (r) => {
@@ -68,9 +67,10 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
     const c = contacts[camp] || contacts['台北'] || {}
     return {
       name: r.name || '', name_english: r.name_en || '',
-      department: deptZhFull(r.department) || r.department || '', campus: r.campus || '',
+      // 傳原始系所/校區，由 buildOnboardMail 依語言解析（zh 全名、外語 DEPT_I18N 定稿）
+      department: r.department || '', campus: r.campus || '',
       link: `${window.location.origin}/#/onboard?t=${r.confirm_token}`,
-      result_link: String(resultLink[camp] || resultLink['台北'] || '').trim(),
+      result_link: ONBOARD_RESULT_LINK,
       deadline: deadlines[r.batch] || '',
       contact_name: c.name || '', contact_email: c.email || '', contact_phone: c.phone || '',
     }
@@ -191,15 +191,16 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         </div>
         {['台北', '高雄'].map((c) => {
           const ct = contacts[c] || {}
-          const hasRl = !!String(resultLink[c] || '').trim()
           return (
             <div key={c} style={{ fontSize: 12.5, color: '#444', lineHeight: 2 }}>
               <span style={{ fontWeight: 600 }}>{c}校區</span>：
-              承辦 {ct.name || '—'} · {ct.email || '—'}{ct.phone ? ` · ${ct.phone}` : ''} · 放榜連結{' '}
-              {hasRl ? '已設定' : <span style={{ color: '#b45309' }}>未設定（信中略過該段）</span>}
+              承辦 {ct.name || '—'} · {ct.email || '—'}{ct.phone ? ` · ${ct.phone}` : ''}
             </div>
           )
         })}
+        <div style={{ fontSize: 12.5, color: '#444', lineHeight: 2 }}>
+          <span style={{ fontWeight: 600 }}>放榜名單連結（固定）</span>：{ONBOARD_RESULT_LINK}
+        </div>
         <div style={{ fontSize: 12.5, color: '#444', lineHeight: 2 }}>
           <span style={{ fontWeight: 600 }}>「{stepZh}」截止日</span>：第一梯 {deadlines['1'] || '—'} · 第二梯 {deadlines['2'] || '—'}
           {(!deadlines['1'] || !deadlines['2']) && <span style={{ color: '#b45309' }}>（未設定的梯次，信中略過期限句）</span>}
