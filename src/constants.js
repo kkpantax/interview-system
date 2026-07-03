@@ -354,6 +354,67 @@ export const ONBOARD_MAIL_S1 = {
   },
 }
 
+// 步驟②「繳費」通知信（四語各自單語；雙語整封由 OnboardMailComposer 縫合＝外語在前、中文在後）。
+// 段落順序：greeting → opened(含 {{link}}) → notice(注意事項1–4，第4條含承辦窗口) → deadlineLine|deadlineAsap → [custom] → signoff。
+// 注意事項採「先寫死 constants」策略（同步驟①）；金額不在信中（在專屬繳費單上）。
+export const ONBOARD_MAIL_S2 = {
+  subject: {
+    zh: '【實踐大學國際專修部】繳費通知',
+    en: '[Shih Chien University IFP] Tuition Payment Notice',
+    vi: '[Đại học Thực Tiễn - IFP] Thông báo nộp học phí',
+    id: '[Universitas Shih Chien - IFP] Pemberitahuan Pembayaran',
+  },
+  subjectPrefix: { second: '【提醒 Reminder】', final: '【最後提醒 Final Reminder】' },
+  tierIntro: {
+    second: {
+      zh: '【提醒】您尚未完成「繳費」，煩請儘快處理。以下為完整通知：',
+      en: '[Reminder] You have not yet completed the "Payment" step. Please complete it as soon as possible. Full notice below:',
+      vi: '[Nhắc nhở] Bạn chưa hoàn thành bước "Nộp học phí". Vui lòng hoàn thành sớm nhất có thể. Nội dung đầy đủ bên dưới:',
+      id: '[Pengingat] Anda belum menyelesaikan langkah "Pembayaran". Mohon segera diselesaikan. Berikut pemberitahuan lengkapnya:',
+    },
+    final: {
+      zh: '【最後提醒】這是「繳費」的最後提醒，逾期將暫停辦理簽證並恐影響入學，請務必於期限前完成。',
+      en: '[Final Reminder] This is the final reminder for "Payment." Missing the deadline will suspend your visa processing and may affect your enrollment. Please complete it without delay.',
+      vi: '[Nhắc nhở cuối cùng] Đây là lời nhắc cuối cùng cho bước "Nộp học phí". Quá hạn sẽ khiến việc xử lý thị thực bị tạm dừng và có thể ảnh hưởng đến việc nhập học, vui lòng hoàn thành trước thời hạn.',
+      id: '[Pengingat Terakhir] Ini pengingat terakhir untuk "Pembayaran." Melewati batas waktu akan menghentikan proses visa Anda dan dapat memengaruhi pendaftaran. Mohon selesaikan sebelum batas waktu.',
+    },
+  },
+  paras: {
+    zh: {
+      greeting: '親愛的 {{name}} 同學，您好：',
+      opened: '您的入學繳費作業已開通。請點選以下專屬連結登入，於「繳費」步驟下載您的專屬繳費單，並依單上金額與方式完成繳費；繳費後請回到頁面上傳繳費證明。\n{{link}}',
+      notice: '繳費注意事項：\n1. 請依繳費單上的金額與方式完成繳費，繳費後回到本頁上傳繳費證明。\n2. 請務必留意繳費期限；若未如期完成繳費，將暫停辦理您的簽證作業，恐影響入學。\n3. 若已完成繳費，但於開學前選擇退學，或因簽證等不可抗力因素無法如期來校就讀，學校將依規定辦理退費至您指定之帳戶。\n4. 如有任何問題，歡迎聯繫承辦人 {{contact_name}}（{{contact_email}}{{contact_phone}}）。',
+      deadlineLine: '請於 {{deadline}} 前完成繳費。',
+      deadlineAsap: '請儘速完成繳費。',
+      signoff: '實踐大學 國際事務處 敬啟',
+    },
+    en: {
+      greeting: 'Dear {{name_english}},',
+      opened: 'Your enrollment payment process is now open. Please log in via your personal link below, download your payment slip under the "Payment" step, and complete the payment according to the amount and method shown on the slip. After paying, please return to the page to upload your proof of payment.\n{{link}}',
+      notice: 'Payment notes:\n1. Please pay according to the amount and method shown on your payment slip, then return to this page to upload your proof of payment.\n2. Please be mindful of the payment deadline. If payment is not completed on time, your visa processing will be suspended, which may affect your enrollment.\n3. If you complete the payment but choose to withdraw before the semester begins, or cannot arrive on time due to force majeure such as visa issues, the university will process a refund to your designated account in accordance with the regulations.\n4. If you have any questions, please contact {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      deadlineLine: 'Please complete your payment before {{deadline}}.',
+      deadlineAsap: 'Please complete your payment as soon as possible.',
+      signoff: 'Office of International Affairs, Shih Chien University',
+    },
+    vi: {
+      greeting: '{{name_english}} thân mến,',
+      opened: 'Quy trình nộp học phí nhập học của bạn đã được mở. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập, tải phiếu nộp học phí riêng của bạn ở bước "Nộp học phí", và hoàn thành việc nộp theo số tiền và phương thức ghi trên phiếu. Sau khi nộp, vui lòng quay lại trang để tải lên chứng từ đã nộp.\n{{link}}',
+      notice: 'Lưu ý khi nộp học phí:\n1. Vui lòng nộp theo số tiền và phương thức ghi trên phiếu nộp học phí, sau đó quay lại trang này để tải lên chứng từ đã nộp.\n2. Vui lòng lưu ý thời hạn nộp. Nếu không nộp đúng hạn, việc xử lý thị thực của bạn sẽ bị tạm dừng, có thể ảnh hưởng đến việc nhập học.\n3. Nếu bạn đã nộp học phí nhưng chọn thôi học trước khi bắt đầu học kỳ, hoặc không thể đến trường đúng hạn vì lý do bất khả kháng như vấn đề thị thực, nhà trường sẽ hoàn phí về tài khoản bạn chỉ định theo quy định.\n4. Nếu có thắc mắc, vui lòng liên hệ cán bộ phụ trách {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      deadlineLine: 'Vui lòng hoàn thành việc nộp học phí trước ngày {{deadline}}.',
+      deadlineAsap: 'Vui lòng hoàn thành việc nộp học phí trong thời gian sớm nhất.',
+      signoff: 'Phòng Sự vụ Quốc tế, Đại học Thực Tiễn',
+    },
+    id: {
+      greeting: 'Yth. {{name_english}},',
+      opened: 'Proses pembayaran pendaftaran Anda kini telah dibuka. Silakan masuk melalui tautan pribadi Anda di bawah ini, unduh slip pembayaran Anda pada langkah "Pembayaran", dan selesaikan pembayaran sesuai jumlah dan metode yang tertera pada slip. Setelah membayar, kembalilah ke halaman untuk mengunggah bukti pembayaran Anda.\n{{link}}',
+      notice: 'Catatan pembayaran:\n1. Silakan bayar sesuai jumlah dan metode yang tertera pada slip pembayaran Anda, lalu kembali ke halaman ini untuk mengunggah bukti pembayaran.\n2. Mohon perhatikan batas waktu pembayaran. Jika pembayaran tidak diselesaikan tepat waktu, proses visa Anda akan dihentikan, yang dapat memengaruhi pendaftaran Anda.\n3. Jika Anda telah membayar tetapi memutuskan mengundurkan diri sebelum semester dimulai, atau tidak dapat tiba tepat waktu karena keadaan kahar seperti masalah visa, universitas akan memproses pengembalian dana ke rekening yang Anda tentukan sesuai peraturan.\n4. Jika ada pertanyaan, silakan hubungi petugas {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      deadlineLine: 'Mohon selesaikan pembayaran Anda sebelum {{deadline}}.',
+      deadlineAsap: 'Mohon selesaikan pembayaran Anda sesegera mungkin.',
+      signoff: 'Kantor Urusan Internasional, Universitas Shih Chien',
+    },
+  },
+}
+
 // 步驟①信件的放榜名單網址（全校區共用、固定，不走 enroll_config）
 export const ONBOARD_RESULT_LINK = 'https://recruit.usc.edu.tw/?p=8042'
 
@@ -364,7 +425,7 @@ const ONBOARD_CAMPUS_I18N = {
   高雄: { en: 'Kaohsiung Campus', vi: 'cơ sở Cao Hùng', id: 'kampus Kaohsiung' },
 }
 
-// 組出步驟①通知信 { subject, body }；查無模板（目前僅 step=1）回 null。
+// 組出步驟①②通知信 { subject, body }；查無模板（step 非 1/2）回 null。
 // data.department / data.campus 傳原始值即可：系所名依語言解析（zh→deptZhFull、外語→DEPT_I18N 定稿，
 // 查無對照退回原字串）；校區依 ONBOARD_CAMPUS_I18N 翻譯。
 // 空值省略規則：
@@ -373,10 +434,13 @@ const ONBOARD_CAMPUS_I18N = {
 //   contact_phone 空 → 電話句段省略；name_english 空 → fallback 中文姓名。
 // data.custom（自訂段落 hook，日後要加回時用）有值時插在簽名檔前一段。
 export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data = {} }) {
-  if (Number(step) !== 1) return null
+  const stepN = Number(step)
+  const t = stepN === 1 ? ONBOARD_MAIL_S1 : stepN === 2 ? ONBOARD_MAIL_S2 : null
+  if (!t) return null
   const L = ['zh', 'en', 'vi', 'id'].includes(lang) ? lang : 'en'
-  const t = ONBOARD_MAIL_S1
   const p = t.paras[L]
+  const hasDeadline = !!String(data.deadline || '').trim()
+  const hasContact = !!(String(data.contact_name || '').trim() || String(data.contact_email || '').trim())
 
   const deptRaw = String(data.department || '').trim()
   const dept = deptRaw ? (L === 'zh' ? deptZhFull(deptRaw) : deptI18n(deptRaw, L)) : ''
@@ -388,7 +452,6 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
     : ''
   const deptSeg = dept
     ? { zh: `，錄取學系為 ${dept}${campusSeg}`, en: `, in the ${dept}${campusSeg}`,
-        // id 的 DEPT_I18N 定稿已自帶「Jurusan」（＝學系），故不再重複 program studi
         vi: `, ngành ${dept}${campusSeg}`, id: `, pada ${dept}${campusSeg}` }[L]
     : ''
   const resultSeg = rl
@@ -399,9 +462,14 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
   const parts = []
   const intro = t.tierIntro[tier]?.[L]
   if (intro) parts.push(intro)
-  parts.push(p.greeting, p.congrats, p.listNote, p.letter)
-  parts.push(String(data.deadline || '').trim() ? p.confirmDeadline : p.confirmAsap)
-  if (String(data.contact_name || '').trim() || String(data.contact_email || '').trim()) parts.push(p.contact)
+  if (stepN === 1) {
+    parts.push(p.greeting, p.congrats, p.listNote, p.letter)
+    parts.push(hasDeadline ? p.confirmDeadline : p.confirmAsap)
+    if (hasContact) parts.push(p.contact)
+  } else {
+    parts.push(p.greeting, p.opened, p.notice)
+    parts.push(hasDeadline ? p.deadlineLine : p.deadlineAsap)
+  }
   if (String(data.custom || '').trim()) parts.push(String(data.custom).trim())
   parts.push(p.signoff)
 
