@@ -15,13 +15,13 @@ import { ENROLL_STEPS, deptZhFull } from '../constants'
 // 資料經 /api/onboard-admin（service role），操作需帶超管帳密——本頁用一次性密碼閘門
 // 取得密碼後快取於記憶體（不落地 storage）重用。整體結構鏡像 Stage4App。
 // 頂部兩維度篩選：梯次（伺服器端）× 校區（前端，讓總覽分校區小計恆能並列兩校區）。
-// 主題色用靛藍（學生端 OnboardApp 仍是棕色 #7c2d12，只有後台換色以區別 ④ 就學確認）。
-const ACCENT = '#4338ca'
+// 主題色用深莓紅（學生端 OnboardApp 仍是棕色 #7c2d12，只有後台換色以區別 ④ 就學確認）。
+const ACCENT = '#9d174d'
 
 // enroll_progress.state → 顯示
 const STATE_META = {
   locked:    { label: '未開放', color: '#9ca3af', bg: '#f3f4f6' },
-  open:      { label: '待處理', color: '#4338ca', bg: '#eef2ff' },
+  open:      { label: '待處理', color: '#9d174d', bg: '#fce7f3' },
   submitted: { label: '待確認', color: '#b45309', bg: '#fef3c7' },
   confirmed: { label: '已完成', color: '#15803d', bg: '#dcfce7' },
 }
@@ -426,7 +426,7 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
-  const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#e0e7ff' }
+  const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fce7f3' }
   const th = { padding: '10px 14px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '10px 14px', borderBottom: '1px solid #f5f4f0', fontSize: 13, lineHeight: 1.5, verticalAlign: 'middle' }
 
@@ -455,7 +455,7 @@ export default function OnboardAdminApp() {
   if (!authed) {
     return (
       <PageShell title="實踐大學" subtitle="入學準備 · 後台管理" accent={ACCENT} toast={toast} intlBack stageKey="onboard"
-        right={<span style={{ fontSize: 12, color: '#e0e7ff' }}>{teacher?.display_name || teacher?.username}</span>}>
+        right={<span style={{ fontSize: 12, color: '#fce7f3' }}>{teacher?.display_name || teacher?.username}</span>}>
         <Card style={{ maxWidth: 420, margin: '40px auto' }}>
           <CardHead left="超級管理員驗證" />
           <div style={{ padding: '14px 18px' }}>
@@ -504,9 +504,9 @@ export default function OnboardAdminApp() {
 
   const right = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {loading && <span style={{ fontSize: 12, color: '#e0e7ff' }}>載入中…</span>}
+      {loading && <span style={{ fontSize: 12, color: '#fce7f3' }}>載入中…</span>}
       <Btn style={headerBtn} disabled={busy} onClick={() => { if (tab === 'settings') loadSettings(); else { load(); if (tab === '1') loadNameReqs() } }}>↻</Btn>
-      <span style={{ fontSize: 12, color: '#e0e7ff' }}>{teacher.display_name || teacher.username}</span>
+      <span style={{ fontSize: 12, color: '#fce7f3' }}>{teacher.display_name || teacher.username}</span>
       <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>
     </div>
   )
@@ -586,7 +586,7 @@ export default function OnboardAdminApp() {
         {searchBox}
         {step === 1 && nameReqBlock}
         <StatStrip items={[
-          { label: '待處理', value: countState(step, 'open'), color: '#4338ca', bg: '#eef2ff', border: '#c7d2fe' },
+          { label: '待處理', value: countState(step, 'open'), color: '#9d174d', bg: '#fdf2f8', border: '#fbcfe8' },
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: '已完成', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
