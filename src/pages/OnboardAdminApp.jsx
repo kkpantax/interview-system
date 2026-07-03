@@ -562,7 +562,7 @@ export default function OnboardAdminApp() {
     const rows = data.filter((x) => x.campus === c)
     const act = rows.filter((x) => x.status !== 'abandoned')
     return {
-      total: act.length,
+      total: rows.length,
       stuck: ENROLL_STEPS.map((st) => act.filter((x) => x.status !== 'completed'
         && ['open', 'submitted'].includes(stepStateOf(x, st.step))).length),
       completed: rows.filter((x) => x.status === 'completed').length,
@@ -752,7 +752,7 @@ export default function OnboardAdminApp() {
       {tab === 'overview' && (
         <>
           <StatStrip items={[
-            { label: '總人數（不含放棄）', value: denom },
+            { label: '總人數（含放棄）', value: visible.length, sub: abandonedList.length ? `不含放棄 ${denom}` : null },
             { label: '已完成全部', value: completedN, color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0', sub: denom ? `${Math.round((completedN / denom) * 100)}%` : null },
             { label: '進行中', value: denom - completedN, color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
             { label: '已放棄', value: abandonedList.length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
@@ -802,7 +802,7 @@ export default function OnboardAdminApp() {
                     </tr></thead>
                     <tbody>
                       <tr>
-                        <td style={{ ...td, color: '#666' }}>總人數（不含放棄）</td>
+                        <td style={{ ...td, color: '#666' }}>總人數（含放棄）</td>
                         <td style={tdC}>{tp.total}</td><td style={tdC}>{ks.total}</td>
                       </tr>
                       {ENROLL_STEPS.map((st, i) => (
