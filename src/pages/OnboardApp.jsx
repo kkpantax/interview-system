@@ -68,6 +68,7 @@ const T = {
   uTooLarge:  { zh: '檔案過大（上限 10MB）', en: 'File too large (max 10MB)', vi: 'Tệp quá lớn (tối đa 10MB)', id: 'Berkas terlalu besar (maks 10MB)' },
   uView:      { zh: '檢視', en: 'View', vi: 'Xem', id: 'Lihat' },
   // 步驟2 繳費
+  s2NoticeTitle:  { zh: '繳費注意事項', en: 'Payment Notice', vi: 'Lưu ý về việc nộp học phí', id: 'Catatan Pembayaran' },
   s2SlipTitle:    { zh: '繳費單', en: 'Payment Slip', vi: 'Phiếu nộp học phí', id: 'Slip Pembayaran' },
   s2SlipDownload: { zh: '下載繳費單', en: 'Download payment slip', vi: 'Tải phiếu nộp học phí', id: 'Unduh slip pembayaran' },
   s2SlipPending:  { zh: '繳費單準備中，請稍後再回來查看。', en: 'Your payment slip is being prepared. Please check back later.', vi: 'Phiếu nộp học phí đang được chuẩn bị. Vui lòng quay lại sau.', id: 'Slip pembayaran sedang disiapkan. Silakan periksa kembali nanti.' },
@@ -442,14 +443,29 @@ export default function OnboardApp({ token }) {
     </div>
   )
 
-  // ── 步驟2：繳費（下載繳費單 + 上傳收據）───────────────────────────────────────
-  const slipUrl = info.progress?.[2]?.data?.slip_url || ''
+  // ── 步驟2：繳費（注意事項 + 下載繳費單 + 上傳收據）─────────────────────────────
+  // notice：該生梯次的繳費注意事項字串陣列（API 已依 batch 篩好；目前中文，日後擴充多語）
+  const s2Notice = (Array.isArray(info.notice) ? info.notice : (info.settings?.[2]?.extra?.notice || []))
+    .filter((x) => typeof x === 'string' && x.trim())
+  const slipUrl = info.slip_url || info.progress?.[2]?.data?.slip_url || ''
   const receipts = (info.files || []).filter((f) => f.step === 2 && f.kind === 'receipt')
   const linkBtn = { display: 'inline-block', padding: '9px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, textDecoration: 'none', background: ACCENT, color: '#fff' }
   const onUploadDone = async () => { await load() }
 
   const step2Content = (
     <div>
+      {/* 繳費注意事項（該梯次未設定則整塊不顯示） */}
+      {s2Notice.length > 0 && (
+        <div style={sectionBox}>
+          <div style={sectionTitle}>{tr('s2NoticeTitle')}</div>
+          <ol style={{ margin: 0, padding: '0 0 0 20px', fontSize: 13, color: '#555', lineHeight: 1.8 }}>
+            {s2Notice.map((n, i) => (
+              <li key={i} style={{ marginBottom: 4 }}>{n}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {/* 繳費單下載 */}
       <div style={sectionBox}>
         <div style={sectionTitle}>{tr('s2SlipTitle')}</div>
