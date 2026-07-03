@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
+import OnboardMailComposer from '../components/OnboardMailComposer'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
-  onboardAdminMailRecipients, onboardAdminBuildMailDrafts } from '../api'
+  onboardAdminMailRecipients, onboardAdminMailMarkSent } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
 
@@ -34,11 +35,8 @@ const TABS = [
 // 步驟2/3 需要行政確認（步驟1/4 學生送出即過、步驟5 學生閱讀即過）
 const NEEDS_CONFIRM = new Set([2, 3])
 
-// 通知信：次別選項與已有模板的步驟（本階段僅步驟①；②~⑥ 模板後續補）
-const MAIL_TIERS = [['first', '首次通知'], ['second', '二次提醒'], ['final', '最後提醒']]
+// 通知信：狀態欄的次別簡稱（寄送流程都在 OnboardMailComposer 內）
 const MAIL_TIER_SHORT = { first: '首次', second: '二次', final: '最後' }
-const MAIL_TEMPLATE_READY = new Set([1])
-const MAIL_CHUNK = 8   // 每批建立封數（比照 Stage4 送出批次大小，避免 Apps Script 逾時）
 
 const fmtTime = (iso) => {
   if (!iso) return '—'
@@ -189,12 +187,9 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
-  // ── 通知信（Gmail 草稿）：收件名單（含已提醒次數）＋ 分批建草稿 ─────────────────
-  const [mailTier, setMailTier] = useState('first')
-  const [mailBusy, setMailBusy] = useState(false)
-  const [mailProg, setMailProg] = useState(null)     // { done, total }
-  const [mailResult, setMailResult] = useState(null) // { built, failed: [{account, error}] }
+  // ── 通知信：收件名單（含已寄次數）＋ 系統內寄信視窗（OnboardMailComposer）─────────
   const [mailRecips, setMailRecips] = useState({})   // account → { email, reminder_count, ... }
+  const [composer, setComposer] = useState(null)     // { step, recipients, cfg }
 
   const loadMailRecips = useCallback(async (step) => {
     try {
@@ -209,34 +204,30 @@ export default function OnboardAdminApp() {
     if (authed && ['1', '2', '3', '4', '5'].includes(tab)) loadMailRecips(Number(tab))
   }, [authed, tab, loadMailRecips])
 
-  // 建草稿：accounts＝群發（當前篩選下卡在此步全名單）或個別（[account]）；
-  // 每批 MAIL_CHUNK 封逐批呼叫＝可續傳（中斷後重按只會重建未成功者的草稿）。
-  const doBuildMail = async (step, accounts) => {
-    if (mailBusy || busy) return
-    if (!accounts.length) { showToast('目前沒有可寄送的對象', 'warn'); return }
-    const tierLabel = MAIL_TIERS.find(([v]) => v === mailTier)?.[1]
-    if (!window.confirm(`確認為 ${accounts.length} 位學生建立「${ENROLL_STEPS[step - 1]?.zh}｜${tierLabel}」通知信草稿？\n草稿會建立在公務信箱草稿匣，不會直接寄出。`)) return
-    setMailBusy(true); setMailResult(null); setMailProg({ done: 0, total: accounts.length })
-    let built = 0
-    const failed = []
+  // 開寄信視窗：accounts＝群發（當前篩選下卡在此步全名單）或個別（[account]）。
+  // 先載入設定（承辦窗口 / 放榜連結 / 該步各梯截止日）供 composer 唯讀帶入。
+  const openComposer = async (step, accounts) => {
+    if (busy) return
+    const recips = accounts.map((a) => mailRecips[a]).filter(Boolean)
+    if (!recips.length) { showToast('收件名單載入中或沒有可寄送的對象，請稍候再試', 'warn'); return }
+    setBusy(true)
     try {
-      for (let i = 0; i < accounts.length; i += MAIL_CHUNK) {
-        const part = accounts.slice(i, i + MAIL_CHUNK)
-        const res = await onboardAdminBuildMailDrafts(teacher.username, pw,
-          { step, batch, campus, tier: mailTier, accounts: part })
-        built += res.built || 0
-        failed.push(...(res.failed || []))
-        setMailProg({ done: Math.min(i + MAIL_CHUNK, accounts.length), total: accounts.length })
+      const res = await onboardAdminGetSettings(teacher.username, pw)
+      const deadlines = {}
+      for (const r of res.settings || []) {
+        if (Number(r.step) === step) deadlines[String(r.batch)] = isoToTpeDate(r.deadline).replace(/-/g, '/')
       }
-      setMailResult({ built, failed })
-      showToast(`已建立 ${built} 封草稿，請至 Gmail（公務信箱）檢視後送出${failed.length ? `；${failed.length} 封失敗` : ''}`, failed.length ? 'warn' : 'ok')
-    } catch (e) {
-      setMailResult({ built, failed })
-      showToast(`建立中斷（已成功 ${built} 封）：${e.message}。可再按一次續建剩餘草稿。`, 'error')
-    } finally {
-      setMailBusy(false); setMailProg(null)
-      loadMailRecips(step)   // 重抓已提醒次數
-    }
+      setComposer({
+        step, recipients: recips,
+        cfg: { contacts: res.contacts || {}, resultLink: res.result_link || {}, deadlines },
+      })
+    } catch (e) { showToast('載入寄信設定失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  // composer 每批寄成功後回報：reminder_count+1 / last_reminder_*（enroll_log 記 mail_sent）
+  const markMailSent = async (accounts, tier) => {
+    await onboardAdminMailMarkSent(teacher.username, pw, { step: composer.step, tier, accounts })
   }
 
   const doReactivate = async (stu) => {
@@ -534,44 +525,22 @@ export default function OnboardAdminApp() {
     </Card>
   )
 
-  // 群發草稿控制列（每個步驟分頁的名單上方；模板未提供的步驟停用按鈕）
-  const mailControl = (step, rows) => {
-    const ready = MAIL_TEMPLATE_READY.has(step)
-    return (
-      <Card style={{ marginBottom: 16 }}>
-        <CardHead left="✉ 通知信（Gmail 草稿）" />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '2px 2px' }}>
-          <span style={{ fontSize: 12, color: '#999' }}>次別</span>
-          <select value={mailTier} onChange={(e) => setMailTier(e.target.value)} style={{ ...s.sel, padding: '5px 8px' }}>
-            {MAIL_TIERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <Btn variant="primary" disabled={!ready || mailBusy || busy || !rows.length}
-            onClick={() => doBuildMail(step, rows.map((x) => x.account))}>
-            {mailBusy ? (mailProg ? `建立中 ${mailProg.done}/${mailProg.total}…` : '建立中…') : `建立草稿（${rows.length} 人）`}
-          </Btn>
-          <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
-            {ready
-              ? '對「目前梯次×校區篩選下、卡在此步」的名單逐人建立個人化草稿（每批 8 封），完成後請至公務信箱檢視再送出。'
-              : '此步驟的信件模板將於後續版本提供。'}
-          </span>
-        </div>
-        {mailResult && (
-          <div style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.8, padding: '0 2px' }}>
-            <span style={{ color: '#15803d', fontWeight: 600 }}>✓ 已建立 {mailResult.built} 封草稿，請至 Gmail（公務信箱）檢視後送出</span>
-            {mailResult.failed.length > 0 && (
-              <div style={{ color: '#b45309', wordBreak: 'break-all' }}>
-                失敗 {mailResult.failed.length} 筆：{mailResult.failed.map((f) => `${f.account}（${f.error}）`).join('、')}
-                <button style={{ ...s.btn, ...s.btnSm, marginLeft: 8 }} disabled={mailBusy || busy}
-                  onClick={() => doBuildMail(step, mailResult.failed.map((f) => f.account))}>
-                  重試失敗名單
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
-    )
-  }
+  // 通知信控制列（每個步驟分頁的名單上方）：開 OnboardMailComposer 系統內預覽＋批次寄出
+  const mailControl = (step, rows) => (
+    <Card style={{ marginBottom: 16 }}>
+      <CardHead left="✉ 通知信" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '2px 2px' }}>
+        <Btn variant="primary" disabled={busy || !rows.length}
+          onClick={() => openComposer(step, rows.map((x) => x.account))}>
+          ✉ 寄送通知信（{rows.length} 人）
+        </Btn>
+        <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+          開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組信，
+          可逐列預覽、改語言、選次別（首次／二次／最後）後批次寄出（公務信箱）。
+        </span>
+      </div>
+    </Card>
+  )
 
   // 名單表（每個步驟分頁共用）
   const stepTable = (step) => {
@@ -622,10 +591,8 @@ export default function OnboardAdminApp() {
                       <td style={td}>
                         <div style={{ display: 'flex', gap: 6 }}>
                           {canConfirm && <button onClick={() => doConfirm(stu, step)} disabled={busy} style={{ ...s.btn, ...s.btnSm, background: ACCENT, color: '#fff', borderColor: ACCENT }}>確認</button>}
-                          {MAIL_TEMPLATE_READY.has(step) && (
-                            <button onClick={() => doBuildMail(step, [stu.account])} disabled={busy || mailBusy}
-                              style={{ ...s.btn, ...s.btnSm }}>✉ 寄信</button>
-                          )}
+                          <button onClick={() => openComposer(step, [stu.account])} disabled={busy}
+                            style={{ ...s.btn, ...s.btnSm }}>✉ 寄信</button>
                           <button onClick={() => doAbandon(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm, color: '#b91c1c', borderColor: '#fecaca' }}>放棄</button>
                         </div>
                       </td>
@@ -646,7 +613,7 @@ export default function OnboardAdminApp() {
       {/* 分頁列 + 梯次篩選 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => { setTab(t.key); setMailResult(null) }}
+          <button key={t.key} onClick={() => setTab(t.key)}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
               borderColor: tab === t.key ? ACCENT : '#ddd', fontWeight: tab === t.key ? 600 : 400 }}>
             {t.label}
@@ -993,6 +960,18 @@ export default function OnboardAdminApp() {
             </Card>
           )}
         </>
+      )}
+
+      {/* 寄信視窗（系統內預覽＋批次寄出；關閉時重抓已寄次數） */}
+      {composer && (
+        <OnboardMailComposer
+          step={composer.step}
+          recipients={composer.recipients}
+          cfg={composer.cfg}
+          markSent={markMailSent}
+          onClose={() => { const st = composer.step; setComposer(null); loadMailRecips(st) }}
+          onToast={showToast}
+        />
       )}
     </PageShell>
   )

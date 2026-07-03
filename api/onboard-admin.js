@@ -22,9 +22,10 @@
 //     兩者皆寫 reviewed_by/at（reject 另存 review_note）；log name_review。
 //   - mail-recipients：{step, batch, campus} → 卡在該步（open/submitted）且 status=active 的收件名單
 //     （email 取 applications，帶已寄提醒次數）。
-//   - mail-build-drafts：{step, batch, campus, tier, accounts?} → 逐人組信（constants.js 模板、依國籍選語言）
-//     並直接呼叫 Apps Script 草稿服務（DRAFT_SERVICE_URL/TOKEN）建 Gmail 草稿；前端分批呼叫（每批 8 封）＝可續傳。
-//     每成功一人：enroll_progress 該步 reminder_count+1 / last_reminder_at / last_reminder_kind；log mail_draft。
+//   - mail-mark-sent：{step, tier, accounts[]} → 寄送成功後回報：這些人該步 reminder_count+1 /
+//     last_reminder_at / last_reminder_kind=tier；log mail_sent。（OnboardMailComposer 每批寄完呼叫。）
+//   - mail-build-drafts（已停用，保留相容）：Phase A 的「建 Gmail 草稿」流程；UI 已改用系統內
+//     OnboardMailComposer（createDrafts → sendDraftBatch 直接寄出），不再呼叫此 action。
 // 總覽漏斗統計由前端就地從 list 推導（比照 Stage4App 的 client-side 統計慣例）。
 export const config = { runtime: 'edge' }
 
@@ -47,7 +48,7 @@ const isoToTpeYmd = (iso) => {
 // 撈「卡在某步（state open/submitted）、status=active、非測試」的通知信收件名單。
 // email 取 applications（同帳號多志願共用，任一筆有值即用）；帶已寄提醒次數供前端顯示。
 async function fetchMailRecipients(step, batch, campus, H) {
-  let sUrl = `${SUPABASE_URL}/rest/v1/enroll_students?select=account,name,department,campus,batch,nationality,confirm_token&status=eq.active&is_test=eq.false`
+  let sUrl = `${SUPABASE_URL}/rest/v1/enroll_students?select=account,name,name_en,department,campus,batch,nationality,confirm_token&status=eq.active&is_test=eq.false`
   if (batch && batch !== 'all') sUrl += `&batch=eq.${encodeURIComponent(String(batch))}`
   if (campus && campus !== 'all') sUrl += `&campus=eq.${encodeURIComponent(String(campus))}`
   const [sRes, pRes] = await Promise.all([
@@ -74,7 +75,7 @@ async function fetchMailRecipients(step, batch, campus, H) {
     for (const a of Array.isArray(aRows) ? aRows : []) if (a.email && !emails[a.account]) emails[a.account] = a.email
   }
   return stuck.map((x) => ({
-    account: x.account, name: x.name, department: x.department, campus: x.campus, batch: x.batch,
+    account: x.account, name: x.name, name_en: x.name_en, department: x.department, campus: x.campus, batch: x.batch,
     nationality: x.nationality, confirm_token: x.confirm_token, email: emails[x.account] || '',
     state: pMap[x.account].state,
     reminder_count: pMap[x.account].reminder_count || 0,
@@ -230,14 +231,14 @@ export default async function handler(req) {
   if (action === 'settings') {
     const [sRes, cRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/enroll_settings?select=batch,step,open,deadline,contact_name,contact_email,contact_phone,extra&order=batch.asc,step.asc`, { headers: H }),
-      fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=in.(line_qr,contacts)&select=key,value`, { headers: H }),
+      fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=in.(line_qr,contacts,result_link)&select=key,value`, { headers: H }),
     ])
     if (!sRes.ok) return json({ ok: false, error: '查詢設定失敗' }, 500)
     const settings = await sRes.json()
     const cRows = cRes.ok ? await cRes.json() : []
     const cfg = {}
     for (const r of Array.isArray(cRows) ? cRows : []) cfg[r.key] = r.value
-    return json({ ok: true, settings: Array.isArray(settings) ? settings : [], line_qr: cfg.line_qr || {}, contacts: cfg.contacts || {} })
+    return json({ ok: true, settings: Array.isArray(settings) ? settings : [], line_qr: cfg.line_qr || {}, contacts: cfg.contacts || {}, result_link: cfg.result_link || {} })
   }
 
   // ── save-settings：upsert (batch,step) 截止日/承辦資訊；step5 另存 extra.notice ──
@@ -412,7 +413,39 @@ export default async function handler(req) {
     return json({ ok: true, list })
   }
 
-  // ── mail-build-drafts：逐人組信 → Apps Script 建 Gmail 草稿（前端每批 ≤8 封）────
+  // ── mail-mark-sent：寄送成功回報（reminder_count+1 / last_reminder_*；log mail_sent）──
+  if (action === 'mail-mark-sent') {
+    const step = Number(body.step)
+    const tier = ['first', 'second', 'final'].includes(body.tier) ? body.tier : 'first'
+    const accounts = Array.isArray(body.accounts) ? body.accounts.map((a) => String(a).trim()).filter(Boolean) : []
+    if (!Number.isInteger(step) || step < 1 || step > 5 || !accounts.length) {
+      return json({ ok: false, error: '參數錯誤' }, 400)
+    }
+    if (accounts.length > 50) return json({ ok: false, error: '一次最多回報 50 筆' }, 400)
+
+    // 先撈現值再逐筆 +1（收件名單來自 mail-recipients，該步進度列必然存在）
+    const pRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.${step}&account=in.(${encodeURIComponent(accounts.join(','))})&select=account,reminder_count`,
+      { headers: H },
+    )
+    const pRows = pRes.ok ? await pRes.json() : []
+    const cur = {}
+    for (const r of Array.isArray(pRows) ? pRows : []) cur[r.account] = r.reminder_count || 0
+
+    let updated = 0
+    for (const a of accounts) {
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(a)}&step=eq.${step}`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ reminder_count: (cur[a] || 0) + 1, last_reminder_at: nowIso, last_reminder_kind: tier }) },
+      ).catch(() => null)
+      if (up?.ok) updated++
+      await logRow(a, step, 'mail_sent', { step, tier, account: a })
+    }
+    return json({ ok: true, updated })
+  }
+
+  // ── mail-build-drafts（已停用；UI 改用 OnboardMailComposer 系統內寄送，保留相容）────
   if (action === 'mail-build-drafts') {
     const step = Number(body.step)
     const tier = String(body.tier || 'first')

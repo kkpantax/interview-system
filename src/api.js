@@ -1337,8 +1337,10 @@ export const onboardAdminNameRequests = (username, password) =>
 // 通知信收件名單（payload = { step, batch, campus }；卡在該步且 active，含 email/已提醒次數）
 export const onboardAdminMailRecipients = (username, password, payload) =>
   onboardAdminPost({ action: 'mail-recipients', username, password, ...payload })
-// 建立通知信 Gmail 草稿（payload = { step, batch, campus, tier, accounts }；
-// accounts 指定名單＝分批（建議每批 ≤8 封）或個別寄；回 { built, failed:[{account,error}] }）
+// 通知信寄送成功回報（payload = { step, tier, accounts }：reminder_count+1、log mail_sent）
+export const onboardAdminMailMarkSent = (username, password, payload) =>
+  onboardAdminPost({ action: 'mail-mark-sent', username, password, ...payload })
+// （已停用）建立通知信 Gmail 草稿——Phase A 流程，UI 已改用 OnboardMailComposer 系統內寄送
 export const onboardAdminBuildMailDrafts = (username, password, payload) =>
   onboardAdminPost({ action: 'mail-build-drafts', username, password, ...payload })
 // 審核更名申請（payload = { id, decision: 'approve'|'reject', note? }；approve 才真的改 name）

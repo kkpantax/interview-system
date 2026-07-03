@@ -355,6 +355,7 @@ export const ONBOARD_MAIL_S1 = {
 
 // 組出步驟①通知信 { subject, body }；查無模板（目前僅 step=1）回 null。
 // data.contact_phone 會被轉成「、電話 X」/「 / X」句段，空值一律省略整段。
+// data.custom（寄信視窗的自訂段落，依收件人語言擇一）有值時插在簽名檔前一段。
 export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data = {} }) {
   if (Number(step) !== 1) return null
   const L = ['zh', 'en', 'vi', 'id'].includes(lang) ? lang : 'en'
@@ -368,6 +369,7 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
   parts.push(p.address)
   if (String(data.deadline || '').trim()) parts.push(p.deadline)
   if (String(data.contact_name || '').trim() || String(data.contact_email || '').trim()) parts.push(p.contact)
+  if (String(data.custom || '').trim()) parts.push(String(data.custom).trim())
   parts.push(p.signoff)
 
   const phone = String(data.contact_phone || '').trim()
