@@ -29,3 +29,11 @@
   前端 `effectiveStates()` 統一推導，缺列預設 locked。
 - **怎麼應用**：Phase 2 做寫入時，伺服器端也要用同一 gating 規則擋非當前步驟的提交，
   不能只靠前端鎖。
+
+## 行政人員貼的「圖片網址」多半是 Drive 分享頁，不是圖片檔
+- **為什麼**：設定頁 LINE QR 顯示不出來，查 enroll_config 發現存的是
+  `drive.google.com/file/d/ID/view?usp=sharing`（HTML 頁），`<img src>` 讀不到。
+  行政人員的心智模型是「複製分享連結」，不會知道要直連圖檔。
+- **怎麼應用**：凡是讓行政輸入圖片網址的欄位，顯示端一律過 `driveImageUrl()`（src/utils.js），
+  自動把 Drive 分享連結轉成 `lh3.googleusercontent.com/d/ID`（檔案須開「知道連結者可檢視」）。
+  排查這類問題先 execute_sql 看 DB 實際存值，不要只看前端程式。
