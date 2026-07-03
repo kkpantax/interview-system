@@ -80,11 +80,11 @@ function StatStrip({ items }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
       {items.map((it) => (
-        <div key={it.label} style={{ flex: '1 1 120px', minWidth: 104, background: it.bg || '#faf9f6',
-          border: '1px solid ' + (it.border || '#eceae5'), borderRadius: 12, padding: '10px 14px' }}>
-          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: it.color || '#1a1a18' }}>{it.value}</div>
-          <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>{it.label}</div>
-          {it.sub != null && <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{it.sub}</div>}
+        <div key={it.label} style={{ flex: '1 1 130px', minWidth: 110, background: it.bg || '#faf9f6',
+          border: '1px solid ' + (it.border || '#eceae5'), borderRadius: 12, padding: '14px 16px' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, color: it.color || '#1a1a18' }}>{it.value}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 5 }}>{it.label}</div>
+          {it.sub != null && <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>{it.sub}</div>}
         </div>
       ))}
     </div>
@@ -427,8 +427,8 @@ export default function OnboardAdminApp() {
   }
 
   const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#e0e7ff' }
-  const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
-  const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
+  const th = { padding: '10px 14px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
+  const td = { padding: '10px 14px', borderBottom: '1px solid #f5f4f0', fontSize: 13, lineHeight: 1.5, verticalAlign: 'middle' }
 
   // 清單搜尋（帳號／中文姓名／英文姓名 contains、不分大小寫）＋ 身分欄顯示（截圖版型）
   const q = search.trim().toLowerCase()
@@ -440,8 +440,9 @@ export default function OnboardAdminApp() {
   }
   const searchBox = (
     <input value={search} onChange={(e) => setSearch(e.target.value)}
-      placeholder="搜尋：帳號／中文姓名／英文姓名…"
-      style={{ ...s.input, maxWidth: 340, boxSizing: 'border-box', marginBottom: 12, display: 'block' }} />
+      placeholder="🔍 搜尋：帳號／中文姓名／英文姓名…"
+      style={{ ...s.input, maxWidth: 360, boxSizing: 'border-box', marginBottom: 14, display: 'block',
+        padding: '9px 14px', borderRadius: 99, background: 'white' }} />
   )
   const nameCell = (x) => (
     <td style={{ ...td, whiteSpace: 'nowrap' }}>
@@ -457,7 +458,7 @@ export default function OnboardAdminApp() {
         right={<span style={{ fontSize: 12, color: '#e0e7ff' }}>{teacher?.display_name || teacher?.username}</span>}>
         <Card style={{ maxWidth: 420, margin: '40px auto' }}>
           <CardHead left="超級管理員驗證" />
-          <div style={{ padding: '4px 2px' }}>
+          <div style={{ padding: '14px 18px' }}>
             <div style={{ fontSize: 13, color: '#666', lineHeight: 1.7, marginBottom: 12 }}>
               入學準備後台涉及學生資料與放棄操作，請再次輸入您的超管密碼以載入。
             </div>
@@ -552,7 +553,7 @@ export default function OnboardAdminApp() {
           </table>
         </div>
       ) : (
-        <div style={{ padding: '12px 2px', fontSize: 13, color: '#aaa' }}>
+        <div style={{ padding: '16px 18px', fontSize: 13, color: '#aaa' }}>
           {q && nameReqs.length ? '沒有符合搜尋的更名申請' : '目前無待審的更名申請'}
         </div>
       )}
@@ -563,7 +564,7 @@ export default function OnboardAdminApp() {
   const mailControl = (step, rows) => (
     <Card style={{ marginBottom: 16 }}>
       <CardHead left="✉ 通知信" />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '2px 2px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 18px' }}>
         <Btn variant="primary" disabled={busy || !rows.length}
           onClick={() => openComposer(step, rows.map((x) => x.account))}>
           ✉ 寄送通知信（{rows.length} 人）
@@ -648,7 +649,7 @@ export default function OnboardAdminApp() {
   return (
     <PageShell title="實踐大學" subtitle="入學準備 · 後台管理" accent={ACCENT} toast={toast} intlBack stageKey="onboard" right={right}>
       {/* 分頁列 + 梯次篩選 */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
           <button key={t.key} onClick={() => { setTab(t.key); setSearch('') }}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
@@ -679,13 +680,13 @@ export default function OnboardAdminApp() {
           ]} />
           <Card>
             <CardHead left="各步驟卡關人數（漏斗）" />
-            <div style={{ padding: '4px 2px' }}>
+            <div style={{ padding: '14px 18px' }}>
               {ENROLL_STEPS.map((st) => {
                 const n = stuckAt(st.step).length
                 const pct = denom ? Math.round((n / denom) * 100) : 0
                 return (
-                  <div key={st.step} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #f5f4f0' }}>
-                    <div style={{ width: 130, fontSize: 13, fontWeight: 500 }}>{'①②③④⑤'[st.step - 1]} {st.zh}</div>
+                  <div key={st.step} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 0', borderBottom: '1px solid #f5f4f0' }}>
+                    <div style={{ width: 150, fontSize: 13.5, fontWeight: 500, whiteSpace: 'nowrap' }}>{'①②③④⑤'[st.step - 1]} {st.zh}</div>
                     <div style={{ flex: 1, height: 10, background: '#f3f4f6', borderRadius: 99, overflow: 'hidden' }}>
                       <div style={{ width: `${pct}%`, height: '100%', background: ACCENT }} />
                     </div>
@@ -694,8 +695,8 @@ export default function OnboardAdminApp() {
                   </div>
                 )
               })}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
-                <div style={{ width: 130, fontSize: 13, fontWeight: 500, color: '#15803d' }}>🎉 已完成全部</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 0' }}>
+                <div style={{ width: 150, fontSize: 13.5, fontWeight: 500, color: '#15803d', whiteSpace: 'nowrap' }}>🎉 已完成全部</div>
                 <div style={{ flex: 1, height: 10, background: '#f3f4f6', borderRadius: 99, overflow: 'hidden' }}>
                   <div style={{ width: `${denom ? Math.round((completedN / denom) * 100) : 0}%`, height: '100%', background: '#15803d' }} />
                 </div>
@@ -746,7 +747,7 @@ export default function OnboardAdminApp() {
                   </table>
                 </div>
                 {noCampusN > 0 && (
-                  <div style={{ fontSize: 12, color: '#999', padding: '8px 2px 2px' }}>
+                  <div style={{ fontSize: 12, color: '#999', padding: '10px 18px 14px' }}>
                     另有 {noCampusN} 位學生尚未設定校區，未計入上表兩欄。
                   </div>
                 )}
@@ -834,7 +835,7 @@ export default function OnboardAdminApp() {
           {/* 承辦窗口：全域兩組、只分校區（存 enroll_config，不再逐步驟設定） */}
           <Card style={{ marginBottom: 16 }}>
             <CardHead left="承辦窗口（分校區，全部步驟共用）" />
-            <div style={{ padding: '4px 2px' }}>
+            <div style={{ padding: '14px 18px' }}>
               <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
                 學生端各步驟顯示的聯絡窗口，依學生校區取對應一組（不分梯次、不分步驟）。
               </div>
@@ -862,7 +863,7 @@ export default function OnboardAdminApp() {
           {/* B. 步驟5 行前須知（校區 × 四語，兩梯次共通儲存） */}
           <Card style={{ marginBottom: 16 }}>
             <CardHead left="⑤ 行前須知（校區 × 四語，兩梯次共通）" />
-            <div style={{ padding: '4px 2px' }}>
+            <div style={{ padding: '14px 18px' }}>
               <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
                 學生端「⑤ 行前通知」依學生校區＋介面語言顯示對應內容（該語言留空時顯示中文）；
                 儲存時同步寫入第一、二梯的步驟5設定。
@@ -891,7 +892,7 @@ export default function OnboardAdminApp() {
           {/* C. LINE 群組 QR（學生端步驟①依校區顯示） */}
           <Card>
             <CardHead left="LINE 群組 QR Code（學生端步驟①）" />
-            <div style={{ padding: '4px 2px' }}>
+            <div style={{ padding: '14px 18px' }}>
               <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
                 貼上 QR 圖片網址（公開可讀的圖片連結），學生端步驟①會依學生校區顯示對應 QR Code。
               </div>
@@ -925,20 +926,22 @@ export default function OnboardAdminApp() {
           <Card style={{ marginBottom: 16 }}>
             <CardHead left="批次匯入：學號＋宿舍資訊"
               right={<Btn onClick={downloadTemplate}>⬇ 下載範本</Btn>} />
-            <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.8, marginBottom: 12, padding: '0 2px' }}>
-              上傳 Excel（.xlsx / .xls），以<b>帳號</b>對應學生，一次帶入<b>學號、房號、床位號、上課教室</b>。
-              標題列需用中文欄名（帳號／學號／房號／床位號／上課教室，欄序不拘）。
-              <b>空欄不會覆蓋</b>既有資料；重傳同一份檔會覆蓋有值的欄。先預覽、按「確認匯入」才寫入。
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.8, marginBottom: 12 }}>
+                上傳 Excel（.xlsx / .xls），以<b>帳號</b>對應學生，一次帶入<b>學號、房號、床位號、上課教室</b>。
+                標題列需用中文欄名（帳號／學號／房號／床位號／上課教室，欄序不拘）。
+                <b>空欄不會覆蓋</b>既有資料；重傳同一份檔會覆蓋有值的欄。先預覽、按「確認匯入」才寫入。
+              </div>
+              <div
+                style={{ border: '2px dashed #ddd', borderRadius: 10, padding: 28, textAlign: 'center', background: '#fafaf8', cursor: 'pointer' }}
+                onClick={() => !busy && impFileRef.current.click()}>
+                <input ref={impFileRef} type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={handleImportFile} />
+                <div style={{ fontSize: 26, marginBottom: 6 }}>⇪</div>
+                <div style={{ fontSize: 14, color: '#555' }}>{busy ? '處理中…' : (impFileName || '點此選擇 Excel 檔（.xls / .xlsx）')}</div>
+                <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>選檔後先顯示預覽，不會立即寫入</div>
+              </div>
+              {impError && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 12, whiteSpace: 'pre-line' }}>{impError}</div>}
             </div>
-            <div
-              style={{ border: '2px dashed #ddd', borderRadius: 10, padding: 24, textAlign: 'center', background: '#fafaf8', cursor: 'pointer' }}
-              onClick={() => !busy && impFileRef.current.click()}>
-              <input ref={impFileRef} type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={handleImportFile} />
-              <div style={{ fontSize: 26, marginBottom: 6 }}>⇪</div>
-              <div style={{ fontSize: 14, color: '#555' }}>{busy ? '處理中…' : (impFileName || '點此選擇 Excel 檔（.xls / .xlsx）')}</div>
-              <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>選檔後先顯示預覽，不會立即寫入</div>
-            </div>
-            {impError && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 12, whiteSpace: 'pre-line' }}>{impError}</div>}
           </Card>
 
           {impPreview && (
@@ -951,7 +954,7 @@ export default function OnboardAdminApp() {
               {impPreview.notFound.length > 0 && (
                 <Card style={{ marginBottom: 16 }}>
                   <CardHead left={`跳過的帳號（庫裡查無，共 ${impPreview.notFound.length} 筆）`} />
-                  <div style={{ fontSize: 13, color: '#b45309', lineHeight: 2, padding: '4px 2px', wordBreak: 'break-all' }}>
+                  <div style={{ fontSize: 13, color: '#b45309', lineHeight: 2, padding: '14px 18px', wordBreak: 'break-all' }}>
                     {impPreview.notFound.join('、')}
                   </div>
                 </Card>
@@ -980,7 +983,7 @@ export default function OnboardAdminApp() {
                     </tbody>
                   </table>
                 </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '14px 18px' }}>
                   <Btn disabled={busy} onClick={() => { setImpPreview(null); setImpFileName(''); setImpError('') }}>取消</Btn>
                   <Btn variant="primary" disabled={busy || !impPreview.updates.length} onClick={doImport}>
                     {busy ? '匯入中…' : `確認匯入（${impPreview.updates.length} 筆）`}
@@ -993,7 +996,7 @@ export default function OnboardAdminApp() {
           {impResult && (
             <Card>
               <CardHead left="匯入結果" />
-              <div style={{ fontSize: 13.5, lineHeight: 2, padding: '4px 2px' }}>
+              <div style={{ fontSize: 13.5, lineHeight: 2, padding: '14px 18px' }}>
                 <div style={{ color: '#15803d', fontWeight: 600 }}>✓ 成功更新 {impResult.updated} 筆</div>
                 {impResult.skipped.length > 0 && (
                   <div style={{ color: '#b45309', wordBreak: 'break-all' }}>

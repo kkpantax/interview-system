@@ -168,9 +168,9 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
     } finally { setBusy(false) }
   }
 
-  const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 3 }
-  const th = { padding: '7px 8px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
-  const td = { padding: '6px 8px', borderBottom: '1px solid #f5f4f0', fontSize: 12, verticalAlign: 'middle' }
+  const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }
+  const th = { padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
+  const td = { padding: '8px 12px', borderBottom: '1px solid #f5f4f0', fontSize: 12.5, lineHeight: 1.5, verticalAlign: 'middle' }
   const statusOf = (r) => {
     if (r.sentNow) return <span style={{ color: '#15803d' }}>已寄送</span>
     if (created[r.account]) return <span style={{ color: '#b45309' }}>已建草稿</span>
@@ -182,59 +182,69 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
     <Modal title={`寄送入學準備通知信 — ${stepZh}`} onClose={onClose} width={1040}>
       {/* 模板未提供（步驟②~⑤） */}
       {!hasTemplate && (
-        <div style={{ marginBottom: 14, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#b45309', lineHeight: 1.7 }}>
+        <div style={{ marginBottom: 18, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#b45309', lineHeight: 1.7 }}>
           「{stepZh}」的信件模板將於後續版本提供，目前僅能檢視名單，無法寄送。
         </div>
       )}
 
       {/* 唯讀帶入資訊：承辦窗口 / 放榜連結（依校區）＋ 該步截止日（依梯次） */}
-      <div style={{ marginBottom: 14, background: '#faf9f6', border: '1px solid #eee', borderRadius: 8, padding: '10px 12px' }}>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+      <div style={{ marginBottom: 18, background: '#faf9f6', border: '1px solid #eee', borderRadius: 10, padding: '12px 16px' }}>
+        <div style={{ fontSize: 11.5, color: '#999', marginBottom: 8 }}>
           以下內容依各生校區・梯次自動帶入，本視窗不可修改；如需調整請至後台「⚙ 設定」分頁。
         </div>
         {['台北', '高雄'].map((c) => {
           const ct = contacts[c] || {}
           const hasRl = !!String(resultLink[c] || '').trim()
           return (
-            <div key={c} style={{ fontSize: 12, color: '#444', lineHeight: 1.9 }}>
+            <div key={c} style={{ fontSize: 12.5, color: '#444', lineHeight: 2 }}>
               <span style={{ fontWeight: 600 }}>{c}校區</span>：
               承辦 {ct.name || '—'} · {ct.email || '—'}{ct.phone ? ` · ${ct.phone}` : ''} · 放榜連結{' '}
               {hasRl ? '已設定' : <span style={{ color: '#b45309' }}>未設定（信中略過該段）</span>}
             </div>
           )
         })}
-        <div style={{ fontSize: 12, color: '#444', lineHeight: 1.9 }}>
+        <div style={{ fontSize: 12.5, color: '#444', lineHeight: 2 }}>
           <span style={{ fontWeight: 600 }}>「{stepZh}」截止日</span>：第一梯 {deadlines['1'] || '—'} · 第二梯 {deadlines['2'] || '—'}
           {(!deadlines['1'] || !deadlines['2']) && <span style={{ color: '#b45309' }}>（未設定的梯次，信中略過期限句）</span>}
         </div>
       </div>
 
-      {/* 次別（換信首提醒段＋主旨前綴，沿用模板 tier 語意） */}
-      <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <label style={{ ...lbl, marginBottom: 0 }}>通知次別</label>
-        <select style={{ ...s.sel, padding: '4px 8px', maxWidth: 220 }} value={tier} onChange={(e) => setTier(e.target.value)}>
-          {TIERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <span style={{ fontSize: 11, color: tier !== 'first' ? '#b45309' : '#888' }}>
+      {/* 次別（換信首提醒段＋主旨前綴，沿用模板 tier 語意）；說明獨立一行不跟下拉擠 */}
+      <div style={{ marginBottom: 18 }}>
+        <span style={s.secLabel}>通知次別</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select style={{ ...s.sel, maxWidth: 220 }} value={tier} onChange={(e) => setTier(e.target.value)}>
+            {TIERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div style={{ fontSize: 12, color: tier !== 'first' ? '#b45309' : '#999', marginTop: 6, lineHeight: 1.7 }}>
           {tier !== 'first'
             ? `信件開頭會加註${tier === 'second' ? '「尚未完成」提醒段' : '「最後提醒、逾期恐影響入學」段'}、主旨加上提醒前綴；僅寄給仍未完成者即可。`
             : '一般首次通知（放榜恭喜＋資料確認），信件內容維持原樣。'}
-        </span>
+        </div>
       </div>
 
-      {/* 四語自訂段落（插在簽名檔前；外語段插外語區塊、中文段插中文區塊） */}
-      <div style={{ marginBottom: 14 }}>
-        <label style={lbl}>自訂段落（中文）— 插入中文區塊</label>
-        <textarea style={{ ...s.input, minHeight: 52, marginBottom: 8 }} value={form.customZh} onChange={(e) => setF('customZh', e.target.value)} placeholder="例：開學典禮訂於 9/1 舉行，詳細資訊將另行通知…" />
-        <label style={lbl}>自訂段落（英文）— 插入中英信的外語區塊</label>
-        <textarea style={{ ...s.input, minHeight: 52, marginBottom: 8 }} value={form.customEn} onChange={(e) => setF('customEn', e.target.value)} placeholder="e.g. The opening ceremony will be held on Sept 1…" />
-        <label style={lbl}>自訂段落（越南文）— 插入中越信的外語區塊</label>
-        <textarea style={{ ...s.input, minHeight: 52, marginBottom: 8 }} value={form.customVi} onChange={(e) => setF('customVi', e.target.value)} placeholder="VD: Lễ khai giảng sẽ được tổ chức vào ngày 1/9…" />
-        <label style={lbl}>自訂段落（印尼文）— 插入中印尼信的外語區塊</label>
-        <textarea style={{ ...s.input, minHeight: 52, marginBottom: 0 }} value={form.customId} onChange={(e) => setF('customId', e.target.value)} placeholder="Mis. Upacara pembukaan akan diadakan pada 1 September…" />
+      {/* 四語自訂段落（2×2 網格；外語段插外語區塊、中文段插中文區塊） */}
+      <div style={{ marginBottom: 18 }}>
+        <span style={s.secLabel}>自訂段落（選填 · 插在簽名檔前）</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px 16px' }}>
+          {[
+            ['customZh', '中文 — 插入中文區塊', '例：開學典禮訂於 9/1 舉行，詳細資訊將另行通知…'],
+            ['customEn', '英文 — 插入中英信的外語區塊', 'e.g. The opening ceremony will be held on Sept 1…'],
+            ['customVi', '越南文 — 插入中越信的外語區塊', 'VD: Lễ khai giảng sẽ được tổ chức vào ngày 1/9…'],
+            ['customId', '印尼文 — 插入中印尼信的外語區塊', 'Mis. Upacara pembukaan akan diadakan pada 1 September…'],
+          ].map(([k, label, ph]) => (
+            <div key={k}>
+              <label style={lbl}>{label}</label>
+              <textarea style={{ ...s.ta, minHeight: 64, marginBottom: 0 }} value={form[k]}
+                onChange={(e) => setF(k, e.target.value)} placeholder={ph} />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 名單 */}
+      <span style={s.secLabel}>收件名單</span>
       <div style={{ maxHeight: '40vh', overflow: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
           <thead>
@@ -284,7 +294,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
           <Btn variant="primary" onClick={doSend} disabled={busy || !Object.keys(created).length}>② 送出本批</Btn>
         </div>
       </div>
-      <div style={{ fontSize: 11, color: '#aaa', marginTop: 8, lineHeight: 1.6 }}>
+      <div style={{ fontSize: 11.5, color: '#aaa', marginTop: 10, lineHeight: 1.8 }}>
         流程：先「① 建立草稿」→ 草稿會進公務信箱草稿夾，可在 Gmail 逐封檢查／微調 → 回來按「② 送出本批」一次寄出；
         或建完草稿直接按「② 送出本批」。信件一律雙語（外語在前、中文在後），語言依國籍自動帶、可逐列改；
         建議先按逐列「預覽」確認內容。送出成功才計入「已寄送次數」，同一人可重寄。
@@ -297,7 +307,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
           <Modal title={`預覽 — ${preview.name}`} onClose={() => setPreview(null)} width={680}>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>收件人：{preview.email}</div>
             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{m?.subject}</div>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, background: '#faf9f6', padding: 14, borderRadius: 8, margin: 0 }}>{m?.body}</pre>
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.8, background: '#faf9f6', padding: '14px 16px', borderRadius: 10, margin: 0 }}>{m?.body}</pre>
           </Modal>
         )
       })()}
