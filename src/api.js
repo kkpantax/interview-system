@@ -1334,6 +1334,13 @@ export const onboardAdminImportStudents = (username, password, rows) =>
 // pending 更名申請清單（含系所/校區）
 export const onboardAdminNameRequests = (username, password) =>
   onboardAdminPost({ action: 'name-requests', username, password })
+// 通知信收件名單（payload = { step, batch, campus }；卡在該步且 active，含 email/已提醒次數）
+export const onboardAdminMailRecipients = (username, password, payload) =>
+  onboardAdminPost({ action: 'mail-recipients', username, password, ...payload })
+// 建立通知信 Gmail 草稿（payload = { step, batch, campus, tier, accounts }；
+// accounts 指定名單＝分批（建議每批 ≤8 封）或個別寄；回 { built, failed:[{account,error}] }）
+export const onboardAdminBuildMailDrafts = (username, password, payload) =>
+  onboardAdminPost({ action: 'mail-build-drafts', username, password, ...payload })
 // 審核更名申請（payload = { id, decision: 'approve'|'reject', note? }；approve 才真的改 name）
 export const onboardAdminNameReview = (username, password, payload) =>
   onboardAdminPost({ action: 'name-review', username, password, ...payload })

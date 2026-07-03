@@ -20,13 +20,68 @@
 //   - name-requests：回 pending 更名申請（join enroll_students 帶系所/校區）。
 //   - name-review：{id, decision:'approve'|'reject', note?} → approve 才真的改 enroll_students.name；
 //     兩者皆寫 reviewed_by/at（reject 另存 review_note）；log name_review。
+//   - mail-recipients：{step, batch, campus} → 卡在該步（open/submitted）且 status=active 的收件名單
+//     （email 取 applications，帶已寄提醒次數）。
+//   - mail-build-drafts：{step, batch, campus, tier, accounts?} → 逐人組信（constants.js 模板、依國籍選語言）
+//     並直接呼叫 Apps Script 草稿服務（DRAFT_SERVICE_URL/TOKEN）建 Gmail 草稿；前端分批呼叫（每批 8 封）＝可續傳。
+//     每成功一人：enroll_progress 該步 reminder_count+1 / last_reminder_at / last_reminder_kind；log mail_draft。
 // 總覽漏斗統計由前端就地從 list 推導（比照 Stage4App 的 client-side 統計慣例）。
 export const config = { runtime: 'edge' }
+
+import { buildOnboardMail, onboardMailLang } from '../src/constants.js'
 
 const SUPABASE_URL = 'https://lveekehjxkfvigwfwgvn.supabase.co'
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
+
+// timestamptz → 台北時區日期字串（YYYY/MM/DD，信件顯示用；截止日固定存當日台北 23:59:59）
+const isoToTpeYmd = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d)) return ''
+  const t = new Date(d.getTime() + 8 * 3600 * 1000)
+  return `${t.getUTCFullYear()}/${String(t.getUTCMonth() + 1).padStart(2, '0')}/${String(t.getUTCDate()).padStart(2, '0')}`
+}
+
+// 撈「卡在某步（state open/submitted）、status=active、非測試」的通知信收件名單。
+// email 取 applications（同帳號多志願共用，任一筆有值即用）；帶已寄提醒次數供前端顯示。
+async function fetchMailRecipients(step, batch, campus, H) {
+  let sUrl = `${SUPABASE_URL}/rest/v1/enroll_students?select=account,name,department,campus,batch,nationality,confirm_token&status=eq.active&is_test=eq.false`
+  if (batch && batch !== 'all') sUrl += `&batch=eq.${encodeURIComponent(String(batch))}`
+  if (campus && campus !== 'all') sUrl += `&campus=eq.${encodeURIComponent(String(campus))}`
+  const [sRes, pRes] = await Promise.all([
+    fetch(sUrl, { headers: H }),
+    fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.${step}&state=in.(open,submitted)&select=account,state,reminder_count,last_reminder_at,last_reminder_kind`,
+      { headers: H },
+    ),
+  ])
+  const sRows = sRes.ok ? await sRes.json() : []
+  const pRows = pRes.ok ? await pRes.json() : []
+  const pMap = {}
+  for (const p of Array.isArray(pRows) ? pRows : []) pMap[p.account] = p
+  const stuck = (Array.isArray(sRows) ? sRows : []).filter((x) => pMap[x.account])
+
+  const emails = {}
+  if (stuck.length) {
+    const accs = stuck.map((x) => x.account).join(',')
+    const aRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/applications?account=in.(${encodeURIComponent(accs)})&select=account,email`,
+      { headers: H },
+    )
+    const aRows = aRes.ok ? await aRes.json() : []
+    for (const a of Array.isArray(aRows) ? aRows : []) if (a.email && !emails[a.account]) emails[a.account] = a.email
+  }
+  return stuck.map((x) => ({
+    account: x.account, name: x.name, department: x.department, campus: x.campus, batch: x.batch,
+    nationality: x.nationality, confirm_token: x.confirm_token, email: emails[x.account] || '',
+    state: pMap[x.account].state,
+    reminder_count: pMap[x.account].reminder_count || 0,
+    last_reminder_at: pMap[x.account].last_reminder_at || null,
+    last_reminder_kind: pMap[x.account].last_reminder_kind || null,
+  }))
+}
 
 // 攤平某帳號的五步進度 { [step]: row }
 async function fetchProgress(account, H) {
@@ -347,6 +402,106 @@ export default async function handler(req) {
 
     await logRow(reqRow.account, null, 'name_review', { id, action: decision })
     return json({ ok: true })
+  }
+
+  // ── mail-recipients：某步通知信收件名單（卡在該步、active，含 email/已提醒次數）──
+  if (action === 'mail-recipients') {
+    const step = Number(body.step)
+    if (!Number.isInteger(step) || step < 1 || step > 5) return json({ ok: false, error: '參數錯誤' }, 400)
+    const list = await fetchMailRecipients(step, body.batch, body.campus, H)
+    return json({ ok: true, list })
+  }
+
+  // ── mail-build-drafts：逐人組信 → Apps Script 建 Gmail 草稿（前端每批 ≤8 封）────
+  if (action === 'mail-build-drafts') {
+    const step = Number(body.step)
+    const tier = String(body.tier || 'first')
+    if (!Number.isInteger(step) || step < 1 || step > 5 || !['first', 'second', 'final'].includes(tier)) {
+      return json({ ok: false, error: '參數錯誤' }, 400)
+    }
+    if (step !== 1) return json({ ok: false, error: '此步驟的信件模板尚未提供（本階段僅步驟①）' }, 400)
+    const DRAFT_URL = process.env.DRAFT_SERVICE_URL
+    const DRAFT_TOKEN = process.env.DRAFT_SERVICE_TOKEN
+    if (!DRAFT_URL || !DRAFT_TOKEN) return json({ ok: false, error: '伺服器未設定 DRAFT_SERVICE_URL / DRAFT_SERVICE_TOKEN' }, 500)
+
+    // 名單以伺服器端資格為準（卡在該步、active），accounts 只做交集＝分批/個別寄
+    let list = await fetchMailRecipients(step, body.batch, body.campus, H)
+    const wanted = Array.isArray(body.accounts) && body.accounts.length
+      ? new Set(body.accounts.map((a) => String(a))) : null
+    if (wanted) list = list.filter((r) => wanted.has(String(r.account)))
+    if (!list.length) return json({ ok: true, built: 0, failed: [] })
+    if (list.length > 20) return json({ ok: false, error: '一次最多 20 封，請分批呼叫（建議每批 8 封）' }, 400)
+
+    // 截止日（該步、各梯）＋ 承辦窗口 / 放榜連結（enroll_config，依校區）
+    const [dlRes, cfgRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/enroll_settings?step=eq.${step}&select=batch,deadline`, { headers: H }),
+      fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=in.(contacts,result_link)&select=key,value`, { headers: H }),
+    ])
+    const dlRows = dlRes.ok ? await dlRes.json() : []
+    const deadlines = {}
+    for (const r of Array.isArray(dlRows) ? dlRows : []) deadlines[String(r.batch)] = isoToTpeYmd(r.deadline)
+    const cfgRows = cfgRes.ok ? await cfgRes.json() : []
+    const cfg = {}
+    for (const r of Array.isArray(cfgRows) ? cfgRows : []) cfg[r.key] = r.value
+    const contacts = cfg.contacts || {}
+    const resultLink = cfg.result_link || {}
+
+    // 逐人組信（依國籍選語言、依校區取窗口/放榜連結、依梯次取截止日）
+    const origin = new URL(req.url).origin
+    const failed = []
+    const messages = []
+    const byEmail = {}   // email → recipient（建草稿結果以 to 對回帳號，同 Stage4 慣例）
+    for (const r of list) {
+      if (!r.email) { failed.push({ account: r.account, error: '查無 Email' }); continue }
+      if (!r.confirm_token) { failed.push({ account: r.account, error: '缺少 confirm_token' }); continue }
+      const camp = r.campus || '台北'
+      const c = contacts[camp] || contacts['台北'] || {}
+      const m = buildOnboardMail({
+        step, tier, lang: onboardMailLang(r.nationality),
+        data: {
+          name: r.name || '',
+          link: `${origin}/#/onboard?t=${r.confirm_token}`,
+          result_link: String(resultLink[camp] || resultLink['台北'] || '').trim(),
+          deadline: deadlines[String(r.batch)] || '',
+          contact_name: c.name || '', contact_email: c.email || '', contact_phone: c.phone || '',
+        },
+      })
+      messages.push({ to: r.email, subject: m.subject, body: m.body })
+      byEmail[r.email] = r
+    }
+
+    // 呼叫 Apps Script 草稿服務（同 api/draftmail.js 的轉發格式）
+    let drafts = []
+    if (messages.length) {
+      const up = await fetch(DRAFT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: DRAFT_TOKEN, action: 'create_drafts', messages }),
+        redirect: 'follow',
+      })
+      let out
+      try { out = await up.json() } catch { out = null }
+      if (!up.ok || !out || out.ok === false) {
+        return json({ ok: false, error: '草稿服務失敗：' + (out?.error || `HTTP ${up.status}`) }, 502)
+      }
+      drafts = out.drafts || []
+    }
+
+    // 每成功一人：reminder_count+1、last_reminder_at/kind；寫 enroll_log（失敗者留在 failed 供重試）
+    let built = 0
+    const okEmails = new Set(drafts.map((d) => d.to))
+    for (const m of messages) {
+      const r = byEmail[m.to]
+      if (!okEmails.has(m.to)) { failed.push({ account: r.account, error: '建立草稿失敗' }); continue }
+      built++
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(r.account)}&step=eq.${step}`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ reminder_count: (r.reminder_count || 0) + 1, last_reminder_at: nowIso, last_reminder_kind: tier }) },
+      ).catch(() => { /* 計數失敗不阻斷 */ })
+      await logRow(r.account, step, 'mail_draft', { step, tier, account: r.account })
+    }
+    return json({ ok: true, built, failed })
   }
 
   return json({ ok: false, error: '未知的操作' }, 400)
