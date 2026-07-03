@@ -525,7 +525,8 @@ export default async function handler(req) {
       const m = buildOnboardMail({
         step, tier, lang: onboardMailLang(r.nationality),
         data: {
-          name: r.name || '',
+          name: r.name || '', name_english: r.name_english || r.name_en || '',
+          department: r.department || '', campus: r.campus || '',
           link: `${origin}/#/onboard?t=${r.confirm_token}`,
           result_link: String(resultLink[camp] || resultLink['台北'] || '').trim(),
           deadline: deadlines[String(r.batch)] || '',

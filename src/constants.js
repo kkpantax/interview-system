@@ -265,14 +265,14 @@ export const ONBOARD_STEP1_FIELDS = {
   ],
 }
 
-// ── 入學準備 · 通知信（Gmail 草稿引擎用模板）────────────────────────────────
-// 由 /api/onboard-admin 的 mail-build-drafts 在伺服器端組信（一人一封個人化草稿）。
+// ── 入學準備 · 通知信（OnboardMailComposer 組信用模板）────────────────────────
 // 變數用 {{變數}}（比照 mailTemplates.js 慣例）：
-//   {{name}} 中文姓名、{{link}} 學生 onboard 專屬連結（#/onboard?t=token）、
-//   {{result_link}} 放榜名單網址（enroll_config.result_link 依校區）、
-//   {{deadline}} 該梯該步截止日（只日期）、{{contact_name}}/{{contact_email}}/{{contact_phone}} 承辦窗口（依校區）。
-// tier：first 首次通知 / second 二次提醒 / final 最後提醒——同一 body，只換開頭 tier_intro 一段。
-// result_link / deadline / 電話可能未設定：對應段落由 buildOnboardMail 動態省略，不出現空洞句。
+//   {{name}} 中文姓名（zh 稱呼）、{{name_english}} 英文姓名（en/vi/id 稱呼，空值 fallback 中文名）、
+//   {{dept_seg}} 錄取學系＋校區句段（department/campus 空值時整段省略，campus 空時只略校區括號）、
+//   {{result_seg}} 榜單連結句（result_link 空值省略）、{{link}} 學生 onboard 專屬連結（#/onboard?t=token）、
+//   {{deadline}} 該梯該步截止日（只日期；空值時整句改「請儘速完成」語氣）、
+//   {{contact_name}}/{{contact_email}}/{{contact_phone}} 承辦窗口（依校區；電話空值省略）。
+// tier：first 首次通知 / second 二次提醒 / final 最後提醒——同一 body，只換開頭 tier_intro 一段＋主旨前綴。
 // 簽名檔比照 S4 慣例：每語言硬編。本階段僅步驟①（放榜恭喜＋資料確認），②~⑥ 後續補。
 
 // 通知信語言：越南→vi、印尼→id、台/中→zh、其餘→en（與學生端 langOf 同規則）
@@ -286,94 +286,113 @@ export const onboardMailLang = (nationality) => {
 
 export const ONBOARD_MAIL_S1 = {
   subject: {
-    zh: '【實踐大學國際專修部】錄取通知與入學資料確認 — {{name}}',
-    en: '【Shih Chien University】IFP Admission Notification 錄取通知與資料確認 — {{name}}',
-    vi: '【Shih Chien University】Thông báo trúng tuyển IFP 錄取通知與資料確認 — {{name}}',
-    id: '【Shih Chien University】Pemberitahuan Penerimaan IFP 錄取通知與資料確認 — {{name}}',
+    zh: '【實踐大學國際專修部】恭喜錄取・入學準備通知',
+    en: '[Shih Chien University IFP] Congratulations on Your Admission — Enrollment Preparation Notice',
+    vi: '[Đại học Thực Tiễn - IFP] Chúc mừng trúng tuyển — Thông báo chuẩn bị nhập học',
+    id: '[Universitas Shih Chien - IFP] Selamat atas Kelulusan — Pemberitahuan Persiapan Pendaftaran',
   },
   // second/final 加在主旨最前（first 不加）
   subjectPrefix: { second: '【提醒 Reminder】', final: '【最後提醒 Final Reminder】' },
   // second/final 加在信件最開頭的提醒段（first 無）
   tierIntro: {
     second: {
-      zh: '※ 提醒：我們注意到您尚未完成入學資料確認，請盡快透過下方專屬連結完成。若您已完成，敬請忽略本段。',
-      en: '※ Reminder: Our records show you have not yet completed the information confirmation. Please do so via your personal link below as soon as possible. If you have already completed it, please disregard this notice.',
-      vi: '※ Nhắc nhở: Bạn vẫn chưa hoàn tất xác nhận thông tin nhập học. Vui lòng hoàn tất qua liên kết cá nhân bên dưới trong thời gian sớm nhất. Nếu bạn đã hoàn tất, vui lòng bỏ qua thông báo này.',
-      id: '※ Pengingat: Anda belum menyelesaikan konfirmasi data pendaftaran. Mohon segera selesaikan melalui tautan pribadi di bawah ini. Jika sudah, abaikan pemberitahuan ini.',
+      zh: '【提醒】您尚未完成「資料確認」，煩請儘快處理。以下為完整通知：',
+      en: '[Reminder] You have not yet completed the "Data Confirmation" step. Please complete it as soon as possible. Full notice below:',
+      vi: '[Nhắc nhở] Bạn chưa hoàn thành bước "Xác nhận thông tin". Vui lòng hoàn thành sớm nhất có thể. Nội dung đầy đủ bên dưới:',
+      id: '[Pengingat] Anda belum menyelesaikan langkah "Konfirmasi Data". Mohon segera diselesaikan. Berikut pemberitahuan lengkapnya:',
     },
     final: {
-      zh: '※ 最後提醒：您尚未完成入學資料確認，請務必於截止日前完成，逾期恐影響後續入學作業。',
-      en: '※ Final reminder: You have not yet completed the information confirmation. Please complete it before the deadline; late completion may affect your enrollment process.',
-      vi: '※ Nhắc nhở lần cuối: Bạn vẫn chưa hoàn tất xác nhận thông tin nhập học. Vui lòng hoàn tất trước thời hạn; nếu trễ hạn có thể ảnh hưởng đến thủ tục nhập học của bạn.',
-      id: '※ Pengingat terakhir: Anda belum menyelesaikan konfirmasi data pendaftaran. Mohon selesaikan sebelum batas waktu; keterlambatan dapat memengaruhi proses pendaftaran Anda.',
+      zh: '【最後提醒】這是「資料確認」的最後提醒，逾期恐影響入學通知寄送，請務必於期限前完成。',
+      en: '[Final Reminder] This is the final reminder for "Data Confirmation." Missing the deadline may delay the delivery of your admission notice. Please complete it without delay.',
+      vi: '[Nhắc nhở cuối cùng] Đây là lời nhắc cuối cùng cho bước "Xác nhận thông tin". Quá hạn có thể ảnh hưởng đến việc gửi giấy báo nhập học, vui lòng hoàn thành trước thời hạn.',
+      id: '[Pengingat Terakhir] Ini pengingat terakhir untuk "Konfirmasi Data." Melewati batas waktu dapat menunda pengiriman surat pemberitahuan Anda. Mohon selesaikan sebelum batas waktu.',
     },
   },
-  // 段落制：buildOnboardMail 依資料有無挑段、以空行串接（result/deadline/contact 為可省略段）
+  // 段落制：buildOnboardMail 依資料有無挑段、以空行串接。
+  // confirmDeadline / confirmAsap 二擇一（deadline 有無）；{{dept_seg}}/{{result_seg}} 空值時為空字串。
   paras: {
     zh: {
       greeting: '親愛的 {{name}} 同學，您好：',
-      congrats: '恭喜您錄取實踐大學國際專修部（1+4）！我們誠摯歡迎您加入實踐大家庭。',
-      link: '請點選您的專屬連結，上線確認您的個人資料，以利辦理後續入學作業：\n{{link}}',
-      result: '正式放榜名單可於以下網址查看：\n{{result_link}}',
-      address: '【特別提醒】本校後續將寄送「實體錄取通知信」，請務必在上方連結中正確填寫通訊地址，並留意收信。',
-      deadline: '請於 {{deadline}} 前完成資料確認。',
-      contact: '如有任何問題，歡迎聯繫承辦窗口：{{contact_name}}（{{contact_email}}{{contact_phone}}）。',
-      signoff: '順頌　時祺\n實踐大學 國際事務處',
+      congrats: '恭喜您錄取實踐大學國際專修部（1+4）{{dept_seg}}。{{result_seg}}',
+      letter: '首先向您說明錄取通知單事宜：目前紙本錄取通知單仍在準備中、尚未寄發，敬請耐心等候；電子檔完成後將提供下載。紙本通知單將依您接下來在系統中填寫的地址寄出，因此請務必確認接下來填寫的個人資料與地址正確無誤，以免影響收件。',
+      confirmDeadline: '為儘速為您寄出紙本入學通知，請於 {{deadline}} 前完成本次「資料確認」。請點選以下專屬連結登入，核對並確認您的個人資料：\n{{link}}',
+      confirmAsap: '為儘速為您寄出紙本入學通知，請儘速完成本次「資料確認」。請點選以下專屬連結登入，核對並確認您的個人資料：\n{{link}}',
+      contact: '如有任何問題，歡迎聯繫承辦人 {{contact_name}}（{{contact_email}}{{contact_phone}}）。',
+      signoff: '實踐大學 國際事務處 敬啟',
     },
     en: {
-      greeting: 'Dear {{name}},',
-      congrats: 'Congratulations! You have been admitted to the International Foundation Program (1+4) at Shih Chien University. We warmly welcome you to the Shih Chien family.',
-      link: 'Please use your personal link below to confirm your personal information online so we can proceed with your enrollment:\n{{link}}',
-      result: 'The official admission list is available at:\n{{result_link}}',
-      address: '[Important] The university will also mail you a printed admission letter. Please make sure your mailing address is filled in correctly via the link above, and watch for its arrival.',
-      deadline: 'Please complete the confirmation by {{deadline}}.',
+      greeting: 'Dear {{name_english}},',
+      congrats: 'Congratulations on your admission to the International Foundation Program (1+4) at Shih Chien University{{dept_seg}}.{{result_seg}}',
+      letter: 'First, regarding your admission letter: the printed admission letter is still being prepared and has not yet been sent — thank you for your patience. An electronic copy will be provided for download once ready. The printed letter will be mailed to the address you enter in the system in the next step, so please make sure the personal information and address you provide are correct to avoid any delivery problems.',
+      confirmDeadline: 'To help us send your printed admission notice as soon as possible, please complete this "Data Confirmation" step before {{deadline}}. Please log in via your personal link below to review and confirm your information:\n{{link}}',
+      confirmAsap: 'To help us send your printed admission notice as soon as possible, please complete this "Data Confirmation" step at your earliest convenience. Please log in via your personal link below to review and confirm your information:\n{{link}}',
       contact: 'If you have any questions, please contact {{contact_name}} ({{contact_email}}{{contact_phone}}).',
-      signoff: 'Best regards,\nOffice of International Affairs, Shih Chien University',
+      signoff: 'Office of International Affairs, Shih Chien University',
     },
     vi: {
-      greeting: 'Kính gửi bạn {{name}},',
-      congrats: 'Chúc mừng bạn đã trúng tuyển Chương trình Dự bị Quốc tế (International Foundation Program, 1+4) của Đại học Thực Tiễn (Shih Chien University)! Chúng tôi nồng nhiệt chào đón bạn gia nhập đại gia đình Thực Tiễn.',
-      link: 'Vui lòng nhấp vào liên kết cá nhân dưới đây để xác nhận thông tin cá nhân trực tuyến, giúp nhà trường tiến hành các thủ tục nhập học tiếp theo:\n{{link}}',
-      result: 'Danh sách trúng tuyển chính thức có thể xem tại:\n{{result_link}}',
-      address: '[Lưu ý đặc biệt] Nhà trường sẽ gửi "Thư báo trúng tuyển bản giấy" qua đường bưu điện. Vui lòng điền chính xác địa chỉ liên lạc trong liên kết trên và chú ý nhận thư.',
-      deadline: 'Vui lòng hoàn tất xác nhận thông tin trước ngày {{deadline}}.',
-      contact: 'Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ: {{contact_name}} ({{contact_email}}{{contact_phone}}).',
-      signoff: 'Trân trọng,\nPhòng Hợp tác Quốc tế, Đại học Thực Tiễn (Shih Chien University)',
+      greeting: '{{name_english}} thân mến,',
+      congrats: 'Chúc mừng bạn đã trúng tuyển Chương trình Dự bị Quốc tế (1+4) của Đại học Thực Tiễn{{dept_seg}}.{{result_seg}}',
+      letter: 'Trước tiên, về giấy báo trúng tuyển: giấy báo bản giấy hiện vẫn đang được chuẩn bị và chưa được gửi đi, mong bạn kiên nhẫn chờ đợi. Bản điện tử sẽ được cung cấp để tải xuống khi hoàn tất. Giấy báo bản giấy sẽ được gửi theo địa chỉ bạn điền trong hệ thống ở bước tiếp theo, vì vậy vui lòng đảm bảo thông tin cá nhân và địa chỉ bạn nhập là chính xác để tránh ảnh hưởng đến việc nhận thư.',
+      confirmDeadline: 'Để nhà trường gửi giấy báo nhập học bản giấy sớm nhất, vui lòng hoàn thành bước "Xác nhận thông tin" này trước ngày {{deadline}}. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập, kiểm tra và xác nhận thông tin của bạn:\n{{link}}',
+      confirmAsap: 'Để nhà trường gửi giấy báo nhập học bản giấy sớm nhất, vui lòng hoàn thành bước "Xác nhận thông tin" này trong thời gian sớm nhất. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập, kiểm tra và xác nhận thông tin của bạn:\n{{link}}',
+      contact: 'Nếu có thắc mắc, vui lòng liên hệ cán bộ phụ trách {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      signoff: 'Phòng Sự vụ Quốc tế, Đại học Thực Tiễn',
     },
     id: {
-      greeting: 'Yth. {{name}},',
-      congrats: 'Selamat! Anda telah diterima di International Foundation Program (1+4) Shih Chien University. Kami menyambut Anda dengan hangat di keluarga besar Shih Chien.',
-      link: 'Silakan klik tautan pribadi Anda di bawah ini untuk mengonfirmasi data pribadi secara online agar proses pendaftaran selanjutnya dapat berjalan lancar:\n{{link}}',
-      result: 'Daftar penerimaan resmi dapat dilihat di:\n{{result_link}}',
-      address: '[Perhatian Khusus] Universitas juga akan mengirimkan "Surat Penerimaan Resmi (cetak)" melalui pos. Pastikan alamat surat-menyurat Anda diisi dengan benar melalui tautan di atas, dan periksa kotak surat Anda.',
-      deadline: 'Mohon selesaikan konfirmasi data sebelum {{deadline}}.',
-      contact: 'Jika ada pertanyaan, silakan hubungi {{contact_name}} ({{contact_email}}{{contact_phone}}).',
-      signoff: 'Hormat kami,\nKantor Urusan Internasional, Shih Chien University',
+      greeting: 'Yth. {{name_english}},',
+      congrats: 'Selamat, Anda diterima di International Foundation Program (1+4) Universitas Shih Chien{{dept_seg}}.{{result_seg}}',
+      letter: 'Pertama, mengenai surat kelulusan: surat kelulusan cetak masih dalam proses persiapan dan belum dikirim, mohon kesabarannya. Salinan elektronik akan tersedia untuk diunduh setelah siap. Surat cetak akan dikirim ke alamat yang Anda isi dalam sistem pada langkah berikutnya, jadi pastikan data pribadi dan alamat yang Anda masukkan sudah benar agar tidak mengganggu penerimaan surat.',
+      confirmDeadline: 'Agar kami dapat mengirimkan surat pemberitahuan cetak secepatnya, mohon selesaikan langkah "Konfirmasi Data" ini sebelum {{deadline}}. Silakan masuk melalui tautan pribadi Anda di bawah ini untuk memeriksa dan mengonfirmasi data Anda:\n{{link}}',
+      confirmAsap: 'Agar kami dapat mengirimkan surat pemberitahuan cetak secepatnya, mohon segera selesaikan langkah "Konfirmasi Data" ini. Silakan masuk melalui tautan pribadi Anda di bawah ini untuk memeriksa dan mengonfirmasi data Anda:\n{{link}}',
+      contact: 'Jika ada pertanyaan, silakan hubungi petugas {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      signoff: 'Kantor Urusan Internasional, Universitas Shih Chien',
     },
   },
 }
 
 // 組出步驟①通知信 { subject, body }；查無模板（目前僅 step=1）回 null。
-// data.contact_phone 會被轉成「、電話 X」/「 / X」句段，空值一律省略整段。
-// data.custom（寄信視窗的自訂段落，依收件人語言擇一）有值時插在簽名檔前一段。
+// 空值省略規則：
+//   department 空 → 整個「錄取學系為…」句段省略（campus 附屬其中）；campus 空 → 只略「（…校區）」；
+//   result_link 空 → 榜單句省略；deadline 空 → 改用 confirmAsap（請儘速完成）；
+//   contact_phone 空 → 電話句段省略；name_english 空 → fallback 中文姓名。
+// data.custom（自訂段落 hook，日後要加回時用）有值時插在簽名檔前一段。
 export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data = {} }) {
   if (Number(step) !== 1) return null
   const L = ['zh', 'en', 'vi', 'id'].includes(lang) ? lang : 'en'
   const t = ONBOARD_MAIL_S1
   const p = t.paras[L]
+
+  const dept = String(data.department || '').trim()
+  const campus = String(data.campus || '').trim()
+  const rl = String(data.result_link || '').trim()
+  const campusSeg = campus
+    ? { zh: `（${campus}校區）`, en: ` (${campus} campus)`, vi: ` (cơ sở ${campus})`, id: ` (kampus ${campus})` }[L]
+    : ''
+  const deptSeg = dept
+    ? { zh: `，錄取學系為 ${dept}${campusSeg}`, en: `, in the ${dept}${campusSeg}`,
+        vi: `, ngành ${dept}${campusSeg}`, id: `, pada program studi ${dept}${campusSeg}` }[L]
+    : ''
+  const resultSeg = rl
+    ? { zh: `完整放榜名單請見：${rl}`, en: ` The full admission list is available here: ${rl}`,
+        vi: ` Danh sách trúng tuyển đầy đủ có tại đây: ${rl}`, id: ` Daftar kelulusan lengkap dapat dilihat di sini: ${rl}` }[L]
+    : ''
+
   const parts = []
   const intro = t.tierIntro[tier]?.[L]
   if (intro) parts.push(intro)
-  parts.push(p.greeting, p.congrats, p.link)
-  if (String(data.result_link || '').trim()) parts.push(p.result)
-  parts.push(p.address)
-  if (String(data.deadline || '').trim()) parts.push(p.deadline)
+  parts.push(p.greeting, p.congrats, p.letter)
+  parts.push(String(data.deadline || '').trim() ? p.confirmDeadline : p.confirmAsap)
   if (String(data.contact_name || '').trim() || String(data.contact_email || '').trim()) parts.push(p.contact)
   if (String(data.custom || '').trim()) parts.push(String(data.custom).trim())
   parts.push(p.signoff)
 
   const phone = String(data.contact_phone || '').trim()
-  const d = { ...data, contact_phone: phone ? (L === 'zh' ? `、電話 ${phone}` : ` / ${phone}`) : '' }
+  const d = {
+    ...data,
+    name_english: String(data.name_english || data.name || '').trim(),
+    dept_seg: deptSeg, result_seg: resultSeg,
+    contact_phone: phone ? (L === 'zh' ? `、電話 ${phone}` : L === 'vi' ? `, ĐT: ${phone}` : `, Tel: ${phone}`) : '',
+  }
   const fill = (txt) => Object.entries(d).reduce(
     (out, [k, v]) => out.split(`{{${k}}}`).join(v == null ? '' : String(v)), String(txt))
   return {

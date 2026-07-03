@@ -6,7 +6,8 @@ import { buildOnboardMail, onboardMailLang, ENROLL_STEPS, deptZhFull } from '../
 // 入學準備通知信寄送視窗（比照 Stage4 MailComposer 版型；模板走 constants.js buildOnboardMail）。
 // 與 Stage4 MailComposer 的差異：
 //   - 信一律雙語整封：外語在前、中文在後（buildOnboardMail 呼叫兩次拼接，主旨「外語 / 中文」）；
-//     逐列語言下拉選的是外語（中英→en、中越→vi、中印尼→id），四語自訂段各插入對應語言區塊。
+//     逐列語言下拉選的是外語（中英→en、中越→vi、中印尼→id）。無自訂段落欄
+//     （步驟①定稿不需要；日後某步要加回時，buildOnboardMail 仍支援 data.custom）。
 //   - 承辦窗口／截止日／放榜連結唯讀（依校區・梯次從 cfg 帶入），要改去後台「⚙ 設定」分頁。
 //   - 兩鈕流程同 Stage4：「① 建立草稿到公務信箱」createDrafts（可到 Gmail 逐封檢查／微調，
 //     每批成功呼叫 markDraft 寫 enroll_log mail_draft、不加提醒計數）→「② 送出本批」
@@ -34,8 +35,6 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
   const hasTemplate = !!buildOnboardMail({ step, tier: 'first', lang: 'zh', data: {} })
 
   const [tier, setTier] = useState(initialTier)
-  const [form, setForm] = useState({ customZh: '', customEn: '', customVi: '', customId: '' })
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const baseRows = useMemo(() => (recipients || [])
     .filter((r) => r.email)
@@ -64,24 +63,23 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
   const resultLink = cfg?.resultLink || {}
   const deadlines = cfg?.deadlines || {}
 
-  const customFor = (lang) =>
-    lang === 'zh' ? form.customZh : lang === 'vi' ? form.customVi : lang === 'id' ? form.customId : form.customEn
-  const dataFor = (r, lang) => {
+  const dataFor = (r) => {
     const camp = r.campus || '台北'
     const c = contacts[camp] || contacts['台北'] || {}
     return {
-      name: r.name || '',
+      name: r.name || '', name_english: r.name_en || '',
+      department: deptZhFull(r.department) || r.department || '', campus: r.campus || '',
       link: `${window.location.origin}/#/onboard?t=${r.confirm_token}`,
       result_link: String(resultLink[camp] || resultLink['台北'] || '').trim(),
       deadline: deadlines[r.batch] || '',
       contact_name: c.name || '', contact_email: c.email || '', contact_phone: c.phone || '',
-      custom: customFor(lang),
     }
   }
-  // 雙語組信：外語（該列下拉）在前、中文在後；自訂段各插入對應語言區塊
+  // 雙語組信：外語（該列下拉）在前、中文在後
   const msgFor = (r) => {
-    const fx = buildOnboardMail({ step, tier, lang: r.lang, data: dataFor(r, r.lang) })
-    const zh = buildOnboardMail({ step, tier, lang: 'zh', data: dataFor(r, 'zh') })
+    const data = dataFor(r)
+    const fx = buildOnboardMail({ step, tier, lang: r.lang, data })
+    const zh = buildOnboardMail({ step, tier, lang: 'zh', data })
     if (!fx || !zh) return null
     return { subject: `${fx.subject} / ${zh.subject}`, body: fx.body + SEP + zh.body }
   }
@@ -168,7 +166,6 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
     } finally { setBusy(false) }
   }
 
-  const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }
   const th = { padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
   const td = { padding: '8px 12px', borderBottom: '1px solid #f5f4f0', fontSize: 12.5, lineHeight: 1.5, verticalAlign: 'middle' }
   const statusOf = (r) => {
@@ -221,25 +218,6 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
           {tier !== 'first'
             ? `信件開頭會加註${tier === 'second' ? '「尚未完成」提醒段' : '「最後提醒、逾期恐影響入學」段'}、主旨加上提醒前綴；僅寄給仍未完成者即可。`
             : '一般首次通知（放榜恭喜＋資料確認），信件內容維持原樣。'}
-        </div>
-      </div>
-
-      {/* 四語自訂段落（2×2 網格；外語段插外語區塊、中文段插中文區塊） */}
-      <div style={{ marginBottom: 18 }}>
-        <span style={s.secLabel}>自訂段落（選填 · 插在簽名檔前）</span>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px 16px' }}>
-          {[
-            ['customZh', '中文 — 插入中文區塊', '例：開學典禮訂於 9/1 舉行，詳細資訊將另行通知…'],
-            ['customEn', '英文 — 插入中英信的外語區塊', 'e.g. The opening ceremony will be held on Sept 1…'],
-            ['customVi', '越南文 — 插入中越信的外語區塊', 'VD: Lễ khai giảng sẽ được tổ chức vào ngày 1/9…'],
-            ['customId', '印尼文 — 插入中印尼信的外語區塊', 'Mis. Upacara pembukaan akan diadakan pada 1 September…'],
-          ].map(([k, label, ph]) => (
-            <div key={k}>
-              <label style={lbl}>{label}</label>
-              <textarea style={{ ...s.ta, minHeight: 64, marginBottom: 0 }} value={form[k]}
-                onChange={(e) => setF(k, e.target.value)} placeholder={ph} />
-            </div>
-          ))}
         </div>
       </div>
 
