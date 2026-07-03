@@ -623,25 +623,14 @@ export default function OnboardAdminApp() {
           onClick={() => openComposer(step, rows.map((x) => x.account))}>
           ✉ 寄送通知信（{rows.length} 人）
         </Btn>
+        {step === 1 && (
+          <Btn disabled={busy || exporting} onClick={doExportBA0203}>
+            {exporting ? '匯出中…' : '⬇ 匯出 BA0203 外生 Excel'}
+          </Btn>
+        )}
         <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
           開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），
           可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。
-        </span>
-      </div>
-    </Card>
-  )
-
-  // BA0203「外生」匯出區塊（僅步驟①分頁顯示）
-  const ba0203Export = (
-    <Card style={{ marginBottom: 16 }}>
-      <CardHead left="⬇ BA0203 外生匯出" />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 18px' }}>
-        <Btn disabled={busy || exporting} onClick={doExportBA0203}>
-          {exporting ? '匯出中…' : '⬇ 匯出 BA0203 外生 Excel'}
-        </Btn>
-        <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
-          匯出「已完成資料確認、在籍(active)」學生的 BA0203 外生欄位（49 欄版面，僅填學生自填 20 欄、其餘留空）；
-          出生日期／畢業年度自動轉民國，未填欄留白。放棄學生不列入。
         </span>
       </div>
     </Card>
@@ -660,7 +649,6 @@ export default function OnboardAdminApp() {
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: '已完成', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
-        {step === 1 && ba0203Export}
         {mailControl(step, rows)}
         <Card>
           <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${shown.length}${q ? ` / ${rows.length}` : ''}）`} />
