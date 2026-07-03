@@ -125,13 +125,7 @@ export default async function handler(req) {
     const nRows = nRes.ok ? await nRes.json() : []
     const name_request = (Array.isArray(nRows) && nRows[0]) || null
 
-    // 步驟2繳費：注意事項（該生梯次 enroll_settings step2 的 extra.notice，字串陣列）
-    // 與專屬繳費單連結（enroll_progress step2 的 data.slip_url）
-    const s2notice = settings[2]?.extra?.notice
-    const notice = Array.isArray(s2notice) ? s2notice.filter((x) => typeof x === 'string' && x.trim()) : []
-    const slip_url = progress[2]?.data?.slip_url || ''
-
-    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request, notice, slip_url })
+    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request })
   }
 
   // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────
