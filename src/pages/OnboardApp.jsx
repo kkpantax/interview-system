@@ -34,6 +34,14 @@ const T = {
   contact:      { zh: '聯絡窗口', en: 'Contact', vi: 'Liên hệ', id: 'Kontak' },
   allDone:      { zh: '🎉 您已完成所有入學準備步驟，我們台灣見！', en: '🎉 You have completed all enrollment steps. See you in Taiwan!', vi: '🎉 Bạn đã hoàn thành tất cả các bước. Hẹn gặp bạn tại Đài Loan!', id: '🎉 Anda telah menyelesaikan semua langkah. Sampai jumpa di Taiwan!' },
   unit:         { zh: '實踐大學 國際事務處', en: 'Office of International Affairs, Shih Chien University', vi: 'Phòng Hợp tác Quốc tế, Đại học Thực Tiễn', id: 'Kantor Urusan Internasional, Shih Chien University' },
+  withdrawLink:   { zh: '放棄入學', en: 'Withdraw enrollment', vi: 'Từ bỏ nhập học', id: 'Membatalkan pendaftaran' },
+  withdrawTitle:  { zh: '放棄入學', en: 'Withdraw Enrollment', vi: 'Từ bỏ nhập học', id: 'Membatalkan Pendaftaran' },
+  withdrawWarn:   { zh: '確定要放棄入學嗎？送出後您的入學資格將被取消、入學準備流程也會結束。如為誤操作，請聯繫下方承辦窗口協助恢復。', en: 'Are you sure you want to withdraw? Once submitted, your enrollment will be cancelled and the preparation process will end. If this was a mistake, please contact the staff below to restore it.', vi: 'Bạn có chắc chắn muốn từ bỏ nhập học? Sau khi gửi, tư cách nhập học của bạn sẽ bị hủy và quy trình chuẩn bị nhập học cũng kết thúc. Nếu thao tác nhầm, vui lòng liên hệ cán bộ phụ trách bên dưới để khôi phục.', id: 'Apakah Anda yakin ingin membatalkan pendaftaran? Setelah dikirim, pendaftaran Anda akan dibatalkan dan proses persiapan berakhir. Jika ini keliru, silakan hubungi petugas di bawah untuk memulihkannya.' },
+  withdrawReason: { zh: '放棄原因（選填）', en: 'Reason (optional)', vi: 'Lý do (không bắt buộc)', id: 'Alasan (opsional)' },
+  withdrawCancel: { zh: '取消', en: 'Cancel', vi: 'Hủy', id: 'Batal' },
+  withdrawConfirm:{ zh: '確定放棄', en: 'Confirm withdrawal', vi: 'Xác nhận từ bỏ', id: 'Konfirmasi pembatalan' },
+  withdrawnTitle: { zh: '您已放棄入學', en: 'You have withdrawn', vi: 'Bạn đã từ bỏ nhập học', id: 'Anda telah membatalkan pendaftaran' },
+  withdrawnBody:  { zh: '您已提出放棄入學，入學準備流程已結束。如為誤操作，請聯繫以下承辦窗口協助恢復。', en: 'You have withdrawn your enrollment and the preparation process has ended. If this was a mistake, please contact the staff below to restore it.', vi: 'Bạn đã từ bỏ nhập học và quy trình chuẩn bị nhập học đã kết thúc. Nếu thao tác nhầm, vui lòng liên hệ cán bộ phụ trách bên dưới để khôi phục.', id: 'Anda telah membatalkan pendaftaran dan proses persiapan telah berakhir. Jika ini keliru, silakan hubungi petugas di bawah untuk memulihkannya.' },
   // 步驟1表單
   s1PrefillTitle: { zh: '基本資料（請確認並可修正）', en: 'Basic Information (please check and correct if needed)', vi: 'Thông tin cơ bản (vui lòng kiểm tra và sửa nếu cần)', id: 'Data Dasar (mohon periksa dan perbaiki jika perlu)' },
   s1FillTitle:    { zh: '請填寫以下資料', en: 'Please fill in the following', vi: 'Vui lòng điền các thông tin sau', id: 'Mohon isi data berikut' },
@@ -158,6 +166,8 @@ export default function OnboardApp({ token }) {
   const [done, setDone] = useState(false)       // 步驟1剛送出成功
   const [nameModal, setNameModal] = useState(false)
   const [ncForm, setNcForm] = useState({ new_name: '', reason: '' })   // 更名申請 modal
+  const [showWithdraw, setShowWithdraw] = useState(false)              // 放棄入學確認 modal
+  const [wReason, setWReason] = useState('')                           // 放棄原因（選填）
   const langInited = useRef(false)
   const tr = (k, vars = {}) => Object.entries(vars).reduce((str, [kk, vv]) => str.split(`{${kk}}`).join(vv), T[k]?.[lang] || T[k]?.zh || k)
 
@@ -227,6 +237,18 @@ export default function OnboardApp({ token }) {
       await load()
     } catch (e) {
       alert(e.status === 409 ? tr('ncDup') : e.message)
+    } finally { setBusy(false) }
+  }
+
+  // 學生自助放棄入學（即時、單向）；誤按走「聯繫承辦→行政 reactivate」。放棄原因選填。
+  const doWithdraw = async () => {
+    setBusy(true)
+    try {
+      await onboardSubmit({ token, action: 'withdraw', reason: wReason.trim() })
+      setShowWithdraw(false)
+      await load()
+    } catch (e) {
+      alert(e.message)
     } finally { setBusy(false) }
   }
 
@@ -632,6 +654,37 @@ export default function OnboardApp({ token }) {
     </div>
   )
 
+  // 已放棄入學：顯示平靜的已放棄狀態＋承辦窗口（誤按可聯繫恢復）
+  if (student.status === 'abandoned') {
+    return (
+      <div style={wrap}>
+        {langBar}
+        <div style={card}>
+          <div style={{ background: ACCENT, color: '#fde7d4', padding: '18px 24px' }}>
+            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4, lineHeight: 1.4 }}>{tr('program')}</div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{tr('title')}</div>
+          </div>
+          <div style={{ padding: 24, textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🙏</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: ACCENT, marginBottom: 10 }}>{tr('withdrawnTitle')}</div>
+            <p style={{ fontSize: 13.5, color: '#555', lineHeight: 1.8, margin: '0 0 16px' }}>{tr('withdrawnBody')}</p>
+            {hasContact && (
+              <div style={{ ...infoBox, textAlign: 'left', marginBottom: 0 }}>
+                <Row label={tr('contact')} value={
+                  <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, lineHeight: 1.5 }}>
+                    {contact.name && <span>{contact.name}</span>}
+                    {contact.email && (<a href={`mailto:${contact.email}`} style={{ color: ACCENT, wordBreak: 'break-all' }}>{contact.email}</a>)}
+                    {contact.phone && <span style={{ color: '#666' }}>{contact.phone}</span>}
+                  </span>
+                } />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={wrap}>
       {langBar}
@@ -727,6 +780,15 @@ export default function OnboardApp({ token }) {
           )}
 
           <p style={{ fontSize: 11.5, color: '#bbb', textAlign: 'center', margin: '18px 0 0' }}>{tr('unit')}</p>
+          {(student.status || 'active') === 'active' && (
+            <div style={{ textAlign: 'center', marginTop: 10 }}>
+              <button onClick={() => { setWReason(''); setShowWithdraw(true) }}
+                style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', fontFamily: 'inherit',
+                  fontSize: 11, color: '#c4c4c0', textDecoration: 'underline' }}>
+                {tr('withdrawLink')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -762,6 +824,36 @@ export default function OnboardApp({ token }) {
                   border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
                   background: busy ? '#e5e7eb' : ACCENT, color: busy ? '#9ca3af' : 'white' }}>
                 {busy ? tr('submitting') : tr('ncSend')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 放棄入學確認 modal（低調入口→這裡才明確警示；即時、單向） */}
+      {showWithdraw && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }}
+          onClick={() => !busy && setShowWithdraw(false)}>
+          <div style={{ background: 'white', borderRadius: 14, maxWidth: 420, width: '100%', padding: 20, boxSizing: 'border-box' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#b91c1c', marginBottom: 12 }}>{tr('withdrawTitle')}</div>
+            <p style={{ fontSize: 13, color: '#555', lineHeight: 1.7, margin: '0 0 14px' }}>{tr('withdrawWarn')}</p>
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>{tr('withdrawReason')}</label>
+              <textarea rows={3} style={{ ...inputStyle, resize: 'vertical' }} value={wReason}
+                onChange={(e) => setWReason(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowWithdraw(false)} disabled={busy}
+                style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+                  border: '1px solid #ddd', background: 'white', color: '#666', cursor: 'pointer' }}>
+                {tr('withdrawCancel')}
+              </button>
+              <button onClick={doWithdraw} disabled={busy}
+                style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+                  border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                  background: busy ? '#e5e7eb' : '#b91c1c', color: busy ? '#9ca3af' : 'white' }}>
+                {busy ? tr('submitting') : tr('withdrawConfirm')}
               </button>
             </div>
           </div>

@@ -176,6 +176,22 @@ export default async function handler(req) {
       return json({ ok: true })
     }
 
+    // ── 學生自助放棄入學（即時、單向；誤按走「聯繫承辦→行政 reactivate」復原）──────────
+    if (action === 'withdraw') {
+      if (student.status && student.status !== 'active') {
+        return json({ ok: false, error: '目前狀態不允許此操作' }, 409)
+      }
+      const reason = String(payload.reason ?? '').trim()
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(student.account)}`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ status: 'abandoned', abandoned_at: nowIso, abandoned_by: 'student', abandon_reason: reason || null }) },
+      )
+      if (!up.ok) return json({ ok: false, error: '操作失敗：' + (await up.text()) }, 500)
+      await logRow('student_withdraw', null, { reason })
+      return json({ ok: true })
+    }
+
     // ── 步驟1：資料確認（→ confirmed，並自動開步驟2）─────────────────────────
     if (stepN === 1) {
       if (line_joined !== true) return json({ ok: false, error: '請先加入 LINE 群組並勾選確認' }, 400)
