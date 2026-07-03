@@ -391,10 +391,10 @@ export default function OnboardApp({ token }) {
       {setting?.deadline && <Row label={tr('deadline')} value={fmtDate(setting.deadline)} />}
       {hasContact && (
         <Row label={tr('contact')} value={
-          <span>
-            {contact.name || ''}
-            {contact.email && (<a href={`mailto:${contact.email}`} style={{ color: ACCENT, marginLeft: 6 }}>{contact.email}</a>)}
-            {contact.phone && <span style={{ marginLeft: 6 }}>{contact.phone}</span>}
+          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, lineHeight: 1.5 }}>
+            {contact.name && <span>{contact.name}</span>}
+            {contact.email && (<a href={`mailto:${contact.email}`} style={{ color: ACCENT, wordBreak: 'break-all' }}>{contact.email}</a>)}
+            {contact.phone && <span style={{ color: '#666' }}>{contact.phone}</span>}
           </span>
         } />
       )}
@@ -444,10 +444,14 @@ export default function OnboardApp({ token }) {
   )
 
   // ── 步驟2：繳費（注意事項 + 下載繳費單 + 上傳收據）─────────────────────────────
-  // 注意事項：enroll_settings[2].extra.notice（目前為中文字串陣列；未來擴充多語再調渲染）
+  // 注意事項：enroll_settings[2].extra.notice。相容兩種格式：
+  //   舊：中文字串陣列（直接當中文）；新：{zh:[...],en:[...],vi:[...],id:[...]} 依語言取、缺語言退中文。
   const s2Notice = (() => {
     const n = info.settings?.[2]?.extra?.notice
-    return Array.isArray(n) ? n.map((x) => String(x ?? '').trim()).filter(Boolean) : []
+    const arr = Array.isArray(n) ? n
+      : (n && typeof n === 'object') ? (n[lang] || n.zh || [])
+      : []
+    return (Array.isArray(arr) ? arr : []).map((x) => String(x ?? '').trim()).filter(Boolean)
   })()
   const slipUrl = info.progress?.[2]?.data?.slip_url || ''
   const receipts = (info.files || []).filter((f) => f.step === 2 && f.kind === 'receipt')
@@ -699,12 +703,12 @@ export default function OnboardApp({ token }) {
                 {currentSetting?.deadline && <Row label={tr('deadline')} value={fmtDate(currentSetting.deadline)} />}
                 {hasContact && (
                   <Row label={tr('contact')} value={
-                    <span>
-                      {contact.name || ''}
+                    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, lineHeight: 1.5 }}>
+                      {contact.name && <span>{contact.name}</span>}
                       {contact.email && (
-                        <a href={`mailto:${contact.email}`} style={{ color: ACCENT, marginLeft: 6 }}>{contact.email}</a>
+                        <a href={`mailto:${contact.email}`} style={{ color: ACCENT, wordBreak: 'break-all' }}>{contact.email}</a>
                       )}
-                      {contact.phone && <span style={{ marginLeft: 6 }}>{contact.phone}</span>}
+                      {contact.phone && <span style={{ color: '#666' }}>{contact.phone}</span>}
                     </span>
                   } />
                 )}
