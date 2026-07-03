@@ -850,7 +850,7 @@ export default function OnboardAdminApp() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ background: '#faf9f6' }}>
-                    {['姓名', '帳號', '性別·年紀', '系所', '校區', '放棄時間', '原因', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                    {['姓名', '帳號', '性別·年紀', '系所', '校區', '放棄時間', '原因', '來源', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {shown.map((stu) => (
@@ -862,10 +862,15 @@ export default function OnboardAdminApp() {
                         <td style={td}>{stu.campus || '—'}</td>
                         <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.abandoned_at)}</td>
                         <td style={{ ...td, color: '#666' }}>{stu.abandon_reason || '—'}</td>
+                        <td style={td}>
+                          {stu.abandoned_by === 'student'
+                            ? <Pill color="#b45309" bg="#fffbeb">學生自行放棄</Pill>
+                            : <span style={{ color: '#666' }}>行政{stu.abandoned_by ? `（${stu.abandoned_by}）` : ''}</span>}
+                        </td>
                         <td style={td}><button onClick={() => doReactivate(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>復原</button></td>
                       </tr>
                     ))}
-                    {!shown.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{q && abandonedList.length ? '沒有符合搜尋的學生' : '沒有已放棄的學生'}</td></tr>}
+                    {!shown.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{q && abandonedList.length ? '沒有符合搜尋的學生' : '沒有已放棄的學生'}</td></tr>}
                   </tbody>
                 </table>
               </div>

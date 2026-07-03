@@ -779,16 +779,14 @@ export default function OnboardApp({ token }) {
             </div>
           )}
 
-          <p style={{ fontSize: 11.5, color: '#bbb', textAlign: 'center', margin: '18px 0 0' }}>{tr('unit')}</p>
           {(student.status || 'active') === 'active' && (
-            <div style={{ textAlign: 'center', marginTop: 10 }}>
-              <button onClick={() => { setWReason(''); setShowWithdraw(true) }}
-                style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', fontFamily: 'inherit',
-                  fontSize: 11, color: '#c4c4c0', textDecoration: 'underline' }}>
-                {tr('withdrawLink')}
-              </button>
-            </div>
+            <button onClick={() => { setWReason(''); setShowWithdraw(true) }} disabled={busy}
+              style={{ width: '100%', marginTop: 20, padding: '13px', borderRadius: 10, fontSize: 15, fontWeight: 700, fontFamily: 'inherit',
+                border: '1px solid #e5e7eb', cursor: busy ? 'not-allowed' : 'pointer', background: '#f3f4f6', color: '#6b7280' }}>
+              {tr('withdrawLink')}
+            </button>
           )}
+          <p style={{ fontSize: 11.5, color: '#bbb', textAlign: 'center', margin: '18px 0 0' }}>{tr('unit')}</p>
         </div>
       </div>
 
