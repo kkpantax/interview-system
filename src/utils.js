@@ -26,6 +26,14 @@ export const todayISO = () => {
 export const mergeEval = (found) =>
   found ? { ...emptyEval(), ...found } : emptyEval()
 
+// Google Drive「分享連結」（/file/d/ID/view）是 HTML 頁不是圖片檔，<img src> 讀不到；
+// 轉成可直接嵌圖的 lh3 網址（檔案須設「知道連結的任何人可檢視」）。非 Drive 連結原樣回傳。
+export const driveImageUrl = (url) => {
+  const m = /drive\.google\.com\/(?:file\/d\/([\w-]+)|(?:open|uc)\?[^#]*\bid=([\w-]+))/.exec(url || '')
+  const id = m && (m[1] || m[2])
+  return id ? `https://lh3.googleusercontent.com/d/${id}` : url
+}
+
 // 由生日（西元）計算年齡。支援 M/D/Y（匯入原始字串）與 Y-M-D（date 欄位）兩種格式。
 export const calcAge = (birth) => {
   if (!birth) return null

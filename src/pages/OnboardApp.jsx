@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { onboardInfo, onboardSubmit, onboardUpload, onboardNameChangeRequest } from '../api'
 import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS, ONBOARD_STEP4_FIELDS } from '../constants'
+import { driveImageUrl } from '../utils'
 
 // 學生端「入學準備」落地頁。
 // Phase 1：token landing + 五步進度條（唯讀）。
@@ -404,8 +405,8 @@ export default function OnboardApp({ token }) {
   // LINE 群組 QR：讀 enroll_config.line_qr（{台北,高雄} 分校區或字串通用），依學生校區取對應網址；
   // 校區未設定或該校區無 QR 時顯示「稍後提供」佔位，不擋送出
   const qrCfg = info.line_qr
-  const lineQr = typeof qrCfg === 'string' ? qrCfg.trim()
-    : ((student.campus && qrCfg?.[student.campus]) || '').trim()
+  const lineQr = driveImageUrl(typeof qrCfg === 'string' ? qrCfg.trim()
+    : ((student.campus && qrCfg?.[student.campus]) || '').trim())
 
   // 承辦窗口：讀 enroll_config.contacts（全域兩組、只分校區），依學生校區取；campus 未設定 → 台北
   const contactsCfg = info.contacts || {}

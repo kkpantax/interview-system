@@ -9,7 +9,7 @@ import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdmi
   onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft, onboardAdminStep1Data,
   onboardAdminReopenStep1, onboardAdminReopenStep2 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
-import { calcAge } from '../utils'
+import { calcAge, driveImageUrl } from '../utils'
 import { ENROLL_STEPS, deptZhFull, ONBOARD_STEP1_FIELDS } from '../constants'
 import { exportBA0203 } from '../lib/ba0203'
 
@@ -988,7 +988,7 @@ export default function OnboardAdminApp() {
                       onChange={(e) => setQrForm((p) => ({ ...p, [c]: e.target.value }))}
                       style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontSize: 13 }} />
                     {qrForm[c].trim() ? (
-                      <img src={qrForm[c].trim()} alt={`${c} LINE QR`}
+                      <img src={driveImageUrl(qrForm[c].trim())} alt={`${c} LINE QR`}
                         style={{ width: 140, height: 140, objectFit: 'contain', border: '1px solid #eee', borderRadius: 8, marginTop: 8, background: 'white' }} />
                     ) : (
                       <div style={{ width: 140, height: 140, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #ccc', borderRadius: 8, color: '#bbb', fontSize: 12 }}>尚未設定</div>
