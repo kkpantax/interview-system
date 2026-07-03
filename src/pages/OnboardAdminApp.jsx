@@ -6,10 +6,11 @@ import OnboardMailComposer from '../components/OnboardMailComposer'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
-  onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft } from '../api'
+  onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft, onboardAdminStep1Data } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
+import { exportBA0203 } from '../lib/ba0203'
 
 // 入學準備後台（superadmin 專用）。掛 #/onboard-admin，StageNav 顯示「⑤ 入學準備」。
 // 資料經 /api/onboard-admin（service role），操作需帶超管帳密——本頁用一次性密碼閘門
@@ -105,6 +106,7 @@ export default function OnboardAdminApp() {
   const [search, setSearch] = useState('')      // 清單即時篩選（帳號／中文姓名／英文姓名），切分頁清空
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)   // BA0203 匯出中
   const [toast, setToast] = useState(null)
 
   const showToast = useCallback((msg, type = 'ok') => {
@@ -158,6 +160,24 @@ export default function OnboardAdminApp() {
       await load()
     } catch (e) { showToast('操作失敗：' + e.message, 'error') }
     finally { setBusy(false) }
+  }
+
+  // BA0203「外生」匯出：抓全體 step①資料 → 只留在籍(active)且已完成資料確認(step1 有資料)者 →
+  // 出 49 欄版面（只填學生自填 20 欄、其餘留空）。放棄學生不進新生匯入。
+  const doExportBA0203 = async () => {
+    if (exporting || busy) return
+    setExporting(true)
+    try {
+      const res = await onboardAdminStep1Data(teacher.username, pw)
+      const pick = (res.rows || []).filter((r) => r.status === 'active' && r.step1)
+      if (!pick.length) { showToast('目前沒有已完成「資料確認」的在籍學生可匯出', 'warn'); return }
+      const t = new Date()
+      const ymd = `${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}`
+      exportBA0203(pick, `BA0203_外生_${ymd}.xlsx`)
+      showToast(`已匯出 ${pick.length} 位學生（BA0203 外生）`)
+    } catch (e) {
+      showToast('匯出失敗：' + e.message, 'error')
+    } finally { setExporting(false) }
   }
 
   // ── 中文姓名更改待審（步驟1分頁內）─────────────────────────────────────────
@@ -577,6 +597,22 @@ export default function OnboardAdminApp() {
     </Card>
   )
 
+  // BA0203「外生」匯出區塊（僅步驟①分頁顯示）
+  const ba0203Export = (
+    <Card style={{ marginBottom: 16 }}>
+      <CardHead left="⬇ BA0203 外生匯出" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 18px' }}>
+        <Btn disabled={busy || exporting} onClick={doExportBA0203}>
+          {exporting ? '匯出中…' : '⬇ 匯出 BA0203 外生 Excel'}
+        </Btn>
+        <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+          匯出「已完成資料確認、在籍(active)」學生的 BA0203 外生欄位（49 欄版面，僅填學生自填 20 欄、其餘留空）；
+          出生日期／畢業年度自動轉民國，未填欄留白。放棄學生不列入。
+        </span>
+      </div>
+    </Card>
+  )
+
   // 名單表（每個步驟分頁共用）；搜尋框在最上方，同時篩此頁清單（步驟1含更名待審）
   const stepTable = (step) => {
     const rows = stuckAt(step)
@@ -590,6 +626,7 @@ export default function OnboardAdminApp() {
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: '已完成', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
+        {step === 1 && ba0203Export}
         {mailControl(step, rows)}
         <Card>
           <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${shown.length}${q ? ` / ${rows.length}` : ''}）`} />
