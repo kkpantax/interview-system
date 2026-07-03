@@ -98,7 +98,12 @@ const CAMPUS_I18N = {
   '台北校區': { zh: '台北校區', en: 'Taipei Campus', vi: 'Cơ sở Đài Bắc', id: 'Kampus Taipei' },
   '高雄校區': { zh: '高雄校區', en: 'Kaohsiung Campus', vi: 'Cơ sở Cao Hùng', id: 'Kampus Kaohsiung' },
 }
-const campusName = (camp, lang) => CAMPUS_I18N[camp]?.[lang] || camp
+const campusName = (camp, lang) => {
+  if (!camp || camp === '其他') return camp || ''
+  // enroll_students.campus 為「台北／高雄」（無「校區」），CAMPUS_I18N 以「…校區」為 key，正規化對應
+  const key = CAMPUS_I18N[camp] ? camp : `${String(camp).replace(/校區$/, '')}校區`
+  return CAMPUS_I18N[key]?.[lang] || camp
+}
 
 // 依國籍預設語言（同 ConfirmApp）
 function langOf(nationality) {

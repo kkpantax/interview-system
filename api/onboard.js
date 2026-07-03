@@ -102,6 +102,11 @@ export default async function handler(req) {
     // 國籍以 enroll_students 為主（放榜名單較新）；生日能轉 YYYY-MM-DD 才帶（date input 用）。
     const aRows = aRes.ok ? await aRes.json() : []
     const app = (Array.isArray(aRows) && aRows[0]) || {}
+    // 英文名以 applications 為準補進 student（enroll_students.name_en 未填時），供頁面問候語依語言顯示；
+    // 收斂多餘空白（applications 內常見雙空格，如 "LE  THI NGOC BICH"）。
+    if (!student.name_en && app.name_english) {
+      student.name_en = String(app.name_english).replace(/\s+/g, ' ').trim()
+    }
     const prefill = {
       name: app.name ?? student.name ?? '',
       name_english: app.name_english ?? student.name_en ?? '',
