@@ -782,7 +782,7 @@ export default function OnboardApp({ token }) {
           {(student.status || 'active') === 'active' && (
             <button onClick={() => { setWReason(''); setShowWithdraw(true) }} disabled={busy}
               style={{ width: '100%', marginTop: 20, padding: '13px', borderRadius: 10, fontSize: 15, fontWeight: 700, fontFamily: 'inherit',
-                border: '1px solid #e5e7eb', cursor: busy ? 'not-allowed' : 'pointer', background: '#f3f4f6', color: '#6b7280' }}>
+                border: '1px solid #f0f0ee', cursor: busy ? 'not-allowed' : 'pointer', background: '#f9fafb', color: '#9ca3af' }}>
               {tr('withdrawLink')}
             </button>
           )}
