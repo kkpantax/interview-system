@@ -1315,6 +1315,9 @@ export const onboardAdminConfirm = (username, password, account, step) =>
 // 退回補件：步驟①→open（保留已填內容）、步驟②未確認則收回 locked
 export const onboardAdminReopenStep1 = (username, password, account, reason = '') =>
   onboardAdminPost({ action: 'reopen-step1', username, password, account, reason })
+// 退回收據：步驟②→open（清 submitted/confirmed，保留舊檔）、步驟③未確認則收回 locked
+export const onboardAdminReopenStep2 = (username, password, account, reason = '') =>
+  onboardAdminPost({ action: 'reopen-step2', username, password, account, reason })
 // 標記放棄（帶原因）
 export const onboardAdminAbandon = (username, password, account, reason) =>
   onboardAdminPost({ action: 'abandon', username, password, account, reason })

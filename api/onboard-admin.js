@@ -10,6 +10,8 @@
 //   - confirm：{account, step} → 該步 confirmed，並自動把下一步 locked→open；log admin_confirm。
 //   - reopen-step1：{account, reason?} → 退回補件：步驟①→open(保留 data)、步驟②未確認則收回 locked；
 //     log reopen_step1。退回後該生回到「卡在步驟①」名單，可用現有步驟①信催補件。
+//   - reopen-step2：{account, reason?} → 退回收據：步驟②→open(清 submitted/confirmed，保留舊檔)、
+//     步驟③未確認則收回 locked；log reopen_step2。退回後該生回到「卡在步驟②」名單，可用步驟②信請其重傳。
 //   - abandon：{account, reason} → enroll_students.status='abandoned'；log abandon。
 //   - reactivate：{account} → status 回 'active'；log reactivate。
 //   - settings：回全部 enroll_settings（batch×step 10 列）＋ enroll_config 的 line_qr 與 contacts。
@@ -282,6 +284,33 @@ export default async function handler(req) {
       ).catch(() => { /* 收回步驟2 失敗不阻斷 */ })
     }
     await logRow(account, 1, 'reopen_step1', { reason: body.reason || '', prev_step2: s2 || null })
+    return json({ ok: true })
+  }
+
+  // ── reopen-step2：退回收據（步驟②→open，步驟③未確認則收回 locked）───────────────
+  // 行政審核繳費收據不通過（不清楚／金額錯／傳錯）時使用。步驟②→open、清 submitted_at/confirmed_at，
+  // 讓學生重新上傳；已上傳的舊收據檔保留（供對照，學生重傳為新檔）。不動步驟①。
+  // 步驟③ 若尚未 confirmed（open/submitted）則收回 locked，避免收據未定先進簽證。
+  // 退回後該生回到「卡在步驟②」名單，可用現有步驟②信請其重新上傳。
+  if (action === 'reopen-step2') {
+    const { account } = body
+    if (!account) return json({ ok: false, error: '缺少帳號' }, 400)
+    const before = await fetchProgress(account, H)
+    const up = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.2`,
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ state: 'open', submitted_at: null, confirmed_at: null }) },
+    )
+    if (!up.ok) return json({ ok: false, error: '退回失敗：' + (await up.text()) }, 500)
+    const s3 = before[3]?.state
+    if (s3 === 'open' || s3 === 'submitted') {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.3`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ state: 'locked' }) },
+      ).catch(() => { /* 收回步驟3 失敗不阻斷 */ })
+    }
+    await logRow(account, 2, 'reopen_step2', { reason: body.reason || '', prev_step3: s3 || null })
     return json({ ok: true })
   }
 

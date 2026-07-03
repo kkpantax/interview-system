@@ -7,7 +7,7 @@ import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdmi
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
   onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft, onboardAdminStep1Data,
-  onboardAdminReopenStep1 } from '../api'
+  onboardAdminReopenStep1, onboardAdminReopenStep2 } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
 import { ENROLL_STEPS, deptZhFull, ONBOARD_STEP1_FIELDS } from '../constants'
@@ -209,6 +209,20 @@ export default function OnboardAdminApp() {
       await onboardAdminReopenStep1(teacher.username, pw, account, reason.trim())
       showToast(`已退回 ${name || account} 補件；可至步驟①寄信催補`)
       setDetail(null)
+      await load()
+    } catch (e) { showToast('退回失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  // 退回收據：步驟②→open（學生重新上傳）；不動步驟①，步驟③未確認則收回 locked。
+  const doReopenStep2 = async (account, name) => {
+    if (busy) return
+    const reason = window.prompt(`確定要退回「${name || account}」的繳費收據？\n步驟②會重新開啟讓學生重新上傳；已上傳的舊收據會保留供對照。\n可填退回原因（記錄於稽核，可留空）：`, '')
+    if (reason === null) return
+    setBusy(true)
+    try {
+      await onboardAdminReopenStep2(teacher.username, pw, account, reason.trim())
+      showToast(`已退回 ${name || account} 的收據；可至步驟②寄信請其重新上傳`)
       await load()
     } catch (e) { showToast('退回失敗：' + e.message, 'error') }
     finally { setBusy(false) }
@@ -690,6 +704,10 @@ export default function OnboardAdminApp() {
                           <button onClick={() => openDetail(stu)} disabled={busy}
                             style={{ ...s.btn, ...s.btnSm }}>檢視</button>
                           {canConfirm && <button onClick={() => doConfirm(stu, step)} disabled={busy} style={{ ...s.btn, ...s.btnSm, background: ACCENT, color: '#fff', borderColor: ACCENT }}>確認</button>}
+                          {step === 2 && st === 'submitted' && (
+                            <button onClick={() => doReopenStep2(stu.account, stu.name)} disabled={busy}
+                              style={{ ...s.btn, ...s.btnSm, color: '#b45309', borderColor: '#fde68a' }}>↩ 退回</button>
+                          )}
                           <button onClick={() => openComposer(step, [stu.account])} disabled={busy}
                             style={{ ...s.btn, ...s.btnSm }}>✉ 寄信</button>
                           <button onClick={() => doAbandon(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm, color: '#b91c1c', borderColor: '#fecaca' }}>放棄</button>
