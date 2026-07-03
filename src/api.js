@@ -1340,6 +1340,9 @@ export const onboardAdminMailRecipients = (username, password, payload) =>
 // 通知信寄送成功回報（payload = { step, tier, accounts }：reminder_count+1、log mail_sent）
 export const onboardAdminMailMarkSent = (username, password, payload) =>
   onboardAdminPost({ action: 'mail-mark-sent', username, password, ...payload })
+// 通知信建立草稿回報（payload = { step, tier, accounts }：只 log mail_draft，不加提醒計數）
+export const onboardAdminMailLogDraft = (username, password, payload) =>
+  onboardAdminPost({ action: 'mail-log-draft', username, password, ...payload })
 // （已停用）建立通知信 Gmail 草稿——Phase A 流程，UI 已改用 OnboardMailComposer 系統內寄送
 export const onboardAdminBuildMailDrafts = (username, password, payload) =>
   onboardAdminPost({ action: 'mail-build-drafts', username, password, ...payload })

@@ -6,20 +6,22 @@ import OnboardMailComposer from '../components/OnboardMailComposer'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
-  onboardAdminMailRecipients, onboardAdminMailMarkSent } from '../api'
+  onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
+import { calcAge } from '../utils'
 import { ENROLL_STEPS, deptZhFull } from '../constants'
 
 // 入學準備後台（superadmin 專用）。掛 #/onboard-admin，StageNav 顯示「⑤ 入學準備」。
 // 資料經 /api/onboard-admin（service role），操作需帶超管帳密——本頁用一次性密碼閘門
 // 取得密碼後快取於記憶體（不落地 storage）重用。整體結構鏡像 Stage4App。
 // 頂部兩維度篩選：梯次（伺服器端）× 校區（前端，讓總覽分校區小計恆能並列兩校區）。
-const ACCENT = '#7c2d12'
+// 主題色用靛藍（學生端 OnboardApp 仍是棕色 #7c2d12，只有後台換色以區別 ④ 就學確認）。
+const ACCENT = '#4338ca'
 
 // enroll_progress.state → 顯示
 const STATE_META = {
   locked:    { label: '未開放', color: '#9ca3af', bg: '#f3f4f6' },
-  open:      { label: '待處理', color: '#7c2d12', bg: '#fff7ed' },
+  open:      { label: '待處理', color: '#4338ca', bg: '#eef2ff' },
   submitted: { label: '待確認', color: '#b45309', bg: '#fef3c7' },
   confirmed: { label: '已完成', color: '#15803d', bg: '#dcfce7' },
 }
@@ -100,6 +102,7 @@ export default function OnboardAdminApp() {
   const [tab, setTab] = useState('overview')
   const [batch, setBatch] = useState('all')
   const [campus, setCampus] = useState('all')   // 校區在前端篩：分校區小計需同時看到兩校區
+  const [search, setSearch] = useState('')      // 清單即時篩選（帳號／中文姓名／英文姓名），切分頁清空
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState(null)
@@ -228,6 +231,10 @@ export default function OnboardAdminApp() {
   // composer 每批寄成功後回報：reminder_count+1 / last_reminder_*（enroll_log 記 mail_sent）
   const markMailSent = async (accounts, tier) => {
     await onboardAdminMailMarkSent(teacher.username, pw, { step: composer.step, tier, accounts })
+  }
+  // composer 每批草稿建立成功後回報：只寫 enroll_log mail_draft，不加提醒計數
+  const markMailDraft = async (accounts, tier) => {
+    await onboardAdminMailLogDraft(teacher.username, pw, { step: composer.step, tier, accounts })
   }
 
   const doReactivate = async (stu) => {
@@ -419,15 +426,35 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
-  const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#fde7d4' }
+  const headerBtn = { background: 'none', borderColor: '#ffffff44', color: '#e0e7ff' }
   const th = { padding: '9px 10px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12 }
   const td = { padding: '8px 10px', borderBottom: '1px solid #f5f4f0', fontSize: 13 }
+
+  // 清單搜尋（帳號／中文姓名／英文姓名 contains、不分大小寫）＋ 身分欄顯示（截圖版型）
+  const q = search.trim().toLowerCase()
+  const matchText = (...vals) => !q || vals.some((v) => String(v || '').toLowerCase().includes(q))
+  const genderAge = (x) => {
+    const age = calcAge(x.birth_date)
+    const parts = [x.gender, age != null ? `${age}歲` : ''].filter(Boolean)
+    return parts.length ? parts.join('·') : '—'
+  }
+  const searchBox = (
+    <input value={search} onChange={(e) => setSearch(e.target.value)}
+      placeholder="搜尋：帳號／中文姓名／英文姓名…"
+      style={{ ...s.input, maxWidth: 340, boxSizing: 'border-box', marginBottom: 12, display: 'block' }} />
+  )
+  const nameCell = (x) => (
+    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+      <div style={{ fontWeight: 600 }}>{x.name || '—'}</div>
+      {x.name_english && <div style={{ color: '#999', fontSize: 11.5 }}>{x.name_english}</div>}
+    </td>
+  )
 
   // ── 密碼閘門（尚未通過驗證）─────────────────────────────────────────────────
   if (!authed) {
     return (
       <PageShell title="實踐大學" subtitle="入學準備 · 後台管理" accent={ACCENT} toast={toast} intlBack stageKey="onboard"
-        right={<span style={{ fontSize: 12, color: '#fde7d4' }}>{teacher?.display_name || teacher?.username}</span>}>
+        right={<span style={{ fontSize: 12, color: '#e0e7ff' }}>{teacher?.display_name || teacher?.username}</span>}>
         <Card style={{ maxWidth: 420, margin: '40px auto' }}>
           <CardHead left="超級管理員驗證" />
           <div style={{ padding: '4px 2px' }}>
@@ -476,25 +503,30 @@ export default function OnboardAdminApp() {
 
   const right = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {loading && <span style={{ fontSize: 12, color: '#fde7d4' }}>載入中…</span>}
+      {loading && <span style={{ fontSize: 12, color: '#e0e7ff' }}>載入中…</span>}
       <Btn style={headerBtn} disabled={busy} onClick={() => { if (tab === 'settings') loadSettings(); else { load(); if (tab === '1') loadNameReqs() } }}>↻</Btn>
-      <span style={{ fontSize: 12, color: '#fde7d4' }}>{teacher.display_name || teacher.username}</span>
+      <span style={{ fontSize: 12, color: '#e0e7ff' }}>{teacher.display_name || teacher.username}</span>
       <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>
     </div>
   )
 
   // 中文姓名更改待審區塊（只出現在步驟1分頁；核准才真的改 enroll_students.name）
+  // 搜尋沿用頁頂搜尋框：帳號／中文姓名（原名/新名）／英文姓名（由名單 data 以帳號查回）
+  const engByAcct = {}
+  for (const x of data) engByAcct[x.account] = x.name_english
+  const nameReqsShown = nameReqs.filter((r) =>
+    matchText(r.account, r.name, r.old_name, r.new_name, engByAcct[r.account]))
   const nameReqBlock = (
     <Card style={{ marginBottom: 16 }}>
-      <CardHead left={`中文姓名更改待審（${nameReqs.length}）`} />
-      {nameReqs.length ? (
+      <CardHead left={`中文姓名更改待審（${nameReqsShown.length}${q ? ` / ${nameReqs.length}` : ''}）`} />
+      {nameReqsShown.length ? (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr style={{ background: '#faf9f6' }}>
               {['帳號', '原名 → 新名', '系所', '校區', '原因', '申請時間', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {nameReqs.map((r) => (
+              {nameReqsShown.map((r) => (
                 <tr key={r.id}>
                   <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{r.account}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>
@@ -520,7 +552,9 @@ export default function OnboardAdminApp() {
           </table>
         </div>
       ) : (
-        <div style={{ padding: '12px 2px', fontSize: 13, color: '#aaa' }}>目前無待審的更名申請</div>
+        <div style={{ padding: '12px 2px', fontSize: 13, color: '#aaa' }}>
+          {q && nameReqs.length ? '沒有符合搜尋的更名申請' : '目前無待審的更名申請'}
+        </div>
       )}
     </Card>
   )
@@ -535,34 +569,36 @@ export default function OnboardAdminApp() {
           ✉ 寄送通知信（{rows.length} 人）
         </Btn>
         <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
-          開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組信，
-          可逐列預覽、改語言、選次別（首次／二次／最後）後批次寄出（公務信箱）。
+          開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），
+          可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。
         </span>
       </div>
     </Card>
   )
 
-  // 名單表（每個步驟分頁共用）
+  // 名單表（每個步驟分頁共用）；搜尋框在最上方，同時篩此頁清單（步驟1含更名待審）
   const stepTable = (step) => {
     const rows = stuckAt(step)
+    const shown = rows.filter((x) => matchText(x.account, x.name, x.name_english))
     return (
       <>
+        {searchBox}
         {step === 1 && nameReqBlock}
         <StatStrip items={[
-          { label: '待處理', value: countState(step, 'open'), color: '#7c2d12', bg: '#fff7ed', border: '#fed7aa' },
+          { label: '待處理', value: countState(step, 'open'), color: '#4338ca', bg: '#eef2ff', border: '#c7d2fe' },
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: '已完成', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
         {mailControl(step, rows)}
         <Card>
-          <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${rows.length}）`} />
+          <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${shown.length}${q ? ` / ${rows.length}` : ''}）`} />
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#faf9f6' }}>
-                {['帳號', '姓名', '系所', '校區', '狀態', '送出時間', '檔案', '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '帳號', '性別·年紀', '系所', '校區', '狀態', '送出時間', '檔案', '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {rows.map((stu) => {
+                {shown.map((stu) => {
                   const st = stepStateOf(stu, step)
                   const meta = STATE_META[st] || STATE_META.locked
                   const files = (stu.files || []).filter((f) => f.step === step)
@@ -570,8 +606,9 @@ export default function OnboardAdminApp() {
                   const mr = mailRecips[stu.account]
                   return (
                     <tr key={stu.account}>
+                      {nameCell(stu)}
                       <td style={{ ...td, color: '#888' }}>{stu.account}</td>
-                      <td style={{ ...td, fontWeight: 500 }}>{stu.name || '—'}</td>
+                      <td style={{ ...td, whiteSpace: 'nowrap', color: '#666' }}>{genderAge(stu)}</td>
                       <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
                       <td style={td}>{stu.campus || '—'}</td>
                       <td style={td}><Pill color={meta.color} bg={meta.bg}>{meta.label}</Pill></td>
@@ -599,7 +636,7 @@ export default function OnboardAdminApp() {
                     </tr>
                   )
                 })}
-                {!rows.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : '目前沒有卡在這步的學生'}</td></tr>}
+                {!shown.length && <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : (q && rows.length ? '沒有符合搜尋的學生' : '目前沒有卡在這步的學生')}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -613,7 +650,7 @@ export default function OnboardAdminApp() {
       {/* 分頁列 + 梯次篩選 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} onClick={() => { setTab(t.key); setSearch('') }}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
               borderColor: tab === t.key ? ACCENT : '#ddd', fontWeight: tab === t.key ? 600 : 400 }}>
             {t.label}
@@ -723,32 +760,39 @@ export default function OnboardAdminApp() {
       {['1', '2', '3', '4', '5'].includes(tab) && stepTable(Number(tab))}
 
       {/* ── 已放棄 ── */}
-      {tab === 'abandoned' && (
-        <Card>
-          <CardHead left={`已放棄名單（${abandonedList.length}）`} />
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr style={{ background: '#faf9f6' }}>
-                {['帳號', '姓名', '系所', '校區', '放棄時間', '原因', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {abandonedList.map((stu) => (
-                  <tr key={stu.account}>
-                    <td style={{ ...td, color: '#888' }}>{stu.account}</td>
-                    <td style={{ ...td, fontWeight: 500 }}>{stu.name || '—'}</td>
-                    <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
-                    <td style={td}>{stu.campus || '—'}</td>
-                    <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.abandoned_at)}</td>
-                    <td style={{ ...td, color: '#666' }}>{stu.abandon_reason || '—'}</td>
-                    <td style={td}><button onClick={() => doReactivate(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>復原</button></td>
-                  </tr>
-                ))}
-                {!abandonedList.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>沒有已放棄的學生</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      {tab === 'abandoned' && (() => {
+        const shown = abandonedList.filter((x) => matchText(x.account, x.name, x.name_english))
+        return (
+          <>
+            {searchBox}
+            <Card>
+              <CardHead left={`已放棄名單（${shown.length}${q ? ` / ${abandonedList.length}` : ''}）`} />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ background: '#faf9f6' }}>
+                    {['姓名', '帳號', '性別·年紀', '系所', '校區', '放棄時間', '原因', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {shown.map((stu) => (
+                      <tr key={stu.account}>
+                        {nameCell(stu)}
+                        <td style={{ ...td, color: '#888' }}>{stu.account}</td>
+                        <td style={{ ...td, whiteSpace: 'nowrap', color: '#666' }}>{genderAge(stu)}</td>
+                        <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
+                        <td style={td}>{stu.campus || '—'}</td>
+                        <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.abandoned_at)}</td>
+                        <td style={{ ...td, color: '#666' }}>{stu.abandon_reason || '—'}</td>
+                        <td style={td}><button onClick={() => doReactivate(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>復原</button></td>
+                      </tr>
+                    ))}
+                    {!shown.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{q && abandonedList.length ? '沒有符合搜尋的學生' : '沒有已放棄的學生'}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>
+        )
+      })()}
 
       {/* ── 設定 ── */}
       {tab === 'settings' && (!cfgLoaded ? (
@@ -968,6 +1012,7 @@ export default function OnboardAdminApp() {
           step={composer.step}
           recipients={composer.recipients}
           cfg={composer.cfg}
+          markDraft={markMailDraft}
           markSent={markMailSent}
           onClose={() => { const st = composer.step; setComposer(null); loadMailRecips(st) }}
           onToast={showToast}

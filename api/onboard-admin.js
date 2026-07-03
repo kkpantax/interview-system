@@ -3,6 +3,7 @@
 // 撈 teachers 比對 password_hash === btoa(username:password) 且 role === 'superadmin' 才放行。
 // 單一端點以 action 分派：list / confirm / abandon / reactivate / settings / save-settings / save-line-qr。
 //   - list：回全部 enroll_students（預設排除 is_test）＋每人五步 state＋各步檔案連結，
+//     並從 applications 以 account 補 name_english / gender / birth_date（顯示身分欄用），
 //     支援 batch(all/1/2) 與 campus(all/台北/高雄) 篩選。
 //   - confirm：{account, step} → 該步 confirmed，並自動把下一步 locked→open；log admin_confirm。
 //   - abandon：{account, reason} → enroll_students.status='abandoned'；log abandon。
@@ -21,9 +22,11 @@
 //   - name-review：{id, decision:'approve'|'reject', note?} → approve 才真的改 enroll_students.name；
 //     兩者皆寫 reviewed_by/at（reject 另存 review_note）；log name_review。
 //   - mail-recipients：{step, batch, campus} → 卡在該步（open/submitted）且 status=active 的收件名單
-//     （email 取 applications，帶已寄提醒次數）。
+//     （email / name_english / gender / birth_date 取 applications，帶已寄提醒次數）。
 //   - mail-mark-sent：{step, tier, accounts[]} → 寄送成功後回報：這些人該步 reminder_count+1 /
 //     last_reminder_at / last_reminder_kind=tier；log mail_sent。（OnboardMailComposer 每批寄完呼叫。）
+//   - mail-log-draft：{step, tier, accounts[]} → 建立草稿階段回報：只逐帳號寫 enroll_log
+//     mail_draft，不動 reminder 計數（送出本批成功才走 mail-mark-sent 計次）。
 //   - mail-build-drafts（已停用，保留相容）：Phase A 的「建 Gmail 草稿」流程；UI 已改用系統內
 //     OnboardMailComposer（createDrafts → sendDraftBatch 直接寄出），不再呼叫此 action。
 // 總覽漏斗統計由前端就地從 list 推導（比照 Stage4App 的 client-side 統計慣例）。
@@ -64,19 +67,25 @@ async function fetchMailRecipients(step, batch, campus, H) {
   for (const p of Array.isArray(pRows) ? pRows : []) pMap[p.account] = p
   const stuck = (Array.isArray(sRows) ? sRows : []).filter((x) => pMap[x.account])
 
-  const emails = {}
+  const appInfo = {}
   if (stuck.length) {
     const accs = stuck.map((x) => x.account).join(',')
     const aRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/applications?account=in.(${encodeURIComponent(accs)})&select=account,email`,
+      `${SUPABASE_URL}/rest/v1/applications?account=in.(${encodeURIComponent(accs)})&select=account,email,name_english,gender,birth_date`,
       { headers: H },
     )
     const aRows = aRes.ok ? await aRes.json() : []
-    for (const a of Array.isArray(aRows) ? aRows : []) if (a.email && !emails[a.account]) emails[a.account] = a.email
+    for (const a of Array.isArray(aRows) ? aRows : []) {
+      const cur = (appInfo[a.account] ||= {})
+      for (const k of ['email', 'name_english', 'gender', 'birth_date']) if (a[k] && !cur[k]) cur[k] = a[k]
+    }
   }
   return stuck.map((x) => ({
     account: x.account, name: x.name, name_en: x.name_en, department: x.department, campus: x.campus, batch: x.batch,
-    nationality: x.nationality, confirm_token: x.confirm_token, email: emails[x.account] || '',
+    nationality: x.nationality, confirm_token: x.confirm_token, email: appInfo[x.account]?.email || '',
+    name_english: appInfo[x.account]?.name_english || x.name_en || '',
+    gender: appInfo[x.account]?.gender || '',
+    birth_date: appInfo[x.account]?.birth_date || '',
     state: pMap[x.account].state,
     reminder_count: pMap[x.account].reminder_count || 0,
     last_reminder_at: pMap[x.account].last_reminder_at || null,
@@ -140,15 +149,17 @@ export default async function handler(req) {
     if (campus) sUrl += `&campus=eq.${encodeURIComponent(campus)}`
     if (!includeTest) sUrl += `&is_test=eq.false`
 
-    const [sRes, pRes, fRes] = await Promise.all([
+    const [sRes, pRes, fRes, aRes] = await Promise.all([
       fetch(sUrl, { headers: H }),
       fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,submitted_at,confirmed_at`, { headers: H }),
       fetch(`${SUPABASE_URL}/rest/v1/enroll_files?select=account,step,kind,drive_url,uploaded_at&order=uploaded_at.desc`, { headers: H }),
+      fetch(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date`, { headers: H }),
     ])
     if (!sRes.ok) return json({ ok: false, error: '查詢學生失敗' }, 500)
     const students = await sRes.json()
     const progress = pRes.ok ? await pRes.json() : []
     const files = fRes.ok ? await fRes.json() : []
+    const apps = aRes.ok ? await aRes.json() : []
 
     // 依 account 分組
     const progByAcct = {}
@@ -159,9 +170,18 @@ export default async function handler(req) {
     for (const r of Array.isArray(files) ? files : []) {
       (filesByAcct[r.account] ||= []).push({ step: r.step, kind: r.kind, drive_url: r.drive_url, uploaded_at: r.uploaded_at })
     }
+    // applications 同帳號多志願：各欄取第一筆有值者
+    const appByAcct = {}
+    for (const r of Array.isArray(apps) ? apps : []) {
+      const cur = (appByAcct[r.account] ||= {})
+      for (const k of ['name_english', 'gender', 'birth_date']) if (r[k] && !cur[k]) cur[k] = r[k]
+    }
 
     const list = (Array.isArray(students) ? students : []).map((s) => ({
       account: s.account, name: s.name, department: s.department, campus: s.campus,
+      name_english: appByAcct[s.account]?.name_english || '',
+      gender: appByAcct[s.account]?.gender || '',
+      birth_date: appByAcct[s.account]?.birth_date || '',
       batch: s.batch, status: s.status,
       abandoned_at: s.abandoned_at, abandoned_by: s.abandoned_by, abandon_reason: s.abandon_reason,
       dorm_room: s.dorm_room, dorm_bed: s.dorm_bed, classroom: s.classroom,
@@ -443,6 +463,19 @@ export default async function handler(req) {
       await logRow(a, step, 'mail_sent', { step, tier, account: a })
     }
     return json({ ok: true, updated })
+  }
+
+  // ── mail-log-draft：建立草稿階段回報（只寫 enroll_log mail_draft，不動提醒計數）──
+  if (action === 'mail-log-draft') {
+    const step = Number(body.step)
+    const tier = ['first', 'second', 'final'].includes(body.tier) ? body.tier : 'first'
+    const accounts = Array.isArray(body.accounts) ? body.accounts.map((a) => String(a).trim()).filter(Boolean) : []
+    if (!Number.isInteger(step) || step < 1 || step > 5 || !accounts.length) {
+      return json({ ok: false, error: '參數錯誤' }, 400)
+    }
+    if (accounts.length > 50) return json({ ok: false, error: '一次最多回報 50 筆' }, 400)
+    for (const a of accounts) await logRow(a, step, 'mail_draft', { step, tier, account: a })
+    return json({ ok: true })
   }
 
   // ── mail-build-drafts（已停用；UI 改用 OnboardMailComposer 系統內寄送，保留相容）────

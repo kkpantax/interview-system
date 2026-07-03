@@ -5,26 +5,31 @@ import { buildOnboardMail, onboardMailLang, ENROLL_STEPS, deptZhFull } from '../
 
 // 入學準備通知信寄送視窗（比照 Stage4 MailComposer 版型；模板走 constants.js buildOnboardMail）。
 // 與 Stage4 MailComposer 的差異：
-//   - 信是單語整封（zh/en/vi/id 依國籍自動帶、可逐列改），非中外雙段。
+//   - 信一律雙語整封：外語在前、中文在後（buildOnboardMail 呼叫兩次拼接，主旨「外語 / 中文」）；
+//     逐列語言下拉選的是外語（中英→en、中越→vi、中印尼→id），四語自訂段各插入對應語言區塊。
 //   - 承辦窗口／截止日／放榜連結唯讀（依校區・梯次從 cfg 帶入），要改去後台「⚙ 設定」分頁。
-//   - 寄送＝createDrafts → sendDraftBatch 一氣呵成（每批 8 封，直接寄出、非只建草稿）；
-//     每批成功後呼叫 markSent 回報後端（enroll_progress reminder_count+1 / last_reminder_*、
-//     enroll_log mail_sent），不走 mail_log（onboard 以 step×tier 記次，帳號+kind 的 mail_log 裝不下）。
+//   - 兩鈕流程同 Stage4：「① 建立草稿到公務信箱」createDrafts（可到 Gmail 逐封檢查／微調，
+//     每批成功呼叫 markDraft 寫 enroll_log mail_draft、不加提醒計數）→「② 送出本批」
+//     sendDraftBatch 一次寄出（每批成功呼叫 markSent：reminder_count+1 / last_reminder_* /
+//     enroll_log mail_sent）。不走 mail_log（onboard 以 step×tier 記次，帳號+kind 的 mail_log 裝不下），
+//     故草稿 draftId 只存在本視窗 state，關閉視窗後請直接在 Gmail 草稿匣寄出。
 // props：
 //   step：步驟（模板目前僅步驟①；其餘 buildOnboardMail 回 null → 顯示提示、禁用寄送）
 //   initialTier：預設次別（first/second/final，視窗內可改）
-//   recipients：mail-recipients 名單列（account/name/name_en/department/campus/batch/nationality/
-//     confirm_token/email/reminder_count/last_reminder_kind）
+//   recipients：mail-recipients 名單列（account/name/name_en/name_english/department/campus/batch/
+//     nationality/confirm_token/email/reminder_count/last_reminder_kind）
 //   cfg：{ contacts: {台北,高雄}, resultLink: {台北,高雄}, deadlines: { '1': 'YYYY/MM/DD', '2': ... } }
-//   markSent(accounts, tier)：每批寄成功後回報後端
+//   markDraft(accounts, tier)：每批草稿建立成功後回報（log mail_draft）
+//   markSent(accounts, tier)：每批寄出成功後回報（計次 + log mail_sent）
 //   onClose / onToast
 
 const TIERS = [['first', '首次通知'], ['second', '二次提醒'], ['final', '最後提醒']]
 const TIER_SHORT = { first: '首次', second: '二次', final: '最後' }
-const LANGS = [['zh', '中文'], ['en', '英文'], ['vi', '越南文'], ['id', '印尼文']]
-const CHUNK = 8   // 每批寄出封數（同 Stage4，避免 Apps Script 逾時）
+const LANGS = [['en', '中英'], ['vi', '中越'], ['id', '中印尼']]
+const CHUNK = 8   // 每批封數（建草稿／送出皆分批，同 Stage4，避免 Apps Script 逾時）
+const SEP = '\n\n────────────────────────────\n\n'   // 外語段／中文段分隔線（同 mailTemplates 慣例）
 
-export default function OnboardMailComposer({ step, initialTier = 'first', recipients, cfg, markSent, onClose, onToast }) {
+export default function OnboardMailComposer({ step, initialTier = 'first', recipients, cfg, markDraft, markSent, onClose, onToast }) {
   const stepZh = ENROLL_STEPS[step - 1]?.zh || `步驟${step}`
   const hasTemplate = !!buildOnboardMail({ step, tier: 'first', lang: 'zh', data: {} })
 
@@ -34,21 +39,25 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
 
   const baseRows = useMemo(() => (recipients || [])
     .filter((r) => r.email)
-    .map((r) => ({
-      account: r.account, name: r.name || '', name_en: r.name_en || '',
-      department: r.department || '', campus: r.campus || '', batch: String(r.batch ?? ''),
-      nationality: r.nationality || '', confirm_token: r.confirm_token || '', email: r.email,
-      lang: onboardMailLang(r.nationality),
-      sentCount: r.reminder_count || 0, sentKind: r.last_reminder_kind || null,
-      include: true,
-    })), [recipients])
+    .map((r) => {
+      const l = onboardMailLang(r.nationality)
+      return {
+        account: r.account, name: r.name || '', name_en: r.name_english || r.name_en || '',
+        department: r.department || '', campus: r.campus || '', batch: String(r.batch ?? ''),
+        nationality: r.nationality || '', confirm_token: r.confirm_token || '', email: r.email,
+        lang: l === 'zh' ? 'en' : l,   // 下拉選的是外語；台/中籍預設中英
+        sentCount: r.reminder_count || 0, sentKind: r.last_reminder_kind || null,
+        sentNow: false, include: true,
+      }
+    }), [recipients])
   const [rows, setRows] = useState(baseRows)
   useEffect(() => { setRows(baseRows) }, [baseRows])
   const setRow = (account, p) => setRows((rs) => rs.map((r) => (r.account === account ? { ...r, ...p } : r)))
 
+  const [created, setCreated] = useState({})   // { account: draftId }（僅本視窗有效）
   const [busy, setBusy] = useState(false)
   const [prog, setProg] = useState(null)      // { done, total }
-  const [failed, setFailed] = useState([])    // [{ account, name, error }]
+  const [failed, setFailed] = useState([])    // 建草稿失敗 [{ account, name, error }]
   const [preview, setPreview] = useState(null)
 
   const contacts = cfg?.contacts || {}
@@ -57,7 +66,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
 
   const customFor = (lang) =>
     lang === 'zh' ? form.customZh : lang === 'vi' ? form.customVi : lang === 'id' ? form.customId : form.customEn
-  const dataFor = (r) => {
+  const dataFor = (r, lang) => {
     const camp = r.campus || '台北'
     const c = contacts[camp] || contacts['台北'] || {}
     return {
@@ -66,15 +75,21 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
       result_link: String(resultLink[camp] || resultLink['台北'] || '').trim(),
       deadline: deadlines[r.batch] || '',
       contact_name: c.name || '', contact_email: c.email || '', contact_phone: c.phone || '',
-      custom: customFor(r.lang),
+      custom: customFor(lang),
     }
   }
-  const msgFor = (r) => buildOnboardMail({ step, tier, lang: r.lang, data: dataFor(r) })
+  // 雙語組信：外語（該列下拉）在前、中文在後；自訂段各插入對應語言區塊
+  const msgFor = (r) => {
+    const fx = buildOnboardMail({ step, tier, lang: r.lang, data: dataFor(r, r.lang) })
+    const zh = buildOnboardMail({ step, tier, lang: 'zh', data: dataFor(r, 'zh') })
+    if (!fx || !zh) return null
+    return { subject: `${fx.subject} / ${zh.subject}`, body: fx.body + SEP + zh.body }
+  }
 
   const selected = rows.filter((r) => r.include)
 
-  // 寄出（targets 未帶＝勾選列；帶＝重試失敗名單）。每批：建草稿 → 立即送出 → markSent 回報。
-  const doSend = async (targets) => {
+  // ① 建立草稿到公務信箱（targets 未帶＝勾選列；帶＝重試失敗名單）。每批成功後 markDraft 回報。
+  const doCreate = async (targets) => {
     if (busy) return
     const list = targets || selected
     if (!hasTemplate) { onToast?.('此步驟的信件模板尚未提供', 'warn'); return }
@@ -84,10 +99,8 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
       onToast?.(`以下學生缺少專屬連結 token，無法寄送：${noToken.map((r) => r.account).join('、')}`, 'warn')
       return
     }
-    const tierLabel = TIERS.find(([v]) => v === tier)?.[1]
-    if (!window.confirm(`確定寄出 ${list.length} 封「${stepZh}｜${tierLabel}」通知信？\n寄件人為公務信箱，將直接寄出（自動分批，每批 ${CHUNK} 封）。`)) return
     setBusy(true); setFailed([]); setProg({ done: 0, total: list.length })
-    let sent = 0
+    let built = 0
     const fails = []
     try {
       for (let i = 0; i < list.length; i += CHUNK) {
@@ -102,35 +115,68 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
           const okRows = part.filter((r) => byEmail[r.email])
           part.filter((r) => !byEmail[r.email]).forEach((r) => fails.push({ account: r.account, name: r.name, error: '建立草稿失敗' }))
           if (okRows.length) {
-            await sendDraftBatch(okRows.map((r) => byEmail[r.email]))
-            sent += okRows.length
-            setRows((rs) => rs.map((r) => (okRows.some((o) => o.account === r.account)
-              ? { ...r, sentCount: r.sentCount + 1, sentKind: tier } : r)))
-            // 信已寄出，回報失敗只提示、不列入失敗名單（避免重試造成重複寄信）
-            try { await markSent?.(okRows.map((r) => r.account), tier) }
-            catch { onToast?.('信已寄出，但寄送紀錄回報失敗（次數統計可能少計）', 'warn') }
+            built += okRows.length
+            setCreated((c) => ({ ...c, ...Object.fromEntries(okRows.map((r) => [r.account, byEmail[r.email]])) }))
+            // 只記 log（mail_draft），不加提醒計數；回報失敗不擋流程
+            try { await markDraft?.(okRows.map((r) => r.account), tier) } catch { /* log 失敗不阻斷 */ }
           }
         } catch (e) {
           part.forEach((r) => fails.push({ account: r.account, name: r.name, error: e.message }))
         }
         setProg({ done: Math.min(i + CHUNK, list.length), total: list.length })
-        onToast?.(`已寄出 ${sent} / ${list.length} 封…`)
       }
       setFailed(fails)
-      onToast?.(fails.length ? `完成：寄出 ${sent} 封、失敗 ${fails.length} 封（可重試）` : `完成：已寄出 ${sent} 封`, fails.length ? 'warn' : 'ok')
+      onToast?.(fails.length
+        ? `已建立 ${built} 封草稿、失敗 ${fails.length} 封（可重試）`
+        : `已建立 ${built} 封草稿到公務信箱`, fails.length ? 'warn' : 'ok')
     } finally { setBusy(false); setProg(null) }
   }
   const retryFailed = () => {
     const bad = new Set(failed.map((f) => f.account))
-    doSend(rows.filter((r) => bad.has(r.account)))
+    doCreate(rows.filter((r) => bad.has(r.account)))
+  }
+
+  // ② 送出本批：把已建草稿（且仍勾選者）分批 sendDraftBatch；每批成功後 markSent 計次。
+  const doSend = async () => {
+    if (busy) return
+    const included = new Set(selected.map((r) => r.account))
+    const entries = Object.entries(created).filter(([a]) => included.has(a))   // [[account, draftId], ...]
+    if (!entries.length) { onToast?.('尚未建立草稿（或草稿對應的學生都未勾選）', 'warn'); return }
+    const tierLabel = TIERS.find(([v]) => v === tier)?.[1]
+    if (!window.confirm(`確定送出這批 ${entries.length} 封「${stepZh}｜${tierLabel}」草稿嗎？\n寄件人為公務信箱（自動分批，每批 ${CHUNK} 封）。`)) return
+    setBusy(true)
+    let sent = 0
+    try {
+      for (let i = 0; i < entries.length; i += CHUNK) {
+        const part = entries.slice(i, i + CHUNK)
+        const ids = part.map(([, id]) => id)
+        const accounts = part.map(([a]) => a)
+        await sendDraftBatch(ids)
+        sent += ids.length
+        const accSet = new Set(accounts)
+        setRows((rs) => rs.map((r) => (accSet.has(r.account)
+          ? { ...r, sentNow: true, sentCount: r.sentCount + 1, sentKind: tier } : r)))
+        setCreated((c) => { const n = { ...c }; accounts.forEach((a) => delete n[a]); return n })
+        // 信已寄出，回報失敗只提示、不中斷（避免重送造成重複寄信）
+        try { await markSent?.(accounts, tier) }
+        catch { onToast?.('信已寄出，但寄送紀錄回報失敗（次數統計可能少計）', 'warn') }
+        onToast?.(`已送出 ${sent} / ${entries.length} 封…`)
+      }
+      onToast?.(`完成：已送出 ${sent} 封`)
+    } catch (e) {
+      onToast?.(`送出中斷（已成功 ${sent} 封）：${e.message}。剩餘草稿仍在公務信箱草稿匣，可再按一次「② 送出本批」續送。`, 'error')
+    } finally { setBusy(false) }
   }
 
   const lbl = { fontSize: 12, color: '#666', display: 'block', marginBottom: 3 }
   const th = { padding: '7px 8px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
   const td = { padding: '6px 8px', borderBottom: '1px solid #f5f4f0', fontSize: 12, verticalAlign: 'middle' }
-  const statusOf = (r) => r.sentCount
-    ? <span style={{ color: '#15803d' }}>已寄送 {r.sentCount} 次{r.sentKind ? `（${TIER_SHORT[r.sentKind] || '—'}）` : ''}</span>
-    : <span style={{ color: '#ccc' }}>—</span>
+  const statusOf = (r) => {
+    if (r.sentNow) return <span style={{ color: '#15803d' }}>已寄送</span>
+    if (created[r.account]) return <span style={{ color: '#b45309' }}>已建草稿</span>
+    if (r.sentCount) return <span style={{ color: '#15803d' }}>已寄送 {r.sentCount} 次{r.sentKind ? `（${TIER_SHORT[r.sentKind] || '—'}）` : ''}</span>
+    return <span style={{ color: '#ccc' }}>—</span>
+  }
 
   return (
     <Modal title={`寄送入學準備通知信 — ${stepZh}`} onClose={onClose} width={1040}>
@@ -176,15 +222,15 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         </span>
       </div>
 
-      {/* 四語自訂段落（插在簽名檔前；依收件人語言擇一帶入） */}
+      {/* 四語自訂段落（插在簽名檔前；外語段插外語區塊、中文段插中文區塊） */}
       <div style={{ marginBottom: 14 }}>
-        <label style={lbl}>自訂段落（中文）— 帶入中文信</label>
+        <label style={lbl}>自訂段落（中文）— 插入中文區塊</label>
         <textarea style={{ ...s.input, minHeight: 52, marginBottom: 8 }} value={form.customZh} onChange={(e) => setF('customZh', e.target.value)} placeholder="例：開學典禮訂於 9/1 舉行，詳細資訊將另行通知…" />
-        <label style={lbl}>自訂段落（英文）— 帶入英文信</label>
+        <label style={lbl}>自訂段落（英文）— 插入中英信的外語區塊</label>
         <textarea style={{ ...s.input, minHeight: 52, marginBottom: 8 }} value={form.customEn} onChange={(e) => setF('customEn', e.target.value)} placeholder="e.g. The opening ceremony will be held on Sept 1…" />
-        <label style={lbl}>自訂段落（越南文）— 帶入越南文信</label>
+        <label style={lbl}>自訂段落（越南文）— 插入中越信的外語區塊</label>
         <textarea style={{ ...s.input, minHeight: 52, marginBottom: 8 }} value={form.customVi} onChange={(e) => setF('customVi', e.target.value)} placeholder="VD: Lễ khai giảng sẽ được tổ chức vào ngày 1/9…" />
-        <label style={lbl}>自訂段落（印尼文）— 帶入印尼文信</label>
+        <label style={lbl}>自訂段落（印尼文）— 插入中印尼信的外語區塊</label>
         <textarea style={{ ...s.input, minHeight: 52, marginBottom: 0 }} value={form.customId} onChange={(e) => setF('customId', e.target.value)} placeholder="Mis. Upacara pembukaan akan diadakan pada 1 September…" />
       </div>
 
@@ -220,7 +266,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         </table>
       </div>
 
-      {/* 失敗名單（可重試） */}
+      {/* 建草稿失敗名單（可重試） */}
       {failed.length > 0 && (
         <div style={{ marginTop: 12, fontSize: 12.5, color: '#b45309', lineHeight: 1.8, wordBreak: 'break-all' }}>
           失敗 {failed.length} 筆：{failed.map((f) => `${f.name || f.account}（${f.error}）`).join('、')}
@@ -228,21 +274,23 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         </div>
       )}
 
-      {/* 動作列 */}
+      {/* 動作列（兩鈕流程同 Stage4） */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
-        <span style={{ fontSize: 12, color: '#888' }}>勾選 {selected.length} / {rows.length} 位</span>
+        <span style={{ fontSize: 12, color: '#888' }}>勾選 {selected.length} / {rows.length} 位 · 已建草稿 {Object.keys(created).length} 封</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Btn variant="primary" onClick={() => doSend()} disabled={busy || !hasTemplate || !selected.length}>
-            {busy ? (prog ? `寄出中 ${prog.done}/${prog.total}…` : '寄出中…') : `✉ 寄出（${selected.length} 封）`}
+          <Btn onClick={() => doCreate()} disabled={busy || !hasTemplate || !selected.length}>
+            {busy && prog ? `建立草稿中 ${prog.done}/${prog.total}…` : '① 建立草稿到公務信箱'}
           </Btn>
+          <Btn variant="primary" onClick={doSend} disabled={busy || !Object.keys(created).length}>② 送出本批</Btn>
         </div>
       </div>
       <div style={{ fontSize: 11, color: '#aaa', marginTop: 8, lineHeight: 1.6 }}>
-        按「寄出」即以公務信箱直接寄出（自動分批，每批 {CHUNK} 封；中斷可對失敗名單重試）。
-        語言依國籍自動帶、可逐列改；建議先按逐列「預覽」確認內容再寄。寄成功會計入「已寄送次數」，同一人可重寄。
+        流程：先「① 建立草稿」→ 草稿會進公務信箱草稿夾，可在 Gmail 逐封檢查／微調 → 回來按「② 送出本批」一次寄出；
+        或建完草稿直接按「② 送出本批」。信件一律雙語（外語在前、中文在後），語言依國籍自動帶、可逐列改；
+        建議先按逐列「預覽」確認內容。送出成功才計入「已寄送次數」，同一人可重寄。
       </div>
 
-      {/* 預覽 */}
+      {/* 預覽（顯示的即是雙語 body：外語在上、中文在下） */}
       {preview && (() => {
         const m = msgFor(preview)
         return (
