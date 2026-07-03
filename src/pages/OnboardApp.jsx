@@ -466,7 +466,8 @@ export default function OnboardApp({ token }) {
           <div style={sectionTitle}>{tr('s2NoticeTitle')}</div>
           <ol style={{ margin: '4px 0 0', paddingLeft: 20, fontSize: 12.5, color: '#555', lineHeight: 1.75 }}>
             {s2Notice.map((line, i) => (
-              <li key={i} style={{ marginBottom: 5 }}>{line}</li>
+              // 第 2 條（繳費期限警語，index 1）以紅字加粗凸顯
+              <li key={i} style={{ marginBottom: 5, ...(i === 1 ? { color: '#b91c1c', fontWeight: 700 } : {}) }}>{line}</li>
             ))}
           </ol>
         </div>
