@@ -130,7 +130,14 @@ export default async function handler(req) {
     const nRows = nRes.ok ? await nRes.json() : []
     const name_request = (Array.isArray(nRows) && nRows[0]) || null
 
-    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request })
+    // 退件紀錄（供學生端查看退回原因）
+    let audit = []
+    try {
+      const lRes = await fetch(`${SUPABASE_URL}/rest/v1/enroll_log?account=eq.${encodeURIComponent(student.account)}&action=in.(reopen_step1,reopen_step2)&order=created_at.desc&select=step,action,payload,created_at`, { headers: H })
+      const rows = lRes.ok ? await lRes.json() : []
+      audit = (Array.isArray(rows) ? rows : []).map((r) => ({ step: r.step, kind: r.action, reason: (r.payload && r.payload.reason) || '', at: r.created_at }))
+    } catch { /* 退件紀錄讀取失敗不擋主流程 */ }
+    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request, audit })
   }
 
   // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────

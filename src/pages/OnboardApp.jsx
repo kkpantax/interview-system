@@ -38,6 +38,12 @@ const T = {
   withdrawLink:   { zh: '放棄入學', en: 'Withdraw enrollment', vi: 'Từ bỏ nhập học', id: 'Membatalkan pendaftaran' },
   withdrawTitle:  { zh: '放棄入學', en: 'Withdraw Enrollment', vi: 'Từ bỏ nhập học', id: 'Membatalkan Pendaftaran' },
   withdrawWarn:   { zh: '確定要放棄入學嗎？送出後您的入學資格將被取消、入學準備流程也會結束。如為誤操作，請聯繫下方承辦窗口協助恢復。', en: 'Are you sure you want to withdraw? Once submitted, your enrollment will be cancelled and the preparation process will end. If this was a mistake, please contact the staff below to restore it.', vi: 'Bạn có chắc chắn muốn từ bỏ nhập học? Sau khi gửi, tư cách nhập học của bạn sẽ bị hủy và quy trình chuẩn bị nhập học cũng kết thúc. Nếu thao tác nhầm, vui lòng liên hệ cán bộ phụ trách bên dưới để khôi phục.', id: 'Apakah Anda yakin ingin membatalkan pendaftaran? Setelah dikirim, pendaftaran Anda akan dibatalkan dan proses persiapan berakhir. Jika ini keliru, silakan hubungi petugas di bawah untuk memulihkannya.' },
+  auditTitle: { zh: '資料已被退回，請查看原因並補件', en: 'Your submission was returned. Please review and resubmit.', vi: 'Hồ sơ đã bị trả lại. Vui lòng xem lý do và bổ sung.', id: 'Data Anda dikembalikan. Silakan tinjau alasan dan lengkapi kembali.' },
+  auditShow:  { zh: '查看原因', en: 'View reason', vi: 'Xem lý do', id: 'Lihat alasan' },
+  auditHide:  { zh: '收合', en: 'Hide', vi: 'Ẩn', id: 'Sembunyikan' },
+  auditStep1: { zh: '資料確認 · 退回補件', en: 'Data Confirmation · Returned', vi: 'Xác nhận thông tin · Trả lại', id: 'Konfirmasi Data · Dikembalikan' },
+  auditStep2: { zh: '繳費 · 退回重傳', en: 'Payment · Returned', vi: 'Thanh toán · Trả lại', id: 'Pembayaran · Dikembalikan' },
+  auditNoReason: { zh: '（承辦未填寫原因，請聯繫承辦窗口）', en: '(No reason provided; please contact the coordinator.)', vi: '(Không có lý do; vui lòng liên hệ cán bộ phụ trách.)', id: '(Tidak ada alasan; silakan hubungi petugas.)' },
   withdrawReason: { zh: '放棄原因（選填）', en: 'Reason (optional)', vi: 'Lý do (không bắt buộc)', id: 'Alasan (opsional)' },
   withdrawCancel: { zh: '取消', en: 'Cancel', vi: 'Hủy', id: 'Batal' },
   withdrawConfirm:{ zh: '確定放棄', en: 'Confirm withdrawal', vi: 'Xác nhận từ bỏ', id: 'Konfirmasi pembatalan' },
@@ -166,6 +172,7 @@ export default function OnboardApp({ token }) {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)       // 步驟1剛送出成功
   const [nameModal, setNameModal] = useState(false)
+  const [auditOpen, setAuditOpen] = useState(false)
   const [ncForm, setNcForm] = useState({ new_name: '', reason: '' })   // 更名申請 modal
   const [showWithdraw, setShowWithdraw] = useState(false)              // 放棄入學確認 modal
   const [wReason, setWReason] = useState('')                           // 放棄原因（選填）
@@ -751,6 +758,29 @@ export default function OnboardApp({ token }) {
               )
             })}
           </div>
+
+          {/* 退件通知：曾被退回補件時顯示原因 */}
+          {info.audit?.length > 0 && (
+            <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px', marginTop: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: '#92400e' }}>{tr('auditTitle')}</span>
+                <button onClick={() => setAuditOpen((v) => !v)}
+                  style={{ padding: '4px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid #d97706', background: 'white', color: '#b45309', whiteSpace: 'nowrap' }}>
+                  {auditOpen ? tr('auditHide') : tr('auditShow')}
+                </button>
+              </div>
+              {auditOpen && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {info.audit.map((a, i) => (
+                    <div key={i} style={{ fontSize: 12.5, color: '#78350f', lineHeight: 1.6, borderTop: i ? '1px solid #fde68a' : 'none', paddingTop: i ? 8 : 0 }}>
+                      <div style={{ fontWeight: 600 }}>{tr(a.kind === 'reopen_step2' ? 'auditStep2' : 'auditStep1')} · {new Date(a.at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</div>
+                      <div>{a.reason ? a.reason : tr('auditNoReason')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 剛送出成功的提示 */}
           {done && (
