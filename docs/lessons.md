@@ -46,3 +46,19 @@
   applications、enroll_files）一律走 `api/onboard-admin.js` 的 `fetchAllRows()`（Range header
   分頁到短頁為止），且 url 必帶唯一鍵 order 才不會跨頁重複/漏列。發現統計加總對不上時，
   先懷疑 1000 列截斷，用 execute_sql 數真實列數對照。
+
+## CLAUDE.md 的資安宣稱已過期，RLS 實況以 pg_policies 為準
+- **為什麼**：2026-07 全面體檢發現文件寫「DELETE 已用 RLS 全關」「centers 唯讀」，
+  但 pg_policies 實查：applications 有 anon DELETE policy、applications/evaluations/
+  stage1_records/final_admissions/stage4_confirmations/centers/teachers 都有
+  FOR ALL USING(true)（含 DELETE）；7 張 enroll_* 表 RLS 原本根本沒開。
+  且 api/submit.js 無認證、method 不設限，等於整條攻擊鏈對外成立。
+- **2026-07-04 已處理一部分**：7 張 enroll_* 表已 ENABLE RLS 且不加 policy
+  （anon 全擋、service_role 端點 /api/onboard* /api/confirm /api/onboard-admin 繞過照常，
+  已實測 anon count=0 且 /api/onboard?token 仍 ok:true）；並補了 evaluations/stage1_records
+  的 FK 覆蓋索引。尚未處理：applications 等表的 FOR ALL/anon DELETE policy——會斷後台
+  deleteCheckin/deleteEvaluation/deleteApplication 等走 anon key 的操作，須先把那些後台刪除
+  改走 service-role 端點再收緊，招生期間勿動。
+- **怎麼應用**：任何涉及「哪張表能不能寫/刪」的判斷，先跑
+  `SELECT tablename,policyname,cmd,roles,qual FROM pg_policies WHERE schemaname='public'`
+  對照，不要信 CLAUDE.md 或記憶。改完 policy 記得同步更新 CLAUDE.md 資安段。
