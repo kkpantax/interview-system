@@ -450,9 +450,48 @@ const ONBOARD_CAMPUS_I18N = {
 //   result_link 空 → 榜單句省略；deadline 空 → 改用 confirmAsap（請儘速完成）；
 //   contact_phone 空 → 電話句段省略；name_english 空 → fallback 中文姓名。
 // data.custom（自訂段落 hook，日後要加回時用）有值時插在簽名檔前一段。
+// 入學準備 · 通用「已處理，請至頁面查看」通知信（buildOnboardMail step:0）。
+// 用於退件補件/收據、改名審核等「戳一下叫學生回頁面」的情境；細節一律由頁面呈現。
+export const ONBOARD_MAIL_GENERIC = {
+  subject: {
+    zh: '【實踐大學國際專修部】您的申請已處理・請至頁面查看',
+    en: '[Shih Chien University IFP] Your request has been processed — please check your page',
+    vi: '[Đại học Thực Tiễn - IFP] Yêu cầu của bạn đã được xử lý — vui lòng kiểm tra trang',
+    id: '[Universitas Shih Chien - IFP] Permintaan Anda telah diproses — silakan cek halaman Anda',
+  },
+  subjectPrefix: {},
+  tierIntro: {},
+  paras: {
+    zh: {
+      greeting: '親愛的 {{name}} 同學，您好：',
+      body: '您在「國際專修部入學準備」的一項申請或資料已由本校處理完成。請點選以下專屬連結登入您的入學準備頁面，查看最新狀態並依頁面指示完成後續確認：\n{{link}}',
+      contact: '如有任何問題，歡迎聯繫承辦人 {{contact_name}}（{{contact_email}}{{contact_phone}}）。',
+      signoff: '實踐大學 國際事務處 敬啟',
+    },
+    en: {
+      greeting: 'Dear {{name_english}},',
+      body: 'One of your requests or items in the International Foundation Program enrollment preparation has been processed. Please log in to your enrollment page via your personal link below to check the latest status and complete any further confirmation as instructed:\n{{link}}',
+      contact: 'If you have any questions, please contact {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      signoff: 'Office of International Affairs, Shih Chien University',
+    },
+    vi: {
+      greeting: '{{name_english}} thân mến,',
+      body: 'Một yêu cầu hoặc thông tin của bạn trong quá trình chuẩn bị nhập học Chương trình Dự bị Quốc tế đã được nhà trường xử lý. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập trang chuẩn bị nhập học, kiểm tra trạng thái mới nhất và hoàn tất xác nhận theo hướng dẫn:\n{{link}}',
+      contact: 'Nếu có thắc mắc, vui lòng liên hệ cán bộ phụ trách {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      signoff: 'Phòng Sự vụ Quốc tế, Đại học Thực Tiễn',
+    },
+    id: {
+      greeting: 'Yth. {{name_english}},',
+      body: 'Salah satu permintaan atau data Anda dalam persiapan pendaftaran International Foundation Program telah diproses. Silakan masuk ke halaman persiapan pendaftaran Anda melalui tautan pribadi di bawah ini untuk memeriksa status terbaru dan menyelesaikan konfirmasi lanjutan sesuai petunjuk:\n{{link}}',
+      contact: 'Jika ada pertanyaan, silakan hubungi petugas {{contact_name}} ({{contact_email}}{{contact_phone}}).',
+      signoff: 'Kantor Urusan Internasional, Universitas Shih Chien',
+    },
+  },
+}
+
 export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data = {} }) {
   const stepN = Number(step)
-  const t = stepN === 1 ? ONBOARD_MAIL_S1 : stepN === 2 ? ONBOARD_MAIL_S2 : null
+  const t = stepN === 1 ? ONBOARD_MAIL_S1 : stepN === 2 ? ONBOARD_MAIL_S2 : stepN === 0 ? ONBOARD_MAIL_GENERIC : null
   if (!t) return null
   const L = ['zh', 'en', 'vi', 'id'].includes(lang) ? lang : 'en'
   const p = t.paras[L]
@@ -482,6 +521,9 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
   if (stepN === 1) {
     parts.push(p.greeting, p.congrats, p.listNote, p.letter)
     parts.push(hasDeadline ? p.confirmDeadline : p.confirmAsap)
+    if (hasContact) parts.push(p.contact)
+  } else if (stepN === 0) {
+    parts.push(p.greeting, p.body)
     if (hasContact) parts.push(p.contact)
   } else {
     parts.push(p.greeting, p.opened, p.notice)

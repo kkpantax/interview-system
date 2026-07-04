@@ -44,6 +44,9 @@ const T = {
   auditStep1: { zh: '資料確認 · 退回補件', en: 'Data Confirmation · Returned', vi: 'Xác nhận thông tin · Trả lại', id: 'Konfirmasi Data · Dikembalikan' },
   auditStep2: { zh: '繳費 · 退回重傳', en: 'Payment · Returned', vi: 'Thanh toán · Trả lại', id: 'Pembayaran · Dikembalikan' },
   auditNoReason: { zh: '（承辦未填寫原因，請聯繫承辦窗口）', en: '(No reason provided; please contact the coordinator.)', vi: '(Không có lý do; vui lòng liên hệ cán bộ phụ trách.)', id: '(Tidak ada alasan; silakan hubungi petugas.)' },
+  nrApproved:      { zh: '✓ 您的中文姓名更改申請已核准，姓名已更新為「{n}」。', en: '✓ Your Chinese name change has been approved. Your name is now "{n}".', vi: '✓ Yêu cầu đổi tên tiếng Hoa của bạn đã được duyệt. Tên hiện tại là「{n}」.', id: '✓ Perubahan nama Mandarin Anda disetujui. Nama Anda sekarang「{n}」.' },
+  nrRejectedHead:  { zh: '✗ 您的中文姓名更改申請未通過，您可重新提出申請。', en: '✗ Your Chinese name change request was not approved. You may submit a new request.', vi: '✗ Yêu cầu đổi tên của bạn không được duyệt. Bạn có thể gửi lại yêu cầu.', id: '✗ Permintaan perubahan nama Anda tidak disetujui. Anda dapat mengajukan lagi.' },
+  nrRejectedReason:{ zh: '駁回原因：', en: 'Reason: ', vi: 'Lý do: ', id: 'Alasan: ' },
   withdrawReason: { zh: '放棄原因（選填）', en: 'Reason (optional)', vi: 'Lý do (không bắt buộc)', id: 'Alasan (opsional)' },
   withdrawCancel: { zh: '取消', en: 'Cancel', vi: 'Hủy', id: 'Batal' },
   withdrawConfirm:{ zh: '確定放棄', en: 'Confirm withdrawal', vi: 'Xác nhận từ bỏ', id: 'Konfirmasi pembatalan' },
@@ -779,6 +782,15 @@ export default function OnboardApp({ token }) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 中文改名審核結果：無 pending 且有已審核結果時顯示 */}
+          {!info.name_request && info.name_review_result && (
+            <div style={{ background: info.name_review_result.status === 'approved' ? '#dcfce7' : '#fee2e2', border: '1px solid ' + (info.name_review_result.status === 'approved' ? '#86efac' : '#fca5a5'), borderRadius: 10, padding: '12px 14px', marginTop: 14, fontSize: 13, lineHeight: 1.7, color: info.name_review_result.status === 'approved' ? '#166534' : '#991b1b' }}>
+              {info.name_review_result.status === 'approved'
+                ? tr('nrApproved', { n: info.name_review_result.new_name })
+                : (<>{tr('nrRejectedHead')}{info.name_review_result.review_note ? <div style={{ marginTop: 4 }}>{tr('nrRejectedReason')}{info.name_review_result.review_note}</div> : null}</>)}
             </div>
           )}
 

@@ -44,7 +44,7 @@ const suggestInclude = (r, tier) => {
 }
 
 export default function OnboardMailComposer({ step, initialTier = 'first', recipients, cfg, markDraft, markSent, onClose, onToast }) {
-  const stepZh = ENROLL_STEPS[step - 1]?.zh || `步驟${step}`
+  const stepZh = step === 0 ? '通知信' : (ENROLL_STEPS[step - 1]?.zh || `步驟${step}`)
   const hasTemplate = !!buildOnboardMail({ step, tier: 'first', lang: 'zh', data: {} })
 
   const [tier, setTier] = useState(initialTier)

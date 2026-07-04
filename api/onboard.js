@@ -137,7 +137,14 @@ export default async function handler(req) {
       const rows = lRes.ok ? await lRes.json() : []
       audit = (Array.isArray(rows) ? rows : []).map((r) => ({ step: r.step, kind: r.action, reason: (r.payload && r.payload.reason) || '', at: r.created_at }))
     } catch { /* 退件紀錄讀取失敗不擋主流程 */ }
-    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request, audit })
+    // 最近一筆已審核（核准/駁回）的更名申請，供學生端顯示結果
+    let name_review_result = null
+    try {
+      const rvRes = await fetch(`${SUPABASE_URL}/rest/v1/enroll_name_requests?account=eq.${encodeURIComponent(student.account)}&status=in.(approved,rejected)&order=reviewed_at.desc&select=new_name,old_name,status,review_note,reviewed_at&limit=1`, { headers: H })
+      const rvRows = rvRes.ok ? await rvRes.json() : []
+      name_review_result = (Array.isArray(rvRows) && rvRows[0]) || null
+    } catch { /* 讀取失敗不擋主流程 */ }
+    return json({ ok: true, student, progress, settings, prefill, files, line_qr, contacts, name_request, audit, name_review_result })
   }
 
   // ── POST：送出步驟表單（server 權威驗證：step / gating 都由伺服器判定）──────────
