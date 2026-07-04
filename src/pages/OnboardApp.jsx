@@ -139,6 +139,10 @@ Object.assign(T, {
   visaExpectedDate: { zh: '預計取得簽證日期 *', en: 'Expected visa pickup date *', vi: 'Ngày dự kiến nhận thị thực *', id: 'Tanggal perkiraan menerima visa *' },
   visaSaveDates: { zh: '儲存簽證辦理日期', en: 'Save visa dates', vi: 'Lưu ngày làm thủ tục thị thực', id: 'Simpan tanggal visa' },
   visaDatesSubmitted: { zh: '✓ 已回報簽證辦理日期', en: '✓ Visa dates have been submitted.', vi: '✓ Đã báo ngày làm thủ tục thị thực.', id: '✓ Tanggal visa telah dilaporkan.' },
+  visaMailPreviewTitle: { zh: '繳費通過通知信內容', en: 'Payment Approval Notice Content', vi: 'Nội dung thông báo xác nhận thanh toán', id: 'Isi Pemberitahuan Persetujuan Pembayaran' },
+  visaMailPreviewHint: { zh: '以下為系統寄出的通知信內容預覽；外語信件會同時附上中文段落。', en: 'This is a preview of the notice sent by the system. Non-Chinese emails also include the Chinese section.', vi: 'Đây là bản xem trước nội dung thông báo do hệ thống gửi. Email bằng ngoại ngữ cũng kèm phần tiếng Trung.', id: 'Ini adalah pratinjau pemberitahuan yang dikirim sistem. Email non-Mandarin juga menyertakan bagian Mandarin.' },
+  visaMailSubject: { zh: '主旨', en: 'Subject', vi: 'Tiêu đề', id: 'Subjek' },
+  visaMailBody: { zh: '信件內容', en: 'Email content', vi: 'Nội dung email', id: 'Isi email' },
 })
 
 const CAMPUS_I18N = {
@@ -194,6 +198,44 @@ const STATE_STYLE = {
   confirmed: { bg: '#dcfce7', color: '#15803d', border: '1px solid #86efac' },
 }
 const STATE_LABEL_KEY = { locked: 'stLocked', open: 'stOpen', submitted: 'stSubmitted', confirmed: 'stConfirmed' }
+
+function buildPaymentNoticePreview({ student, isVn, lang, link }) {
+  const track = isVn ? 'vn' : 'other'
+  const name = student?.name || student?.name_en || student?.account || ''
+  const foreignName = student?.name_en || student?.name || student?.account || ''
+  const subjects = {
+    vn: {
+      zh: '【實踐大學國際專修部】繳費審核已通過，後續簽證收件說明',
+      en: '[Shih Chien University International Foundation Program] Payment approved and visa document collection notice',
+      vi: '[Chương trình Dự bị Quốc tế Đại học Shih Chien] Xác nhận thanh toán và thông báo thu hồ sơ thị thực',
+      id: '[Program Persiapan Internasional Shih Chien University] Pembayaran disetujui dan pemberitahuan pengumpulan dokumen visa',
+    },
+    other: {
+      zh: '【實踐大學國際專修部】繳費審核已通過，請確認錄取通知書並辦理簽證',
+      en: '[Shih Chien University International Foundation Program] Payment approved. Please confirm your admission letter and arrange your visa',
+      vi: '[Chương trình Dự bị Quốc tế Đại học Shih Chien] Xác nhận thanh toán. Vui lòng xác nhận giấy báo nhập học và làm thủ tục thị thực',
+      id: '[Program Persiapan Internasional Shih Chien University] Pembayaran disetujui. Mohon konfirmasi surat penerimaan dan urus visa Anda',
+    },
+  }
+  const zh = track === 'vn'
+    ? `${name} 同學您好：\n\n感謝您配合完成入學繳費，您的繳費資料已審核通過。\n\n接下來學校將安排人員前往越南進行簽證資料實體收件。詳細收件日期、時間與地點會另行通知，請密切注意後續通知，並提前準備簽證辦理所需資料。\n\n您也可以登入入學準備系統查看最新狀態：\n${link}\n\n實踐大學國際事務處`
+    : `${name} 同學您好：\n\n感謝您配合完成入學繳費，您的繳費資料已審核通過。\n\n接下來請確認是否已收到紙本錄取通知書。若已收到，請登入入學準備系統回報；若尚未收到，請盡快與我們聯繫。收到紙本錄取通知書後，即可安排前往台灣辦事處辦理簽證。\n\n入學準備系統：\n${link}\n\n實踐大學國際事務處`
+  const en = track === 'vn'
+    ? `Dear ${foreignName},\n\nYour payment has been reviewed and approved. The university will arrange in-person collection of visa application documents in Vietnam. The detailed date, time, and location will be announced separately. Please watch for future notices and prepare the required visa documents in advance.\n\nYou may also log in to your enrollment preparation page to check the latest status:\n${link}\n\nOffice of International Affairs, Shih Chien University`
+    : `Dear ${foreignName},\n\nYour payment has been reviewed and approved. Please confirm whether you have received the printed admission letter. If you have received it, please log in to the system and report it. If you have not received it yet, please contact us as soon as possible. After receiving the printed admission letter, you may arrange your visa application at the Taiwan office.\n\nEnrollment preparation page:\n${link}\n\nOffice of International Affairs, Shih Chien University`
+  const vi = track === 'vn'
+    ? `${foreignName} thân mến,\n\nNhà trường đã kiểm tra và xác nhận khoản thanh toán của bạn. Tiếp theo, nhà trường sẽ sắp xếp nhân viên đến Việt Nam để thu hồ sơ xin thị thực trực tiếp. Ngày, giờ và địa điểm cụ thể sẽ được thông báo riêng. Vui lòng theo dõi các thông báo tiếp theo và chuẩn bị trước các giấy tờ cần thiết.\n\nBạn cũng có thể đăng nhập vào trang chuẩn bị nhập học để kiểm tra trạng thái mới nhất:\n${link}\n\nOffice of International Affairs, Shih Chien University`
+    : `${foreignName} thân mến,\n\nNhà trường đã kiểm tra và xác nhận khoản thanh toán của bạn. Tiếp theo, vui lòng xác nhận bạn đã nhận được giấy báo nhập học bản giấy hay chưa. Nếu đã nhận được, vui lòng đăng nhập vào hệ thống để phản hồi. Nếu chưa nhận được, vui lòng liên hệ với chúng tôi sớm nhất có thể. Sau khi nhận được giấy báo nhập học bản giấy, bạn có thể sắp xếp đến văn phòng Đài Loan để làm thủ tục xin thị thực.\n\nTrang chuẩn bị nhập học:\n${link}\n\nOffice of International Affairs, Shih Chien University`
+  const id = track === 'vn'
+    ? `Yth. ${foreignName},\n\nPembayaran Anda telah diperiksa dan disetujui. Selanjutnya, pihak universitas akan mengatur pengambilan dokumen aplikasi visa secara langsung di Vietnam. Tanggal, waktu, dan lokasi rinci akan diumumkan secara terpisah. Mohon perhatikan pengumuman berikutnya dan siapkan dokumen yang diperlukan terlebih dahulu.\n\nAnda juga dapat masuk ke halaman persiapan pendaftaran untuk memeriksa status terbaru:\n${link}\n\nOffice of International Affairs, Shih Chien University`
+    : `Yth. ${foreignName},\n\nPembayaran Anda telah diperiksa dan disetujui. Selanjutnya, mohon konfirmasi apakah Anda sudah menerima surat penerimaan versi cetak. Jika sudah menerima, silakan masuk ke sistem dan melaporkannya. Jika belum menerima, mohon segera hubungi kami. Setelah menerima surat penerimaan versi cetak, Anda dapat mengatur jadwal pengajuan visa di kantor Taiwan.\n\nHalaman persiapan pendaftaran:\n${link}\n\nOffice of International Affairs, Shih Chien University`
+  const nativeBody = lang === 'vi' ? vi : lang === 'id' ? id : lang === 'zh' ? zh : en
+  const nativeSubject = subjects[track][lang] || subjects[track].en
+  return {
+    subject: lang === 'zh' ? subjects[track].zh : `${nativeSubject} / ${subjects[track].zh}`,
+    body: lang === 'zh' ? zh : `${nativeBody}\n\n------------------------------\n\n${zh}`,
+  }
+}
 
 export default function OnboardApp({ token }) {
   const [lang, setLang] = useState('zh')
@@ -625,6 +667,12 @@ export default function OnboardApp({ token }) {
     cursor: busy ? 'not-allowed' : 'pointer', border: '1px solid ' + ACCENT, background: ACCENT, color: '#fff',
   }
   const smallGhostBtn = { ...smallActionBtn, background: 'white', color: ACCENT }
+  const paymentNoticePreview = buildPaymentNoticePreview({
+    student,
+    isVn: isVnVisa,
+    lang,
+    link: typeof window !== 'undefined' ? window.location.href : '',
+  })
   const step3Content = (
     <div>
       <div style={sectionBox}>
@@ -636,6 +684,20 @@ export default function OnboardApp({ token }) {
         {visaData.payment_pass_notice_sent_at && (
           <div style={{ fontSize: 12, color: '#15803d', marginTop: 8 }}>{tr('visaPaymentNoticeSent')}{fmtDate(visaData.payment_pass_notice_sent_at)}</div>
         )}
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: ACCENT }}>{tr('visaMailPreviewTitle')}</summary>
+          <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginTop: 8 }}>{tr('visaMailPreviewHint')}</div>
+          <div style={{ marginTop: 10, border: '1px solid #eee', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', background: '#faf9f6', borderBottom: '1px solid #eee' }}>
+              <div style={{ fontSize: 11.5, color: '#888', marginBottom: 4 }}>{tr('visaMailSubject')}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#333', lineHeight: 1.5 }}>{paymentNoticePreview.subject}</div>
+            </div>
+            <div style={{ padding: '10px 12px' }}>
+              <div style={{ fontSize: 11.5, color: '#888', marginBottom: 6 }}>{tr('visaMailBody')}</div>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12.5, color: '#444', lineHeight: 1.75, margin: 0 }}>{paymentNoticePreview.body}</pre>
+            </div>
+          </div>
+        </details>
       </div>
 
       {isVnVisa ? (
