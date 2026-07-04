@@ -232,9 +232,13 @@ export default function OnboardAdminApp() {
     setBusy(true)
     try {
       await onboardAdminReopenStep1(teacher.username, pw, account, reason.trim())
-      showToast(`已退回 ${name || account} 補件；可至步驟①寄信催補`)
+      showToast(`已退回 ${name || account} 補件`)
       setDetail(null)
       await load()
+      if (window.confirm(`要現在寄信通知「${name || account}」補件嗎？（走公務信箱，可預覽後再送出）`)) {
+        const m = await loadMailRecips(1)
+        await openComposer(1, [account], m)
+      }
     } catch (e) { showToast('退回失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
@@ -247,8 +251,12 @@ export default function OnboardAdminApp() {
     setBusy(true)
     try {
       await onboardAdminReopenStep2(teacher.username, pw, account, reason.trim())
-      showToast(`已退回 ${name || account} 的收據；可至步驟②寄信請其重新上傳`)
+      showToast(`已退回 ${name || account} 的收據`)
       await load()
+      if (window.confirm(`要現在寄信通知「${name || account}」重新上傳收據嗎？（走公務信箱，可預覽後再送出）`)) {
+        const m = await loadMailRecips(2)
+        await openComposer(2, [account], m)
+      }
     } catch (e) { showToast('退回失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
@@ -293,6 +301,7 @@ export default function OnboardAdminApp() {
       const m = {}
       for (const r of res.list || []) m[r.account] = r
       setMailRecips(m)
+      return m
     } catch { /* 收件名單載入失敗不擋主功能（欄位顯示 — 即可） */ }
   }, [pw, teacher, batch])
 
@@ -302,9 +311,10 @@ export default function OnboardAdminApp() {
 
   // 開寄信視窗：accounts＝群發（當前篩選下卡在此步全名單）或個別（[account]）。
   // 先載入設定（承辦窗口 / 放榜連結 / 該步各梯截止日）供 composer 唯讀帶入。
-  const openComposer = async (step, accounts) => {
+  const openComposer = async (step, accounts, recipsMap) => {
     if (busy) return
-    const recips = accounts.map((a) => mailRecips[a]).filter(Boolean)
+    const src = recipsMap || mailRecips
+    const recips = accounts.map((a) => src[a]).filter(Boolean)
     if (!recips.length) { showToast('收件名單載入中或沒有可寄送的對象，請稍候再試', 'warn'); return }
     setBusy(true)
     try {
