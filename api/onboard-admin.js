@@ -156,9 +156,20 @@ function buildPaymentPassNotice({ row, email, contacts, origin }) {
   const link = row.confirm_token ? `${origin}/#/onboard?t=${row.confirm_token}` : ''
   const hello = `${row.name || row.name_en || row.account} 同學您好：`
   const foreignName = row.name_en || row.name || row.account
-  const subject = track === 'vn'
-    ? '【實踐大學國際專修部】繳費審核已通過，後續簽證收件說明'
-    : '【實踐大學國際專修部】繳費審核已通過，請確認錄取通知書並辦理簽證'
+  const subjects = {
+    vn: {
+      zh: '【實踐大學國際專修部】繳費審核已通過，後續簽證收件說明',
+      en: '[Shih Chien University International Foundation Program] Payment approved and visa document collection notice',
+      vi: '[Chương trình Dự bị Quốc tế Đại học Shih Chien] Xác nhận thanh toán và thông báo thu hồ sơ thị thực',
+      id: '[Program Persiapan Internasional Shih Chien University] Pembayaran disetujui dan pemberitahuan pengumpulan dokumen visa',
+    },
+    other: {
+      zh: '【實踐大學國際專修部】繳費審核已通過，請確認錄取通知書並辦理簽證',
+      en: '[Shih Chien University International Foundation Program] Payment approved. Please confirm your admission letter and arrange your visa',
+      vi: '[Chương trình Dự bị Quốc tế Đại học Shih Chien] Xác nhận thanh toán. Vui lòng xác nhận giấy báo nhập học và làm thủ tục thị thực',
+      id: '[Program Persiapan Internasional Shih Chien University] Pembayaran disetujui. Mohon konfirmasi surat penerimaan dan urus visa Anda',
+    },
+  }
   const zhBody = track === 'vn'
     ? `${hello}\n\n感謝您配合完成入學繳費，您的繳費資料已審核通過。\n\n接下來學校將安排人員前往越南進行簽證資料實體收件。詳細收件日期、時間與地點會另行通知，請密切注意後續通知，並提前準備簽證辦理所需資料。\n\n您也可以登入入學準備系統查看最新狀態：\n${link}${zhContactLine}\n\n實踐大學國際事務處`
     : `${hello}\n\n感謝您配合完成入學繳費，您的繳費資料已審核通過。\n\n接下來請確認是否已收到紙本錄取通知書。若已收到，請登入入學準備系統回報；若尚未收到，請盡快與我們聯繫。收到紙本錄取通知書後，即可安排前往台灣辦事處辦理簽證。\n\n入學準備系統：\n${link}${zhContactLine}\n\n實踐大學國際事務處`
@@ -171,6 +182,8 @@ function buildPaymentPassNotice({ row, email, contacts, origin }) {
   const idBody = track === 'vn'
     ? `Yth. ${foreignName},\n\nPembayaran Anda telah diperiksa dan disetujui. Selanjutnya, pihak universitas akan mengatur pengambilan dokumen aplikasi visa secara langsung di Vietnam. Tanggal, waktu, dan lokasi rinci akan diumumkan secara terpisah. Mohon perhatikan pengumuman berikutnya dan siapkan dokumen yang diperlukan terlebih dahulu.\n\nAnda juga dapat masuk ke halaman persiapan pendaftaran untuk memeriksa status terbaru:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
     : `Yth. ${foreignName},\n\nPembayaran Anda telah diperiksa dan disetujui. Selanjutnya, mohon konfirmasi apakah Anda sudah menerima surat penerimaan versi cetak. Jika sudah menerima, silakan masuk ke sistem dan melaporkannya. Jika belum menerima, mohon segera hubungi kami. Setelah menerima surat penerimaan versi cetak, Anda dapat mengatur jadwal pengajuan visa di kantor Taiwan.\n\nHalaman persiapan pendaftaran:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+  const nativeSubject = (subjects[track] && subjects[track][lang]) || subjects[track].en
+  const subject = lang === 'zh' ? subjects[track].zh : `${nativeSubject} / ${subjects[track].zh}`
   const nativeBody = lang === 'vi' ? viBody : lang === 'id' ? idBody : lang === 'zh' ? zhBody : enBody
   const body = lang === 'zh' ? zhBody : `${nativeBody}\n\n------------------------------\n\n${zhBody}`
   return { track, message: { to: email, subject, body } }

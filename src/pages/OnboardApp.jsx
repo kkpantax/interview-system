@@ -112,6 +112,35 @@ const T = {
   s5Ack:         { zh: '我已閱讀，確認知悉', en: 'I have read and acknowledge', vi: 'Tôi đã đọc và xác nhận', id: 'Saya telah membaca dan memahami' },
 }
 
+Object.assign(T, {
+  visaLetterTitle: { zh: '錄取通知書與簽證辦理', en: 'Admission Letter and Visa Application', vi: 'Giấy báo nhập học và thủ tục thị thực', id: 'Surat Penerimaan dan Pengajuan Visa' },
+  visaLetterHint: { zh: '繳費審核通過後，請依本頁狀態完成錄取通知書確認與簽證辦理回報。', en: 'After your payment is approved, please follow this page to confirm your admission letter and report your visa application status.', vi: 'Sau khi khoản thanh toán được duyệt, vui lòng theo dõi trang này để xác nhận giấy báo nhập học và báo cáo tình trạng xin thị thực.', id: 'Setelah pembayaran Anda disetujui, ikuti halaman ini untuk mengonfirmasi surat penerimaan dan melaporkan status pengajuan visa.' },
+  visaLetterDownload: { zh: '下載錄取通知書電子檔', en: 'Download electronic admission letter', vi: 'Tải giấy báo nhập học bản điện tử', id: 'Unduh surat penerimaan elektronik' },
+  visaPaymentNoticeSent: { zh: '繳費通過通知已寄出：', en: 'Payment approval notice sent: ', vi: 'Thông báo xác nhận thanh toán đã được gửi: ', id: 'Pemberitahuan persetujuan pembayaran telah dikirim: ' },
+  visaVnTitle: { zh: '越南簽證資料收件', en: 'Visa Document Collection in Vietnam', vi: 'Thu hồ sơ thị thực tại Việt Nam', id: 'Pengumpulan Dokumen Visa di Vietnam' },
+  visaVnHint: { zh: '學校將另行通知越南實體收件時間與地點。請密切注意通知，並準備簽證辦理所需資料。', en: 'The university will announce the in-person collection time and location in Vietnam separately. Please watch for notices and prepare the required visa documents.', vi: 'Nhà trường sẽ thông báo riêng thời gian và địa điểm thu hồ sơ trực tiếp tại Việt Nam. Vui lòng theo dõi thông báo và chuẩn bị các giấy tờ cần thiết để xin thị thực.', id: 'Universitas akan mengumumkan waktu dan lokasi pengumpulan langsung di Vietnam secara terpisah. Mohon perhatikan pengumuman dan siapkan dokumen visa yang diperlukan.' },
+  visaCollectionDate: { zh: '收件日期', en: 'Collection date', vi: 'Ngày thu hồ sơ', id: 'Tanggal pengumpulan' },
+  visaCollectionTime: { zh: '收件時間', en: 'Collection time', vi: 'Thời gian thu hồ sơ', id: 'Waktu pengumpulan' },
+  visaCollectionCity: { zh: '城市', en: 'City', vi: 'Thành phố', id: 'Kota' },
+  visaCollectionPlace: { zh: '地點', en: 'Location', vi: 'Địa điểm', id: 'Lokasi' },
+  visaCollectionNote: { zh: '備註', en: 'Note', vi: 'Ghi chú', id: 'Catatan' },
+  visaPendingNotice: { zh: '待通知', en: 'To be announced', vi: 'Sẽ thông báo sau', id: 'Akan diumumkan' },
+  visaVnAcked: { zh: '✓ 已回覆會準時前往', en: '✓ You have replied that you will attend on time.', vi: '✓ Bạn đã phản hồi sẽ đến đúng giờ.', id: '✓ Anda telah memberi tahu bahwa akan hadir tepat waktu.' },
+  visaVnAckBtn: { zh: '我已收到通知，會準時前往', en: 'I received the notice and will attend on time', vi: 'Tôi đã nhận thông báo và sẽ đến đúng giờ', id: 'Saya sudah menerima pemberitahuan dan akan hadir tepat waktu' },
+  visaVnCollected: { zh: '✓ 學校已完成收件', en: '✓ The university has collected your documents.', vi: '✓ Nhà trường đã nhận hồ sơ của bạn.', id: '✓ Universitas telah menerima dokumen Anda.' },
+  visaOtherTitle: { zh: '紙本錄取通知書與簽證日期', en: 'Printed Admission Letter and Visa Dates', vi: 'Giấy báo nhập học bản giấy và ngày xin thị thực', id: 'Surat Penerimaan Cetak dan Tanggal Visa' },
+  visaOtherHint: { zh: '請確認是否已收到紙本錄取通知書。收到後即可安排前往台灣辦事處辦理簽證。', en: 'Please confirm whether you have received the printed admission letter. After receiving it, you may arrange your visa application at the Taiwan office.', vi: 'Vui lòng xác nhận bạn đã nhận được giấy báo nhập học bản giấy hay chưa. Sau khi nhận được, bạn có thể sắp xếp đến văn phòng Đài Loan để xin thị thực.', id: 'Mohon konfirmasi apakah Anda sudah menerima surat penerimaan cetak. Setelah menerimanya, Anda dapat mengatur pengajuan visa di kantor Taiwan.' },
+  visaPaperSent: { zh: '紙本寄出：', en: 'Printed letter sent: ', vi: 'Bản giấy đã được gửi: ', id: 'Surat cetak dikirim: ' },
+  visaPaperReceivedDone: { zh: '✓ 已回報收到紙本錄取通知書', en: '✓ You have reported receiving the printed admission letter.', vi: '✓ Bạn đã báo đã nhận giấy báo nhập học bản giấy.', id: '✓ Anda telah melaporkan telah menerima surat penerimaan cetak.' },
+  visaPaperReceivedBtn: { zh: '已收到紙本錄取通知書', en: 'I have received the printed admission letter', vi: 'Tôi đã nhận giấy báo nhập học bản giấy', id: 'Saya sudah menerima surat penerimaan cetak' },
+  visaPaperHelpBtn: { zh: '尚未收到，需要協助', en: 'Not received yet, I need assistance', vi: 'Chưa nhận được, tôi cần hỗ trợ', id: 'Belum menerima, saya perlu bantuan' },
+  visaPaperHelpDone: { zh: '已收到您的回報，承辦人員會協助確認紙本通知書寄送狀態。', en: 'Your report has been received. The coordinator will help confirm the delivery status of your printed letter.', vi: 'Nhà trường đã nhận phản hồi của bạn. Cán bộ phụ trách sẽ hỗ trợ kiểm tra tình trạng gửi giấy báo bản giấy.', id: 'Laporan Anda telah diterima. Petugas akan membantu memeriksa status pengiriman surat cetak.' },
+  visaApplyDate: { zh: '預計辦理簽證日期 *', en: 'Planned visa application date *', vi: 'Ngày dự kiến xin thị thực *', id: 'Tanggal rencana pengajuan visa *' },
+  visaExpectedDate: { zh: '預計取得簽證日期 *', en: 'Expected visa pickup date *', vi: 'Ngày dự kiến nhận thị thực *', id: 'Tanggal perkiraan menerima visa *' },
+  visaSaveDates: { zh: '儲存簽證辦理日期', en: 'Save visa dates', vi: 'Lưu ngày làm thủ tục thị thực', id: 'Simpan tanggal visa' },
+  visaDatesSubmitted: { zh: '✓ 已回報簽證辦理日期', en: '✓ Visa dates have been submitted.', vi: '✓ Đã báo ngày làm thủ tục thị thực.', id: '✓ Tanggal visa telah dilaporkan.' },
+})
+
 const CAMPUS_I18N = {
   '台北校區': { zh: '台北校區', en: 'Taipei Campus', vi: 'Cơ sở Đài Bắc', id: 'Kampus Taipei' },
   '高雄校區': { zh: '高雄校區', en: 'Kaohsiung Campus', vi: 'Cơ sở Cao Hùng', id: 'Kampus Kaohsiung' },
@@ -599,78 +628,78 @@ export default function OnboardApp({ token }) {
   const step3Content = (
     <div>
       <div style={sectionBox}>
-        <div style={sectionTitle}>錄取通知書與簽證辦理</div>
+        <div style={sectionTitle}>{tr('visaLetterTitle')}</div>
         <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
-          繳費審核通過後，請依本頁狀態完成錄取通知書確認與簽證辦理回報。
+          {tr('visaLetterHint')}
         </div>
-        {admissionUrl && <a href={admissionUrl} target="_blank" rel="noreferrer" style={linkBtn}>下載錄取通知書電子檔</a>}
+        {admissionUrl && <a href={admissionUrl} target="_blank" rel="noreferrer" style={linkBtn}>{tr('visaLetterDownload')}</a>}
         {visaData.payment_pass_notice_sent_at && (
-          <div style={{ fontSize: 12, color: '#15803d', marginTop: 8 }}>繳費通過通知已寄出：{fmtDate(visaData.payment_pass_notice_sent_at)}</div>
+          <div style={{ fontSize: 12, color: '#15803d', marginTop: 8 }}>{tr('visaPaymentNoticeSent')}{fmtDate(visaData.payment_pass_notice_sent_at)}</div>
         )}
       </div>
 
       {isVnVisa ? (
         <div style={sectionBox}>
-          <div style={sectionTitle}>越南簽證資料收件</div>
+          <div style={sectionTitle}>{tr('visaVnTitle')}</div>
           <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
-            學校將另行通知越南實體收件時間與地點。請密切注意通知，並準備簽證辦理所需資料。
+            {tr('visaVnHint')}
           </div>
           {(visaData.vn_collection_date || visaData.vn_collection_place) && (
             <div style={{ ...infoBox, marginBottom: 10 }}>
-              <Row label="收件日期" value={visaData.vn_collection_date || '待通知'} />
-              <Row label="收件時間" value={visaData.vn_collection_time || '待通知'} />
-              <Row label="城市" value={visaData.vn_collection_city || '—'} />
-              <Row label="地點" value={visaData.vn_collection_place || '待通知'} />
-              {visaData.vn_collection_note && <Row label="備註" value={visaData.vn_collection_note} />}
+              <Row label={tr('visaCollectionDate')} value={visaData.vn_collection_date || tr('visaPendingNotice')} />
+              <Row label={tr('visaCollectionTime')} value={visaData.vn_collection_time || tr('visaPendingNotice')} />
+              <Row label={tr('visaCollectionCity')} value={visaData.vn_collection_city || '-'} />
+              <Row label={tr('visaCollectionPlace')} value={visaData.vn_collection_place || tr('visaPendingNotice')} />
+              {visaData.vn_collection_note && <Row label={tr('visaCollectionNote')} value={visaData.vn_collection_note} />}
             </div>
           )}
           {visaData.vn_student_ack_at ? (
-            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600 }}>✓ 已回覆會準時前往</div>
+            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600 }}>{tr('visaVnAcked')}</div>
           ) : (
             <button onClick={() => submitVisaAction('visa-vn-ack')} disabled={busy || !visaData.vn_collection_date}
               style={bigBtn(busy || !visaData.vn_collection_date)}>
-              我已收到通知，會準時前往
+              {tr('visaVnAckBtn')}
             </button>
           )}
           {visaData.vn_documents_collected_at && (
-            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600, marginTop: 8 }}>✓ 學校已完成收件</div>
+            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600, marginTop: 8 }}>{tr('visaVnCollected')}</div>
           )}
         </div>
       ) : (
         <div style={sectionBox}>
-          <div style={sectionTitle}>紙本錄取通知書與簽證日期</div>
+          <div style={sectionTitle}>{tr('visaOtherTitle')}</div>
           <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
-            請確認是否已收到紙本錄取通知書。收到後即可安排前往台灣辦事處辦理簽證。
+            {tr('visaOtherHint')}
           </div>
-          {visaData.paper_letter_sent_at && <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>紙本寄出：{fmtDate(visaData.paper_letter_sent_at)}</div>}
+          {visaData.paper_letter_sent_at && <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>{tr('visaPaperSent')}{fmtDate(visaData.paper_letter_sent_at)}</div>}
           {visaData.paper_letter_received_at ? (
-            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>✓ 已回報收到紙本錄取通知書</div>
+            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{tr('visaPaperReceivedDone')}</div>
           ) : (
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-              <button onClick={() => submitVisaAction('visa-paper-received')} disabled={busy} style={{ ...smallActionBtn, flex: '1 1 160px' }}>已收到紙本錄取通知書</button>
-              <button onClick={() => submitVisaAction('visa-paper-help')} disabled={busy} style={{ ...smallGhostBtn, flex: '1 1 160px' }}>尚未收到，需要協助</button>
+              <button onClick={() => submitVisaAction('visa-paper-received')} disabled={busy} style={{ ...smallActionBtn, flex: '1 1 160px' }}>{tr('visaPaperReceivedBtn')}</button>
+              <button onClick={() => submitVisaAction('visa-paper-help')} disabled={busy} style={{ ...smallGhostBtn, flex: '1 1 160px' }}>{tr('visaPaperHelpBtn')}</button>
             </div>
           )}
           {visaData.paper_letter_help_requested_at && (
-            <div style={{ color: '#b45309', fontSize: 12.5, marginBottom: 10 }}>已收到您的回報，承辦人員會協助確認紙本通知書寄送狀態。</div>
+            <div style={{ color: '#b45309', fontSize: 12.5, marginBottom: 10 }}>{tr('visaPaperHelpDone')}</div>
           )}
           <div style={{ display: 'grid', gap: 8 }}>
             <div>
-              <label style={labelStyle}>預計辦理簽證日期 *</label>
+              <label style={labelStyle}>{tr('visaApplyDate')}</label>
               <input type="date" style={inputStyle} value={visaForm.other_visa_apply_date || ''} onChange={(e) => setVisaForm((p) => ({ ...p, other_visa_apply_date: e.target.value }))} />
             </div>
             <div>
-              <label style={labelStyle}>預計取得簽證日期 *</label>
+              <label style={labelStyle}>{tr('visaExpectedDate')}</label>
               <input type="date" style={inputStyle} value={visaForm.other_visa_expected_date || ''} onChange={(e) => setVisaForm((p) => ({ ...p, other_visa_expected_date: e.target.value }))} />
             </div>
             <div>
-              <label style={labelStyle}>備註</label>
+              <label style={labelStyle}>{tr('visaCollectionNote')}</label>
               <textarea rows={3} style={{ ...inputStyle, resize: 'vertical' }} value={visaForm.other_visa_note || ''} onChange={(e) => setVisaForm((p) => ({ ...p, other_visa_note: e.target.value }))} />
             </div>
           </div>
-          <button onClick={submitOtherVisaDates} disabled={busy} style={bigBtn(busy)}>儲存簽證辦理日期</button>
+          <button onClick={submitOtherVisaDates} disabled={busy} style={bigBtn(busy)}>{tr('visaSaveDates')}</button>
           {visaData.other_visa_dates_submitted_at && (
-            <div style={{ color: '#15803d', fontSize: 12.5, marginTop: 8 }}>✓ 已回報簽證辦理日期</div>
+            <div style={{ color: '#15803d', fontSize: 12.5, marginTop: 8 }}>{tr('visaDatesSubmitted')}</div>
           )}
         </div>
       )}
