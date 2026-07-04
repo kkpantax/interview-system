@@ -56,6 +56,23 @@ const VISA_STAGES_VN    = ['pending', 'notified', 'collected', 'submitted', 'obt
 const VISA_STAGES_OTHER = ['pending', 'notified', 'submitted', 'obtained', 'uploaded']
 const visaTrackOf = (stu) => (stu.steps?.[3]?.data?.visa_track === 'vn' ? 'vn' : 'other')
 const visaStageOf = (stu) => stu.steps?.[3]?.data?.visa_stage || 'pending'
+const visaSignalOf = (stuOrData) => {
+  const d = stuOrData?.steps?.[3]?.data || stuOrData || {}
+  const track = d.visa_track === 'vn' ? 'vn' : 'other'
+  if (track === 'vn') {
+    if (d.vn_documents_collected_at) return { label: '已現場收件', color: '#15803d', bg: '#dcfce7' }
+    if (d.vn_student_ack_at) return { label: '學生已確認會到', color: '#0369a1', bg: '#e0f2fe' }
+    if (d.vn_collection_date || d.vn_collection_place) return { label: '待學生確認', color: '#b45309', bg: '#fef3c7' }
+    return { label: '待排收件時間', color: '#6b7280', bg: '#f3f4f6' }
+  }
+  if (d.paper_letter_help_requested_at) return { label: '紙本未收到', color: '#b45309', bg: '#fef3c7' }
+  if (d.paper_letter_received_at) {
+    if (d.other_visa_apply_date || d.other_visa_expected_date) return { label: '已回報簽證日期', color: '#15803d', bg: '#dcfce7' }
+    return { label: '已收到紙本', color: '#0369a1', bg: '#e0f2fe' }
+  }
+  if (d.paper_letter_sent_at) return { label: '待回報紙本', color: '#b45309', bg: '#fef3c7' }
+  return { label: '紙本尚未寄出', color: '#6b7280', bg: '#f3f4f6' }
+}
 
 // 通知信：狀態欄的次別簡稱（寄送流程都在 OnboardMailComposer 內）
 const MAIL_TIER_SHORT = { first: '首次', second: '二次', final: '最後' }
@@ -840,6 +857,7 @@ export default function OnboardAdminApp() {
                               {visaTrackOf(stu) === 'vn' ? '🇻🇳 越南軌' : '🌐 非越南軌'}
                             </span>
                             {(() => { const vm = VISA_STAGE_META[visaStageOf(stu)] || VISA_STAGE_META.pending; return <Pill color={vm.color} bg={vm.bg}>{vm.label}</Pill> })()}
+                            {(() => { const sig = visaSignalOf(stu); return <Pill color={sig.color} bg={sig.bg}>● {sig.label}</Pill> })()}
                           </div>
                         ) : (
                           <Pill color={meta.color} bg={meta.bg}>{meta.label}</Pill>
