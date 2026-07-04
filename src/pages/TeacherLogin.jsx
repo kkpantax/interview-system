@@ -3,7 +3,7 @@ import { Btn, s } from '../components/UI'
 import { loginTeacher } from '../api'
 
 // 老師登入頁。stage = '1' | '2' | 'admin' | 'stage4'（亦接受 '4'）。驗證成功後把 teacher
-// 存入 sessionStorage 再導回對應頁面。stage4 沿用行政（admin）權限，只是登入後導向第四階段。
+// 存入 localStorage 再導回對應頁面。stage4 沿用行政（admin）權限，只是登入後導向第四階段。
 export default function TeacherLogin({ stage }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')

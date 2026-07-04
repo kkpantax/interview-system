@@ -92,7 +92,8 @@ fetch('/api/submit', {
 - **登入驗證走 `/api/login`（Vercel Edge Function），不走前端直打 Supabase。**
   前端 `loginTeacher()` 只 POST 帳密到 `/api/login`，由伺服器用 service key 撈 teachers 表、
   在伺服器端比對 `password_hash === btoa(username + ':' + password)`，回傳的 teacher 不含 `password_hash`。
-  登入狀態仍存在 `sessionStorage`（key: `teacher`），由 `TeacherLogin.jsx` 在角色權限檢查通過後寫入。
+  登入狀態存在 `localStorage`（key: `teacher`），由 `TeacherLogin.jsx` 在角色權限檢查通過後寫入。
+  （實作用 localStorage 而非 sessionStorage：登入狀態跨瀏覽器重開仍保留，方便現場老師輪流評分。）
 - **所有資料表的 DELETE 已用 RLS 政策關閉**（applications / stage1_records / evaluations /
   final_admissions / centers 只保留 read / insert / update，centers 僅 read）。
   任何人都無法透過前端或 anon key 直接清空資料表。
@@ -192,8 +193,8 @@ CREATE POLICY "allow all" ON teachers FOR ALL USING (true);
 
 **前端流程**：
 1. `src/pages/Landing.jsx` — stage1/stage2 按鈕改為點擊後先導到 `#/login?stage=1` 或 `#/login?stage=2`
-2. 新增 `src/pages/TeacherLogin.jsx` — 輸入帳號密碼，驗證成功後將 teacher 資訊存入 `sessionStorage`（key: `teacher`），再導回目標頁面
-3. `Stage1App.jsx` / `Stage2App.jsx` 頂端加守衛：沒有 `sessionStorage.teacher` 就導回 login
+2. 新增 `src/pages/TeacherLogin.jsx` — 輸入帳號密碼，驗證成功後將 teacher 資訊存入 `localStorage`（key: `teacher`），再導回目標頁面
+3. `Stage1App.jsx` / `Stage2App.jsx` 頂端加守衛：沒有 `localStorage.teacher` 就導回 login
 4. 登入驗證邏輯：從 `teachers` 表撈 `username` 對應的 row，比對 `password_hash === btoa(username + ':' + password)`
 
 **行政人員老師管理頁**：

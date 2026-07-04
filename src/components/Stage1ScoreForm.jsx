@@ -1,30 +1,11 @@
 import { useState } from 'react'
 import { SCORE_ITEMS_STAGE1, DECISIONS_STAGE1, QUESTIONS_STAGE1 } from '../constants'
 import { BackBtn, Card, CardHead, Btn, s } from './UI'
+import { calcAge } from '../utils'
 
 const MAX = SCORE_ITEMS_STAGE1.length * 5
 const emptyScores = () => Object.fromEntries(SCORE_ITEMS_STAGE1.map((i) => [i.key, 0]))
 const sumScores = (sc) => SCORE_ITEMS_STAGE1.reduce((a, i) => a + Number(sc[i.key] || 0), 0)
-
-// 由生日（西元）計算年齡。支援 M/D/Y（匯入格式）與 Y-M-D（date 欄位）兩種字串。
-const calcAge = (birth) => {
-  if (!birth) return null
-  const str = String(birth).trim()
-  let y, m, d
-  if (str.includes('/')) {
-    const [mm, dd, yy] = str.split('/').map((x) => parseInt(x, 10))
-    m = mm; d = dd; y = yy
-  } else if (str.includes('-')) {
-    const [yy, mm, dd] = str.split('-').map((x) => parseInt(x, 10))
-    y = yy; m = mm; d = dd
-  }
-  if (!y || !m || !d) return null
-  const now = new Date()
-  let age = now.getFullYear() - y
-  const curM = now.getMonth() + 1
-  if (curM < m || (curM === m && now.getDate() < d)) age--
-  return age >= 0 && age < 130 ? age : null
-}
 
 // 第一階段評分表（寫入 stage1_records）。initial 帶入既有紀錄即為「重新評分」。
 export default function Stage1ScoreForm({ student, onSave, onBack, saving, initial }) {
