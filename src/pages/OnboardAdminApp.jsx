@@ -112,6 +112,7 @@ export default function OnboardAdminApp() {
   const [detail, setDetail] = useState(null)          // 檢視資料彈窗：{account,name,loading,step1_state,data,department,campus}
   const [preview, setPreview] = useState(null)        // 上傳檔案站內預覽彈窗：{url,name}
   const [toast, setToast] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)   // 名單最後一次成功刷新的時間（含自動刷新），標頭顯示
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500)
@@ -124,6 +125,7 @@ export default function OnboardAdminApp() {
     try {
       const res = await onboardAdminList(teacher.username, pp, bb)
       setData(res.list || [])
+      setLastUpdated(new Date())
       setAuthed(true)
     } catch (e) {
       if (e.status === 401 || e.status === 403) { setAuthed(false); showToast(e.message, 'error') }
@@ -598,6 +600,11 @@ export default function OnboardAdminApp() {
   const right = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {loading && <span style={{ fontSize: 12, color: '#fce7f3' }}>載入中…</span>}
+      {lastUpdated && !loading && (
+        <span style={{ fontSize: 11, color: '#fbcfe8', whiteSpace: 'nowrap' }}>
+          更新於 {lastUpdated.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} · 每 30 秒自動
+        </span>
+      )}
       <Btn style={headerBtn} disabled={busy} onClick={() => { if (tab === 'settings') loadSettings(); else { load(); if (tab === '1') loadNameReqs() } }}>↻</Btn>
       <span style={{ fontSize: 12, color: '#fce7f3' }}>{teacher.display_name || teacher.username}</span>
       <Btn style={headerBtn} onClick={logoutTeacher}>登出</Btn>
