@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { onboardInfo, onboardSubmit, onboardUpload, onboardNameChangeRequest } from '../api'
-import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS, ONBOARD_STEP4_FIELDS } from '../constants'
+import { deptI18n, deptZhFull, ENROLL_STEPS, ONBOARD_STEP1_FIELDS, ONBOARD_STEP4_FIELDS, VN_PROVINCES } from '../constants'
 import { driveImageUrl } from '../utils'
 
 // 學生端「入學準備」落地頁。
@@ -359,6 +359,23 @@ export default function OnboardApp({ token }) {
             <div style={{ fontSize: 12, color: '#b45309', marginTop: 4, lineHeight: 1.6 }}>
               {tr('ncPending', { n: pendingReq.new_name })}
             </div>
+          )}
+        </div>
+      )
+    }
+    // 省份：越南籍出下拉（2025 改制 34 省市），其他國籍出自由文字欄。
+    if (f.key === 'province') {
+      const isVN = form.nationality === '越南'
+      return (
+        <div key={f.key} style={{ marginBottom: 10 }}>
+          {label}
+          {isVN ? (
+            <select style={inputStyle} value={form.province ?? ''} onChange={(e) => set('province', e.target.value)}>
+              <option value="" />
+              {VN_PROVINCES.map((o) => <option key={o.v} value={o.v}>{lang === 'zh' ? `${o.v}（${o.zh}）` : o.v}</option>)}
+            </select>
+          ) : (
+            <input style={inputStyle} value={form.province ?? ''} onChange={(e) => set('province', e.target.value)} />
           )}
         </div>
       )

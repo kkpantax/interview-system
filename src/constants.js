@@ -231,6 +231,22 @@ export const ENROLL_STEPS = [
 // 特例（OnboardApp 以 key 判斷）：
 //   name 唯讀顯示（readonly）；passport_number 下方帶「尚未辦理護照」checkbox（勾選→清空+disable+免必填，
 //   data.no_passport=true）；nationality 選「其他」→ 顯示自填框存 nationality_other。
+// 越南 2025 行政區改制後 34 省級單位（6 直轄市 + 28 省）；value 存越南文名、label 附中文供行政辨識。
+export const VN_PROVINCES = [
+  { v: 'Hà Nội', zh: '河內市' }, { v: 'Hồ Chí Minh', zh: '胡志明市' }, { v: 'Hải Phòng', zh: '海防市' },
+  { v: 'Đà Nẵng', zh: '峴港市' }, { v: 'Cần Thơ', zh: '芹苴市' }, { v: 'Huế', zh: '順化市' },
+  { v: 'Tuyên Quang', zh: '宣光' }, { v: 'Lào Cai', zh: '老街' }, { v: 'Thái Nguyên', zh: '太原' },
+  { v: 'Phú Thọ', zh: '富壽' }, { v: 'Bắc Ninh', zh: '北寧' }, { v: 'Hưng Yên', zh: '興安' },
+  { v: 'Ninh Bình', zh: '寧平' }, { v: 'Quảng Trị', zh: '廣治' }, { v: 'Quảng Ngãi', zh: '廣義' },
+  { v: 'Gia Lai', zh: '嘉萊' }, { v: 'Khánh Hòa', zh: '慶和' }, { v: 'Lâm Đồng', zh: '林同' },
+  { v: 'Đắk Lắk', zh: '得樂' }, { v: 'Đồng Nai', zh: '同奈' }, { v: 'Tây Ninh', zh: '西寧' },
+  { v: 'Vĩnh Long', zh: '永隆' }, { v: 'Đồng Tháp', zh: '同塔' }, { v: 'An Giang', zh: '安江' },
+  { v: 'Cà Mau', zh: '金甌' }, { v: 'Cao Bằng', zh: '高平' }, { v: 'Điện Biên', zh: '奠邊' },
+  { v: 'Hà Tĩnh', zh: '河靜' }, { v: 'Lai Châu', zh: '萊州' }, { v: 'Lạng Sơn', zh: '諒山' },
+  { v: 'Nghệ An', zh: '乂安' }, { v: 'Quảng Ninh', zh: '廣寧' }, { v: 'Thanh Hóa', zh: '清化' },
+  { v: 'Sơn La', zh: '山羅' },
+]
+
 export const ONBOARD_STEP1_FIELDS = {
   prefill: [
     { key: 'name',            zh: '中文姓名',   en: 'Chinese Name',              vi: 'Họ tên (chữ Hán)',            id: 'Nama Mandarin',              req: true, readonly: true },
@@ -258,6 +274,7 @@ export const ONBOARD_STEP1_FIELDS = {
     { key: 'zip_mail',        zh: '通訊郵遞區號', en: 'Mailing Zip Code',        vi: 'Mã bưu điện (liên lạc)',      id: 'Kode Pos (surat)',           req: true },
     { key: 'addr_mail',       zh: '通訊地址',   en: 'Mailing Address',           vi: 'Địa chỉ liên lạc',            id: 'Alamat Surat-menyurat',      req: true },
     { key: 'tel',             zh: '市話（選填）', en: 'Telephone (optional)',    vi: 'Điện thoại bàn (tùy chọn)',   id: 'Telepon Rumah (opsional)' },
+    { key: 'province',        zh: '省／直轄市（戶籍）', en: 'Province/City (registered)', vi: 'Tỉnh/Thành phố (hộ khẩu)', id: 'Provinsi/Kota (domisili)', req: true },
     { key: 'zip_reg',         zh: '戶籍郵遞區號', en: 'Registered Zip Code',     vi: 'Mã bưu điện (hộ khẩu)',       id: 'Kode Pos (domisili)',        req: true },
     { key: 'addr_reg',        zh: '戶籍地址',   en: 'Registered Address',        vi: 'Địa chỉ hộ khẩu',             id: 'Alamat Domisili',            req: true },
     { key: 'high_school',     zh: '畢業學校',   en: 'School Graduated',          vi: 'Trường tốt nghiệp',           id: 'Sekolah Asal',               req: true },

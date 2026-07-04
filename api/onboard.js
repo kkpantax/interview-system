@@ -18,7 +18,7 @@ const STEP1_KEYS = [
   'name', 'name_english', 'gender', 'birth_date', 'nationality', 'nationality_other',
   'passport_number', 'phone', 'email',
   'national_id', 'guardian_name', 'guardian_phone',
-  'zip_mail', 'addr_mail', 'tel', 'zip_reg', 'addr_reg',
+  'zip_mail', 'addr_mail', 'tel', 'province', 'zip_reg', 'addr_reg',
   'high_school', 'graduation_year',
 ]
 
