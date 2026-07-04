@@ -1,0 +1,59 @@
+# 每日在雲端（GitHub Actions）備份 Supabase Postgres，並上傳到 Google Drive
+# 的「0系統備份」資料夾。不靠任何本機電腦開機。
+#
+# ── 需要兩個 GitHub secret（Settings → Secrets and variables → Actions）──────
+#   SUPABASE_DB_URL     Supabase Dashboard → Settings → Database → Connection string
+#                       選「Session pooler」那條，[YOUR-PASSWORD] 換成真密碼。
+#   RCLONE_GDRIVE_TOKEN 在本機用 rclone 授權 shihchien_ifp 帳號後產生的 token JSON
+#                       （見 repo 說明；就是 rclone.conf 裡 token = {...} 的那個 {...}）。
+#
+# 備份檔會出現在 Google Drive 的「0系統備份」資料夾，檔名 db-backup-<時間>.dump，
+# 保留 30 天，更舊的自動刪。還原：pg_restore --clean --no-owner --no-privileges -d "<連線字串>" 檔案.dump
+name: Daily DB Backup to Google Drive
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 每日 UTC 18:00 = 台北時間 02:00
+  workflow_dispatch: {}     # 允許在 Actions 分頁手動觸發（設定完先用這個測一次）
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL 17 client + rclone
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Dump database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then echo "::error::缺少 SUPABASE_DB_URL secret"; exit 1; fi
+          ts=$(date -u +%Y%m%d-%H%M%S)
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
+            --no-owner --no-privileges --format=custom \
+            --file="db-backup-$ts.dump"
+          ls -lh db-backup-*.dump
+
+      - name: Upload to Google Drive (0系統備份)
+        env:
+          RCLONE_CONFIG_GDRIVE_TYPE: drive
+          RCLONE_CONFIG_GDRIVE_SCOPE: drive
+          RCLONE_CONFIG_GDRIVE_TOKEN: ${{ secrets.RCLONE_GDRIVE_TOKEN }}
+          RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID: 1JVCWB60BsqVdlZhaVetGH5U2ToXN0sbJ
+        run: |
+          if [ -z "$RCLONE_CONFIG_GDRIVE_TOKEN" ]; then echo "::error::缺少 RCLONE_GDRIVE_TOKEN secret"; exit 1; fi
+          rclone copy . gdrive: --include "db-backup-*.dump" -v
+          echo "已上傳到 Google Drive「0系統備份」"
+
+      - name: Prune backups older than 30 days on Drive
+        env:
+          RCLONE_CONFIG_GDRIVE_TYPE: drive
+          RCLONE_CONFIG_GDRIVE_SCOPE: drive
+          RCLONE_CONFIG_GDRIVE_TOKEN: ${{ secrets.RCLONE_GDRIVE_TOKEN }}
+          RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID: 1JVCWB60BsqVdlZhaVetGH5U2ToXN0sbJ
+        run: rclone delete gdrive: --min-age 30d --include "db-backup-*.dump" -v || true
