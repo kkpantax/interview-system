@@ -1359,6 +1359,16 @@ export const onboardAdminBuildMailDrafts = (username, password, payload) =>
 export const onboardAdminNameReview = (username, password, payload) =>
   onboardAdminPost({ action: 'name-review', username, password, ...payload })
 
+// 步驟③ 簽證：推進簽證階段（payload = { account, stage, submitter?, note? }；stage 須為合法 visa_stage，可回退修正）
+export const onboardAdminSetVisaStage = (username, password, { account, stage, submitter, note }) =>
+  onboardAdminPost({ action: 'set-visa-stage', username, password, account, stage,
+    ...(submitter !== undefined ? { submitter } : {}),
+    ...(note !== undefined ? { note } : {}) })
+
+// 步驟③ 簽證：行政代上傳簽證檔（payload = { account, filename, mimeType, dataBase64 }；成功後 visa_stage→uploaded、不自動確認）
+export const onboardAdminVisaUpload = (username, password, { account, filename, mimeType, dataBase64 }) =>
+  onboardAdminPost({ action: 'visa-upload', username, password, account, filename, mimeType, dataBase64 })
+
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {
   return updateStage4Status(id, fields)
