@@ -105,6 +105,7 @@ export default function OnboardAdminApp() {
   const [batch, setBatch] = useState('all')
   const [campus, setCampus] = useState('all')   // 校區在前端篩：分校區小計需同時看到兩校區
   const [search, setSearch] = useState('')      // 清單即時篩選（帳號／中文姓名／英文姓名），切分頁清空
+  const [showPassed, setShowPassed] = useState(false)   // 步驟分頁：是否展開「已通過本步」摺疊清單，切分頁收合
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)   // BA0203 匯出中
@@ -128,6 +129,27 @@ export default function OnboardAdminApp() {
       else showToast('載入失敗：' + e.message, 'error')
     } finally { setLoading(false) }
   }, [batch, pw, teacher, showToast])
+
+  const loadingRef = useRef(loading)
+  const busyRef = useRef(busy)
+  useEffect(() => { loadingRef.current = loading }, [loading])
+  useEffect(() => { busyRef.current = busy }, [busy])
+
+  // 已驗證後每 30 秒自動刷新名單（設定／匯入分頁不刷，避免干擾表單）；
+  // 分頁隱藏／載入中／操作中時跳過，從背景切回前景立即刷新一次。
+  useEffect(() => {
+    if (!authed || tab === 'settings' || tab === 'import') return
+    const id = setInterval(() => {
+      if (document.hidden || loadingRef.current || busyRef.current) return
+      load()
+    }, 30000)
+    const onVisible = () => { if (!document.hidden && authed) load() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [authed, tab, load])
 
   const doAuth = async () => {
     if (!pwInput.trim() || busy) return
@@ -556,6 +578,8 @@ export default function OnboardAdminApp() {
   const stuckAt = (step) => active.filter((x) => x.status !== 'completed'
     && ['open', 'submitted'].includes(stepStateOf(x, step)))
   const countState = (step, state) => active.filter((x) => stepStateOf(x, step) === state).length
+  // 已通過本步（confirmed）＝累計通過此步的人，含已往後面步驟移動者
+  const passedAt = (step) => active.filter((x) => stepStateOf(x, step) === 'confirmed')
 
   // 分校區小計：從 data（僅梯次篩過）計算，切到單一校區時仍能並列台北/高雄對照
   const campusStats = (c) => {
@@ -661,7 +685,7 @@ export default function OnboardAdminApp() {
         <StatStrip items={[
           { label: '待處理', value: countState(step, 'open'), color: '#9d174d', bg: '#fdf2f8', border: '#fbcfe8' },
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
-          { label: '已完成', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+          { label: '已通過本步', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
         {mailControl(step, rows)}
         <Card>
@@ -721,6 +745,60 @@ export default function OnboardAdminApp() {
             </table>
           </div>
         </Card>
+
+        {/* 已通過本步（confirmed）：預設摺疊。步驟① 提供「檢視 → 退回補件」入口；其餘步驟僅供對照。 */}
+        {(() => {
+          const passed = passedAt(step)
+          const shownP = passed.filter((x) => matchText(x.account, x.name, x.name_english))
+          const canView = step === 1
+          return (
+            <Card style={{ marginTop: 16 }}>
+              <div onClick={() => setShowPassed((v) => !v)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '14px 18px', userSelect: 'none' }}>
+                <span style={{ fontSize: 13.5, color: '#15803d', fontWeight: 600 }}>{showPassed ? '▾' : '▸'} 已通過本步（{shownP.length}{q ? ` / ${passed.length}` : ''}）</span>
+                <span style={{ fontSize: 12, color: '#999' }}>{showPassed ? '點此收合' : (canView ? '點此展開（含退回補件入口）' : '點此展開')}</span>
+              </div>
+              {showPassed && (
+                <div style={{ overflowX: 'auto', borderTop: '1px solid #f0efeb' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#faf9f6' }}>
+                      {['姓名', '帳號', '性別·年紀', '系所', '校區', '通過時間', '檔案', ...(canView ? ['操作'] : [])].map((h) => <th key={h} style={th}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {shownP.map((stu) => {
+                        const files = (stu.files || []).filter((f) => f.step === step)
+                        return (
+                          <tr key={stu.account}>
+                            {nameCell(stu)}
+                            <td style={{ ...td, color: '#888' }}>{stu.account}</td>
+                            <td style={{ ...td, whiteSpace: 'nowrap', color: '#666' }}>{genderAge(stu)}</td>
+                            <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
+                            <td style={td}>{stu.campus || '—'}</td>
+                            <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.steps?.[step]?.confirmed_at || stu.steps?.[step]?.submitted_at)}</td>
+                            <td style={td}>
+                              {files.length
+                                ? files.map((f, i) => (
+                                  <a key={i} href={f.drive_url} target="_blank" rel="noreferrer" style={{ color: ACCENT, marginRight: 8 }}>檔案{files.length > 1 ? i + 1 : ''}</a>
+                                ))
+                                : <span style={{ color: '#ccc' }}>—</span>}
+                            </td>
+                            {canView && (
+                              <td style={td}>
+                                <button onClick={() => openDetail(stu)} disabled={busy}
+                                  style={{ ...s.btn, ...s.btnSm }}>檢視</button>
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
+                      {!shownP.length && <tr><td colSpan={canView ? 8 : 7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 22 }}>{q && passed.length ? '沒有符合搜尋的學生' : '目前還沒有人通過這步'}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          )
+        })()}
       </>
     )
   }
@@ -730,7 +808,7 @@ export default function OnboardAdminApp() {
       {/* 分頁列 + 梯次篩選 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSearch('') }}
+          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setShowPassed(false) }}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
               borderColor: tab === t.key ? ACCENT : '#ddd', fontWeight: tab === t.key ? 600 : 400 }}>
             {t.label}
@@ -762,6 +840,7 @@ export default function OnboardAdminApp() {
             <div style={{ padding: '14px 18px' }}>
               {ENROLL_STEPS.map((st) => {
                 const n = stuckAt(st.step).length
+                const passed = passedAt(st.step).length
                 const pct = denom ? Math.round((n / denom) * 100) : 0
                 return (
                   <div key={st.step} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 0', borderBottom: '1px solid #f5f4f0' }}>
@@ -769,7 +848,8 @@ export default function OnboardAdminApp() {
                     <div style={{ flex: 1, height: 10, background: '#f3f4f6', borderRadius: 99, overflow: 'hidden' }}>
                       <div style={{ width: `${pct}%`, height: '100%', background: ACCENT }} />
                     </div>
-                    <div style={{ width: 70, textAlign: 'right', fontSize: 13, color: '#555' }}>{n} 人</div>
+                    <div style={{ width: 78, textAlign: 'right', fontSize: 13, color: '#555', whiteSpace: 'nowrap' }}>卡關 {n}</div>
+                    <div style={{ width: 82, textAlign: 'right', fontSize: 12.5, color: passed ? '#15803d' : '#bbb', whiteSpace: 'nowrap' }}>已通過 {passed}</div>
                     <button onClick={() => setTab(String(st.step))} style={{ ...s.btn, ...s.btnSm }}>查看</button>
                   </div>
                 )
