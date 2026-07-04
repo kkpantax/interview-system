@@ -570,19 +570,30 @@ export default async function handler(req) {
     const reqs = await rRes.json()
     const accts = [...new Set((Array.isArray(reqs) ? reqs : []).map((r) => r.account))]
     const stuMap = {}
+    const appMap = {}
     if (accts.length) {
       const sRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/enroll_students?account=in.(${encodeURIComponent(accts.join(','))})&select=account,name,department,campus`,
+        `${SUPABASE_URL}/rest/v1/enroll_students?account=in.(${encodeURIComponent(accts.join(','))})&select=account,name,name_en,department,campus,nationality,confirm_token`,
         { headers: H },
       )
       const sRows = sRes.ok ? await sRes.json() : []
       for (const st of Array.isArray(sRows) ? sRows : []) stuMap[st.account] = st
+      const aRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/applications?account=in.(${encodeURIComponent(accts.join(','))})&select=account,email,name_english`,
+        { headers: H },
+      )
+      const aRows = aRes.ok ? await aRes.json() : []
+      for (const a of Array.isArray(aRows) ? aRows : []) { const c = appMap[a.account] || (appMap[a.account] = {}); for (const k of ['email', 'name_english']) if (a[k] && !c[k]) c[k] = a[k] }
     }
     const list = (Array.isArray(reqs) ? reqs : []).map((r) => ({
       ...r,
       name: stuMap[r.account]?.name ?? r.old_name,
       department: stuMap[r.account]?.department ?? '',
       campus: stuMap[r.account]?.campus ?? '',
+      name_english: appMap[r.account]?.name_english ?? stuMap[r.account]?.name_en ?? '',
+      nationality: stuMap[r.account]?.nationality ?? '',
+      email: appMap[r.account]?.email ?? '',
+      confirm_token: stuMap[r.account]?.confirm_token ?? '',
     }))
     return json({ ok: true, list })
   }

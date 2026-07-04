@@ -237,7 +237,7 @@ export default function OnboardAdminApp() {
       await load()
       if (window.confirm(`要現在寄信通知「${name || account}」補件嗎？（走公務信箱，可預覽後再送出）`)) {
         const m = await loadMailRecips(1)
-        await openComposer(1, [account], m)
+        await openComposer(0, [account], m)
       }
     } catch (e) { showToast('退回失敗：' + e.message, 'error') }
     finally { setBusy(false) }
@@ -255,7 +255,7 @@ export default function OnboardAdminApp() {
       await load()
       if (window.confirm(`要現在寄信通知「${name || account}」重新上傳收據嗎？（走公務信箱，可預覽後再送出）`)) {
         const m = await loadMailRecips(2)
-        await openComposer(2, [account], m)
+        await openComposer(0, [account], m)
       }
     } catch (e) { showToast('退回失敗：' + e.message, 'error') }
     finally { setBusy(false) }
@@ -287,6 +287,12 @@ export default function OnboardAdminApp() {
       await onboardAdminNameReview(teacher.username, pw, { id: r.id, decision, note })
       showToast(decision === 'approve' ? `已核准更名：${r.old_name || r.account} → ${r.new_name}` : '已駁回更名申請')
       await Promise.all([loadNameReqs(), load()])   // 名單姓名可能已變，一併重抓
+      if (r.email && r.confirm_token && window.confirm(`要現在寄信通知「${r.name || r.account}」到頁面查看結果嗎？（走公務信箱，可預覽後再送出）`)) {
+        await openComposer(0, [r.account], { [r.account]: {
+          account: r.account, email: r.email, name: r.name || '', name_english: r.name_english || '',
+          nationality: r.nationality || '', campus: r.campus || '', confirm_token: r.confirm_token,
+        } })
+      }
     } catch (e) { showToast('操作失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
@@ -333,10 +339,12 @@ export default function OnboardAdminApp() {
 
   // composer 每批寄成功後回報：reminder_count+1 / last_reminder_*（enroll_log 記 mail_sent）
   const markMailSent = async (accounts, tier) => {
+    if (composer.step === 0) return
     await onboardAdminMailMarkSent(teacher.username, pw, { step: composer.step, tier, accounts })
   }
   // composer 每批草稿建立成功後回報：只寫 enroll_log mail_draft，不加提醒計數
   const markMailDraft = async (accounts, tier) => {
+    if (composer.step === 0) return
     await onboardAdminMailLogDraft(teacher.username, pw, { step: composer.step, tier, accounts })
   }
 
@@ -1205,7 +1213,7 @@ export default function OnboardAdminApp() {
           cfg={composer.cfg}
           markDraft={markMailDraft}
           markSent={markMailSent}
-          onClose={() => { const st = composer.step; setComposer(null); loadMailRecips(st) }}
+          onClose={() => { setComposer(null); if (['1','2','3','4','5'].includes(tab)) loadMailRecips(Number(tab)) }}
           onToast={showToast}
         />
       )}
