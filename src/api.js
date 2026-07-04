@@ -20,6 +20,22 @@ async function callProxy(path, method, body, prefer) {
   return text ? JSON.parse(text) : null
 }
 
+// 分頁撈整表：Supabase/PostgREST 單次最多回 1000 列且不報錯（無聲截斷），
+// 而 /api/submit proxy 只回 body、拿不到 Content-Range，故靠「回傳列數 < pageSize
+// 即為最後一頁」收尾。path 必須自帶「決定性 order（含唯一鍵，例如 id）」，否則
+// offset 分頁會在頁邊界漏列/重列——呼叫端負責在 order 尾端補唯一鍵。
+async function fetchAll(path, pageSize = 1000) {
+  const sep = path.includes('?') ? '&' : '?'
+  const out = []
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await callProxy(`${path}${sep}limit=${pageSize}&offset=${offset}`, 'GET')
+    if (!Array.isArray(page) || page.length === 0) break
+    out.push(...page)
+    if (page.length < pageSize) break
+  }
+  return out
+}
+
 // 新增一筆（或多筆）申請資料
 export async function apiPost(body) {
   return callProxy('/rest/v1/applications', 'POST', body, 'return=representation')
@@ -89,12 +105,12 @@ export function fromApplicationRow(row) {
 
 // ── Applications（行政）─────────────────────────────────────────────────────
 export async function getAllApplications() {
-  return callProxy('/rest/v1/applications?select=*&order=preference_order.asc,name.asc', 'GET')
+  return fetchAll('/rest/v1/applications?select=*&order=preference_order.asc,name.asc,id.asc')
 }
 
 // distinct 系所清單
 export async function getDepartments() {
-  const rows = await callProxy('/rest/v1/applications?select=department', 'GET')
+  const rows = await fetchAll('/rest/v1/applications?select=department&order=id.asc')
   return [...new Set((rows || []).map((r) => r.department).filter(Boolean))].sort()
 }
 
@@ -156,7 +172,7 @@ const IMPORT_BATCH = 50
 export async function upsertApplications(rows, onProgress) {
   // key = 帳號 + 系所 + 志願序，精準對應「一個人的單一志願」。
   // （只用 account+系所 會把同系不同志願視為同一筆；且需配合 DB 去重避免重複匯入。）
-  const existing = await callProxy('/rest/v1/applications?select=id,account,department,preference_order', 'GET')
+  const existing = await fetchAll('/rest/v1/applications?select=id,account,department,preference_order&order=id.asc')
   const keyOf = (r) => `${r.account ?? ''}__${r.department ?? ''}__${r.preference_order ?? ''}`
   const idByKey = new Map((existing || []).map((r) => [keyOf(r), r.id]))
 
@@ -307,9 +323,8 @@ export async function getStage1List(date) {
 
 // 備援：尚未通過一階的所有帳號持有者（interview_date 尚未排期時用，按帳號合併）
 export async function getStage1Pending() {
-  const rows = await callProxy(
-    '/rest/v1/applications?select=*&account=not.is.null&stage1_passed_date=is.null&order=name.asc',
-    'GET',
+  const rows = await fetchAll(
+    '/rest/v1/applications?select=*&account=not.is.null&stage1_passed_date=is.null&order=name.asc,id.asc',
   )
   return groupByAccount(rows || [])
 }
@@ -457,11 +472,10 @@ export async function setStage1ConfirmByAccount(account, result, date) {
 // 某科系、已過一階的「所有」學生，附上各自的 evaluations 摘要（前端再分待評/已評）。
 // 同一學生在同系可能有多筆評分（多老師、多輪），故全帶回不去重。
 export async function getStage2List(dept) {
-  const rows = await callProxy(
+  const rows = await fetchAll(
     `/rest/v1/applications?select=*,evaluations(id,recommendation,total_score,eval_date,evaluator_name,translator_name,scores,teacher_note,custom_questions)` +
       `&department=eq.${encodeURIComponent(dept)}` +
-      `&stage1_passed_date=not.is.null&paper_passed=is.true&withdrawn=is.false&order=name.asc`,
-    'GET',
+      `&stage1_passed_date=not.is.null&paper_passed=is.true&withdrawn=is.false&order=name.asc,id.asc`,
   )
   return rows || []
 }
@@ -499,11 +513,10 @@ export async function getStage2DeptSummary(dateFilter = 'all') {
     (r.stage2_date || '') === dateFilter
   const [depts, rows, abChecks] = await Promise.all([
     getDepartments(),
-    callProxy(
-      '/rest/v1/applications?select=account,department,stage2_date,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true',
-      'GET',
+    fetchAll(
+      '/rest/v1/applications?select=account,department,stage2_date,evaluations(recommendation)&stage1_passed_date=not.is.null&paper_passed=is.true&order=id.asc',
     ),
-    callProxy('/rest/v1/stage2_checkins?select=account,department,checkin_date&status=eq.abandoned', 'GET'),
+    fetchAll('/rest/v1/stage2_checkins?select=account,department,checkin_date&status=eq.abandoned&order=id.asc'),
   ])
   // 放棄面試查找表：account|department → Set(checkin_date)
   const abMap = new Map()
@@ -533,9 +546,8 @@ export async function getStage2DeptSummary(dateFilter = 'all') {
 
 // 二階各日人數：進二階者依 stage2_date 統計（以 account 去重；全志願皆未排者計入 unscheduled）
 export async function getStage2DateCounts() {
-  const rows = await callProxy(
-    '/rest/v1/applications?select=account,stage2_date&stage1_passed_date=not.is.null&paper_passed=is.true',
-    'GET',
+  const rows = await fetchAll(
+    '/rest/v1/applications?select=account,stage2_date&stage1_passed_date=not.is.null&paper_passed=is.true&order=id.asc',
   )
   const byDate = new Map()           // iso → Set(account)
   const dated = new Set()            // 已有任一志願排日的帳號
@@ -557,9 +569,8 @@ export async function getStage2DateCounts() {
 
 // 進度總覽用：進二階的「人」之中，已被任一系評過分的人數（以 account 去重）
 export async function getStage2Progress() {
-  const rows = await callProxy(
-    '/rest/v1/applications?select=account,evaluations(id)&stage1_passed_date=not.is.null&paper_passed=is.true',
-    'GET',
+  const rows = await fetchAll(
+    '/rest/v1/applications?select=account,evaluations(id)&stage1_passed_date=not.is.null&paper_passed=is.true&order=id.asc',
   )
   const m = new Map()
   for (const r of (rows || [])) {
@@ -610,25 +621,23 @@ export async function getStage2Roster(date) {
 
 // 尚未排定二階面試日者（同條件但 stage2_date 為 null）。
 export async function getStage2Unscheduled() {
-  return callProxy(
+  return fetchAll(
     '/rest/v1/applications?select=account,name,name_english,nationality,gender,passport_number,center,department,preference_order,stage2_date' +
-      '&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=is.null&order=name.asc',
-    'GET',
+      '&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=is.null&order=name.asc,id.asc',
   )
 }
 
 // 漏網之魚：面試日已過（stage2_date < today）的學生，前端再比對報到／評分判斷是否未完成。
 export async function getStage2NoShows(today) {
-  return callProxy(
+  return fetchAll(
     '/rest/v1/applications?select=account,name,name_english,nationality,gender,passport_number,center,department,preference_order,stage2_date,evaluations(id,eval_date)' +
-      `&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=not.is.null&stage2_date=lt.${today}&order=stage2_date.asc,name.asc`,
-    'GET',
+      `&stage1_passed_date=not.is.null&paper_passed=is.true&stage2_date=not.is.null&stage2_date=lt.${today}&order=stage2_date.asc,name.asc,id.asc`,
   )
 }
 
 // 今日以前的所有報到／進度紀錄（資料量小，全帶回前端比對）。
 export async function getCheckinsBefore(today) {
-  return callProxy(`/rest/v1/stage2_checkins?checkin_date=lt.${today}&select=*`, 'GET')
+  return fetchAll(`/rest/v1/stage2_checkins?checkin_date=lt.${today}&select=*&order=id.asc`)
 }
 
 // 批次指派／清除二階面試日（依帳號，同帳號所有志願列一起設定）。每 50 個帳號一批。
@@ -708,10 +717,9 @@ export async function setStage2DateByIds(ids, date) {
 
 // 分天指派用：所有二階資格者的「逐志願」清單（含各列目前 stage2_date），供依系所統計與個別搜尋調整。
 export async function getStage2AllPrefs() {
-  return callProxy(
+  return fetchAll(
     '/rest/v1/applications?select=id,account,name,name_english,department,preference_order,stage2_date' +
-      '&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc,preference_order.asc',
-    'GET',
+      '&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc,preference_order.asc,id.asc',
   )
 }
 
@@ -722,7 +730,7 @@ export async function getCheckins(date) {
 
 // 全部報到／進度列（老師端依各學生自己的面試日比對，不限定單一日期）。
 export async function getAllCheckins() {
-  return callProxy('/rest/v1/stage2_checkins?select=*', 'GET')
+  return fetchAll('/rest/v1/stage2_checkins?select=*&order=id.asc')
 }
 
 // upsert 一筆報到／進度（on_conflict account,checkin_date,department，merge-duplicates）。
@@ -758,11 +766,11 @@ export async function deleteCheckin(account, date, department) {
 //   最終錄取／備取看 final_admissions.final_status；確定就讀看 stage4 contact_status。
 export async function getFunnelStats() {
   const [apps, s1, s2chk, fa, s4] = await Promise.all([
-    callProxy('/rest/v1/applications?select=account', 'GET'),
-    callProxy('/rest/v1/stage1_records?select=account', 'GET'),
-    callProxy('/rest/v1/stage2_checkins?select=account&department=eq.&status=eq.arrived', 'GET'),
-    callProxy('/rest/v1/final_admissions?select=account,final_status', 'GET'),
-    callProxy('/rest/v1/stage4_confirmations?select=account,contact_status', 'GET'),
+    fetchAll('/rest/v1/applications?select=account&order=id.asc'),
+    fetchAll('/rest/v1/stage1_records?select=account&order=id.asc'),
+    fetchAll('/rest/v1/stage2_checkins?select=account&department=eq.&status=eq.arrived&order=id.asc'),
+    fetchAll('/rest/v1/final_admissions?select=account,final_status&order=id.asc'),
+    fetchAll('/rest/v1/stage4_confirmations?select=account,contact_status&order=id.asc'),
   ])
   const uniq = (rows) => new Set((rows || []).map((r) => r.account).filter(Boolean)).size
   return {
@@ -792,11 +800,11 @@ export async function saveYearlySnapshot(row) {
 // 全部走現有 read RLS（getFunnelStats 已在生產驗證可讀），不需任何 DDL。
 export async function getDashboardData() {
   const [apps, s1, s2chk, fa, s4] = await Promise.all([
-    callProxy('/rest/v1/applications?select=account,department,preference_order,nationality,gender,birth_date,center', 'GET'),
-    callProxy('/rest/v1/stage1_records?select=account', 'GET'),
-    callProxy('/rest/v1/stage2_checkins?select=account&department=eq.&status=eq.arrived', 'GET'),
-    callProxy('/rest/v1/final_admissions?select=account,department,final_status', 'GET'),
-    callProxy('/rest/v1/stage4_confirmations?select=account,department,contact_status', 'GET'),
+    fetchAll('/rest/v1/applications?select=account,department,preference_order,nationality,gender,birth_date,center&order=id.asc'),
+    fetchAll('/rest/v1/stage1_records?select=account&order=id.asc'),
+    fetchAll('/rest/v1/stage2_checkins?select=account&department=eq.&status=eq.arrived&order=id.asc'),
+    fetchAll('/rest/v1/final_admissions?select=account,department,final_status&order=id.asc'),
+    fetchAll('/rest/v1/stage4_confirmations?select=account,department,contact_status&order=id.asc'),
   ])
   return { apps: apps || [], stage1: s1 || [], stage2: s2chk || [], finalAdmissions: fa || [], stage4: s4 || [] }
 }
@@ -804,9 +812,8 @@ export async function getDashboardData() {
 // ── Admin 匯出最終名單 ──────────────────────────────────────────────────────
 // recommendation = admit 的評分，連同 applications 一起帶出
 export async function getFinalList() {
-  return callProxy(
-    '/rest/v1/evaluations?select=*,applications(*)&recommendation=eq.admit&order=total_score.desc',
-    'GET',
+  return fetchAll(
+    '/rest/v1/evaluations?select=*,applications(*)&recommendation=eq.admit&order=total_score.desc,id.asc',
   )
 }
 
@@ -849,17 +856,16 @@ export async function loginTeacher(username, password) {
 // ── Stage 3（第三階段 · 最終錄取）──────────────────────────────────────────
 // 所有二階評分 + 對應 application（只有已過一階者才會有評分）
 export async function getStage3Data() {
-  const rows = await callProxy(
+  const rows = await fetchAll(
     '/rest/v1/evaluations?select=*,applications(account,name,name_english,department,stage1_passed_date,preference_order,center,nationality,gender,withdrawn)' +
-      '&order=department.asc,total_score.desc',
-    'GET',
+      '&order=department.asc,total_score.desc,id.asc',
   )
   // 轉報後原志願已標記 withdrawn，排除其評分列不進放榜比對
   return (rows || []).filter((e) => !e.applications?.withdrawn)
 }
 
 export async function getFinalAdmissions() {
-  return callProxy('/rest/v1/final_admissions?select=*', 'GET')
+  return fetchAll('/rest/v1/final_admissions?select=*&order=id.asc')
 }
 
 // 依 (account, department) upsert 最終錄取狀態（資料表有 UNIQUE(account, department)）
@@ -877,13 +883,11 @@ export async function upsertFinalAdmission(row) {
 // 再以 account join applications 補上學生基本資料（appInfo）。
 // stage4_confirmations 未設 FK 到 applications，故分兩次撈、前端組合。
 export async function getStage4Data() {
-  const s4 = await callProxy(
-    '/rest/v1/stage4_confirmations?select=*&order=center.asc,department.asc,stage3_status.asc,standby_rank.asc',
-    'GET',
+  const s4 = await fetchAll(
+    '/rest/v1/stage4_confirmations?select=*&order=center.asc,department.asc,stage3_status.asc,standby_rank.asc,id.asc',
   )
-  const apps = await callProxy(
-    '/rest/v1/applications?select=account,name,name_english,nationality,birth_date,passport_number,email',
-    'GET',
+  const apps = await fetchAll(
+    '/rest/v1/applications?select=account,name,name_english,nationality,birth_date,passport_number,email&order=id.asc',
   )
   const appMap = new Map((apps || []).map((a) => [a.account, a]))
   return (s4 || []).map((r) => ({ ...r, appInfo: appMap.get(r.account) || {} }))
@@ -892,21 +896,19 @@ export async function getStage4Data() {
 // ── 寄信名單（YAMM 郵件合併用；皆含 Email、以「人」為單位）──────────────
 // ② 二階（系所面試）通知：通過一階且書審通過者，一人一列、附報考系所
 export async function getNotifyStage2() {
-  const rows = await callProxy(
+  const rows = await fetchAll(
     '/rest/v1/applications?select=account,name,name_english,email,nationality,stage1_passed_date,department,preference_order' +
-      '&account=not.is.null&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc',
-    'GET',
+      '&account=not.is.null&stage1_passed_date=not.is.null&paper_passed=is.true&order=name.asc,id.asc',
   )
   return groupByAccount(rows || [])   // allDepts 內含全部報考系所
 }
 
 // ③ 三階（錄取）通知：final_admissions 為 admitted 者，join applications 取 Email
 export async function getNotifyStage3() {
-  const fa = await callProxy(
-    '/rest/v1/final_admissions?select=account,department,final_status&final_status=eq.admitted',
-    'GET',
+  const fa = await fetchAll(
+    '/rest/v1/final_admissions?select=account,department,final_status&final_status=eq.admitted&order=id.asc',
   )
-  const apps = await callProxy('/rest/v1/applications?select=account,name,name_english,email', 'GET')
+  const apps = await fetchAll('/rest/v1/applications?select=account,name,name_english,email&order=id.asc')
   const m = new Map((apps || []).map((a) => [a.account, a]))
   const seen = new Set(); const out = []
   for (const r of (fa || [])) {
@@ -921,11 +923,10 @@ export async function getNotifyStage3() {
 // ── 統計頁：正取學生 + 性別（一人一列，依帳號去重）──────────────
 // final_admissions(admitted) join applications 取性別；校區由系所在 StatsApp 端判定
 export async function getAdmittedForStats() {
-  const fa = await callProxy(
-    '/rest/v1/final_admissions?select=account,department&final_status=eq.admitted',
-    'GET',
+  const fa = await fetchAll(
+    '/rest/v1/final_admissions?select=account,department&final_status=eq.admitted&order=id.asc',
   )
-  const apps = await callProxy('/rest/v1/applications?select=account,gender', 'GET')
+  const apps = await fetchAll('/rest/v1/applications?select=account,gender&order=id.asc')
   const genderMap = new Map((apps || []).map((a) => [a.account, a.gender]))
   const seen = new Set()
   const out = []
@@ -939,11 +940,10 @@ export async function getAdmittedForStats() {
 
 // ── 就讀學生（含性別，依帳號去重）：stage4 contact_status='enrolled' ──────────
 export async function getEnrolledForStats() {
-  const s4 = await callProxy(
-    '/rest/v1/stage4_confirmations?select=account,department&contact_status=eq.enrolled',
-    'GET',
+  const s4 = await fetchAll(
+    '/rest/v1/stage4_confirmations?select=account,department&contact_status=eq.enrolled&order=id.asc',
   )
-  const apps = await callProxy('/rest/v1/applications?select=account,gender', 'GET')
+  const apps = await fetchAll('/rest/v1/applications?select=account,gender&order=id.asc')
   const genderMap = new Map((apps || []).map((a) => [a.account, a.gender]))
   const seen = new Set()
   const out = []
@@ -961,9 +961,8 @@ export async function getEnrolledForStats() {
 // 不寫入 stage4_confirmations，純即時計算；依最高志願序（preference_order 最小）
 // 的系所分組，附 Email/姓名/國籍供寄信。寄送狀態走 mail_log（kind='s4_reject'）。
 export async function getStage4Rejected() {
-  const fa = await callProxy(
-    '/rest/v1/final_admissions?select=account,department,final_status',
-    'GET',
+  const fa = await fetchAll(
+    '/rest/v1/final_admissions?select=account,department,final_status&order=id.asc',
   )
   // 以帳號彙整放榜結果，判斷是否「全部皆未錄取」
   const byAcct = new Map()
@@ -979,9 +978,8 @@ export async function getStage4Rejected() {
   if (!rejSet.size) return []
 
   // 取這些帳號的 applications，挑最高志願序（preference_order 最小）的系所作代表列
-  const apps = await callProxy(
-    '/rest/v1/applications?select=account,name,name_english,email,nationality,department,preference_order,center&order=preference_order.asc',
-    'GET',
+  const apps = await fetchAll(
+    '/rest/v1/applications?select=account,name,name_english,email,nationality,department,preference_order,center&order=preference_order.asc,id.asc',
   )
   const pick = new Map()   // account → 代表列
   for (const a of (apps || [])) {
@@ -1007,17 +1005,14 @@ export async function getStage4Rejected() {
 //   4. upsert（on_conflict account+department，merge-duplicates）；
 //      已存在且 contact_status != 'pending' 的不覆蓋，保護進行中（候補詢問/就讀/放棄…）的資料
 export async function syncStage4FromStage3() {
-  const admissions = await callProxy(
-    '/rest/v1/final_admissions?select=*&or=(final_status.eq.admitted,final_status.eq.waitlisted)',
-    'GET',
+  const admissions = await fetchAll(
+    '/rest/v1/final_admissions?select=*&or=(final_status.eq.admitted,final_status.eq.waitlisted)&order=id.asc',
   )
-  const evals = await callProxy(
-    '/rest/v1/evaluations?select=department,total_score,applications(account)&order=total_score.desc',
-    'GET',
+  const evals = await fetchAll(
+    '/rest/v1/evaluations?select=department,total_score,applications(account)&order=total_score.desc,id.asc',
   )
-  const apps = await callProxy(
-    '/rest/v1/applications?select=account,department,preference_order,center&order=preference_order.asc',
-    'GET',
+  const apps = await fetchAll(
+    '/rest/v1/applications?select=account,department,preference_order,center&order=preference_order.asc,id.asc',
   )
 
   // account__department → total_score（evaluations 無 account 欄位，經 applications join 取得）
@@ -1061,9 +1056,8 @@ export async function syncStage4FromStage3() {
   }
 
   // 保護進行中資料：已存在且 contact_status != 'pending' 的 (account,department) 不重新同步
-  const existing = await callProxy(
-    '/rest/v1/stage4_confirmations?select=account,department,contact_status',
-    'GET',
+  const existing = await fetchAll(
+    '/rest/v1/stage4_confirmations?select=account,department,contact_status&order=id.asc',
   )
   const locked = new Set(
     (existing || [])
@@ -1102,12 +1096,12 @@ export async function updateStage4Status(id, fields) {
 // 一次撈五張表全部資料，給「匯出年度備份」做成多工作表 Excel。
 export async function exportAllData() {
   const [apps, s1, s2, s3, s4, chk] = await Promise.all([
-    callProxy('/rest/v1/applications?select=*', 'GET'),
-    callProxy('/rest/v1/stage1_records?select=*', 'GET'),
-    callProxy('/rest/v1/evaluations?select=*', 'GET'),
-    callProxy('/rest/v1/final_admissions?select=*', 'GET'),
-    callProxy('/rest/v1/stage4_confirmations?select=*', 'GET'),
-    callProxy('/rest/v1/stage2_checkins?select=*', 'GET'),
+    fetchAll('/rest/v1/applications?select=*&order=id.asc'),
+    fetchAll('/rest/v1/stage1_records?select=*&order=id.asc'),
+    fetchAll('/rest/v1/evaluations?select=*&order=id.asc'),
+    fetchAll('/rest/v1/final_admissions?select=*&order=id.asc'),
+    fetchAll('/rest/v1/stage4_confirmations?select=*&order=id.asc'),
+    fetchAll('/rest/v1/stage2_checkins?select=*&order=id.asc'),
   ])
   return { apps, s1, s2, s3, s4, chk }
 }
@@ -1179,9 +1173,8 @@ export async function logMail(rows) {
 }
 
 export async function getMailLog(kind) {
-  const rows = await callProxy(
-    `/rest/v1/mail_log?select=account,kind,status,sent_at,draft_ids&kind=eq.${encodeURIComponent(kind)}`,
-    'GET',
+  const rows = await fetchAll(
+    `/rest/v1/mail_log?select=account,kind,status,sent_at,draft_ids&kind=eq.${encodeURIComponent(kind)}&order=account.asc,kind.asc`,
   )
   return Object.fromEntries((rows || []).map((r) => [r.account, r]))
 }
@@ -1415,7 +1408,7 @@ export async function getStage4ConfirmLog() {
 // 可轉報的目標系所：全系所清單扣掉該生原本已報考的系（皆以 applications.department 的實際字串為準）
 export async function getTransferTargets(account) {
   const [all, mine] = await Promise.all([
-    callProxy('/rest/v1/applications?select=department', 'GET'),
+    fetchAll('/rest/v1/applications?select=department&order=id.asc'),
     callProxy(`/rest/v1/applications?select=department&account=eq.${encodeURIComponent(account)}`, 'GET'),
   ])
   const taken = new Set((mine || []).map((a) => a.department).filter(Boolean))
@@ -1487,11 +1480,11 @@ export async function doTransfer({ row, toDepartment, note }) {
 //   二階待評分 → 二階已評分 → 三階正取/備取/不錄取 → 四階(就讀/放棄)
 export async function getTransfers() {
   const [tr, apps, evals, fa, s4] = await Promise.all([
-    callProxy('/rest/v1/transfers?select=*&order=created_at.desc', 'GET'),
-    callProxy('/rest/v1/applications?select=account,name,name_english', 'GET'),
-    callProxy('/rest/v1/evaluations?select=department,total_score,recommendation,applications(account)', 'GET'),
-    callProxy('/rest/v1/final_admissions?select=account,department,final_status', 'GET'),
-    callProxy('/rest/v1/stage4_confirmations?select=account,department,contact_status,stage3_status,standby_rank', 'GET'),
+    fetchAll('/rest/v1/transfers?select=*&order=created_at.desc,id.asc'),
+    fetchAll('/rest/v1/applications?select=account,name,name_english&order=id.asc'),
+    fetchAll('/rest/v1/evaluations?select=department,total_score,recommendation,applications(account)&order=id.asc'),
+    fetchAll('/rest/v1/final_admissions?select=account,department,final_status&order=id.asc'),
+    fetchAll('/rest/v1/stage4_confirmations?select=account,department,contact_status,stage3_status,standby_rank&order=id.asc'),
   ])
   const nameMap = new Map((apps || []).map((a) => [a.account, a]))
   const k = (acct, dept) => `${acct}__${dept}`

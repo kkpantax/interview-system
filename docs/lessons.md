@@ -62,3 +62,16 @@
 - **怎麼應用**：任何涉及「哪張表能不能寫/刪」的判斷，先跑
   `SELECT tablename,policyname,cmd,roles,qual FROM pg_policies WHERE schemaname='public'`
   對照，不要信 CLAUDE.md 或記憶。改完 policy 記得同步更新 CLAUDE.md 資安段。
+
+## 前端整表撈改分頁 fetchAll —— proxy 不回 headers，靠短頁收尾；盤點漏改要 multiline grep + fresh agent
+- **為什麼**：src/api.js 幾十處 `callProxy('/rest/v1/表?select=...','GET')` 整表撈會踩 1000 列無聲截斷。
+  後端 onboard-admin.js 的 fetchAllRows 用 Range header，但前端 /api/submit proxy 只回 body、
+  拿不到 Content-Range，所以前端版 fetchAll 只能用 `?limit=1000&offset=N` + 「回傳列數 < pageSize
+  即最後一頁」收尾。offset 分頁要求「決定性 order（含唯一鍵）」，否則頁邊界漏/重列——每個查詢
+  order 尾端補該表 PK（多數 id，mail_log 是複合 account+kind）。
+- **盤點漏改的坑**：單行 grep（`callProxy\(\s*['"]/rest/v1/...`）抓不到「callProxy( 換行接 url」的
+  多行寫法，第一輪自己 grep 漏了 9 處（getStage2Progress/AllPrefs/Unscheduled、getStage4Rejected、
+  syncStage4FromStage3、getStage1Pending、getStage2List）。派 fresh-context opus 讀全文對抗複查抓回 7 處，
+  再用 multiline grep 補抓 2 處。教訓：盤點「某模式散落全檔」一律 multiline grep + 對抗複查，別信單行 grep 的乾淨。
+- **怎麼應用**：新增整表撈一律走 fetchAll 並補唯一鍵 order；單日/單筆/單系 filter（=eq. 單值、in.() 分批、
+  limit=1）的查詢不會逼近 1000，不必改。改完 npm run build 驗語法、關鍵名單/統計實測列數對照。
