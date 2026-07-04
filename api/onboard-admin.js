@@ -127,6 +127,119 @@ async function fetchProgress(account, H) {
   return out
 }
 
+const isVietnam = (nationality) => {
+  const s = String(nationality || '').toLowerCase()
+  return s.includes('越南') || s.includes('viet') || s.includes('vietnam')
+}
+
+const noticeLangOf = (nationality) => {
+  const s = String(nationality || '').toLowerCase()
+  if (s.includes('越南') || s.includes('viet') || s.includes('vietnam')) return 'vi'
+  if (s.includes('印尼') || s.includes('indonesia')) return 'id'
+  if (s.includes('台灣') || s.includes('taiwan')) return 'zh'
+  return 'en'
+}
+
+const firstValue = (...vals) => vals.find((v) => String(v || '').trim()) || ''
+
+function buildPaymentPassNotice({ row, email, contacts, origin }) {
+  const track = isVietnam(row.nationality) ? 'vn' : 'other'
+  const lang = noticeLangOf(row.nationality)
+  const camp = row.campus || '台北'
+  const c = (contacts && (contacts[camp] || contacts['台北'])) || {}
+  const zhContactLine = firstValue(c.name, c.email, c.phone)
+    ? `\n\n如有任何問題，請聯繫承辦人 ${c.name || ''}${c.email ? `（${c.email}${c.phone ? `，${c.phone}` : ''}）` : ''}。`
+    : ''
+  const foreignContactLine = firstValue(c.name, c.email, c.phone)
+    ? `\n\nIf you have any questions, please contact ${c.name || 'the coordinator'}${c.email ? ` (${c.email}${c.phone ? `, ${c.phone}` : ''})` : ''}.`
+    : ''
+  const link = row.confirm_token ? `${origin}/#/onboard?t=${row.confirm_token}` : ''
+  const hello = `${row.name || row.name_en || row.account} 同學您好：`
+  const foreignName = row.name_en || row.name || row.account
+  const subject = track === 'vn'
+    ? '【實踐大學國際專修部】繳費審核已通過，後續簽證收件說明'
+    : '【實踐大學國際專修部】繳費審核已通過，請確認錄取通知書並辦理簽證'
+  const zhBody = track === 'vn'
+    ? `${hello}\n\n感謝您配合完成入學繳費，您的繳費資料已審核通過。\n\n接下來學校將安排人員前往越南進行簽證資料實體收件。詳細收件日期、時間與地點會另行通知，請密切注意後續通知，並提前準備簽證辦理所需資料。\n\n您也可以登入入學準備系統查看最新狀態：\n${link}${zhContactLine}\n\n實踐大學國際事務處`
+    : `${hello}\n\n感謝您配合完成入學繳費，您的繳費資料已審核通過。\n\n接下來請確認是否已收到紙本錄取通知書。若已收到，請登入入學準備系統回報；若尚未收到，請盡快與我們聯繫。收到紙本錄取通知書後，即可安排前往台灣辦事處辦理簽證。\n\n入學準備系統：\n${link}${zhContactLine}\n\n實踐大學國際事務處`
+  const enBody = track === 'vn'
+    ? `Dear ${foreignName},\n\nYour payment has been reviewed and approved. The university will arrange in-person collection of visa application documents in Vietnam. The detailed date, time, and location will be announced separately. Please watch for future notices and prepare the required visa documents in advance.\n\nYou may also log in to your enrollment preparation page to check the latest status:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+    : `Dear ${foreignName},\n\nYour payment has been reviewed and approved. Please confirm whether you have received the printed admission letter. If you have received it, please log in to the system and report it. If you have not received it yet, please contact us as soon as possible. After receiving the printed admission letter, you may arrange your visa application at the Taiwan office.\n\nEnrollment preparation page:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+  const viBody = track === 'vn'
+    ? `${foreignName} thân mến,\n\nNhà trường đã kiểm tra và xác nhận khoản thanh toán của bạn. Tiếp theo, nhà trường sẽ sắp xếp nhân viên đến Việt Nam để thu hồ sơ xin thị thực trực tiếp. Ngày, giờ và địa điểm cụ thể sẽ được thông báo riêng. Vui lòng theo dõi các thông báo tiếp theo và chuẩn bị trước các giấy tờ cần thiết.\n\nBạn cũng có thể đăng nhập vào trang chuẩn bị nhập học để kiểm tra trạng thái mới nhất:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+    : `${foreignName} thân mến,\n\nNhà trường đã kiểm tra và xác nhận khoản thanh toán của bạn. Tiếp theo, vui lòng xác nhận bạn đã nhận được giấy báo nhập học bản giấy hay chưa. Nếu đã nhận được, vui lòng đăng nhập vào hệ thống để phản hồi. Nếu chưa nhận được, vui lòng liên hệ với chúng tôi sớm nhất có thể. Sau khi nhận được giấy báo nhập học bản giấy, bạn có thể sắp xếp đến văn phòng Đài Loan để làm thủ tục xin thị thực.\n\nTrang chuẩn bị nhập học:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+  const idBody = track === 'vn'
+    ? `Yth. ${foreignName},\n\nPembayaran Anda telah diperiksa dan disetujui. Selanjutnya, pihak universitas akan mengatur pengambilan dokumen aplikasi visa secara langsung di Vietnam. Tanggal, waktu, dan lokasi rinci akan diumumkan secara terpisah. Mohon perhatikan pengumuman berikutnya dan siapkan dokumen yang diperlukan terlebih dahulu.\n\nAnda juga dapat masuk ke halaman persiapan pendaftaran untuk memeriksa status terbaru:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+    : `Yth. ${foreignName},\n\nPembayaran Anda telah diperiksa dan disetujui. Selanjutnya, mohon konfirmasi apakah Anda sudah menerima surat penerimaan versi cetak. Jika sudah menerima, silakan masuk ke sistem dan melaporkannya. Jika belum menerima, mohon segera hubungi kami. Setelah menerima surat penerimaan versi cetak, Anda dapat mengatur jadwal pengajuan visa di kantor Taiwan.\n\nHalaman persiapan pendaftaran:\n${link}${foreignContactLine}\n\nOffice of International Affairs, Shih Chien University`
+  const nativeBody = lang === 'vi' ? viBody : lang === 'id' ? idBody : lang === 'zh' ? zhBody : enBody
+  const body = lang === 'zh' ? zhBody : `${nativeBody}\n\n------------------------------\n\n${zhBody}`
+  return { track, message: { to: email, subject, body } }
+}
+
+async function sendPaymentPassNotice({ account, H, origin, nowIso, logRow }) {
+  const DRAFT_URL = process.env.DRAFT_SERVICE_URL
+  const DRAFT_TOKEN = process.env.DRAFT_SERVICE_TOKEN
+  if (!DRAFT_URL || !DRAFT_TOKEN) return { ok: false, error: '未設定 DRAFT_SERVICE_URL / DRAFT_SERVICE_TOKEN' }
+
+  const [sRes, aRes, cRes, cur] = await Promise.all([
+    fetch(`${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(account)}&select=account,name,name_en,department,campus,batch,nationality,confirm_token&limit=1`, { headers: H }),
+    fetch(`${SUPABASE_URL}/rest/v1/applications?account=eq.${encodeURIComponent(account)}&select=account,email,name_english&limit=1`, { headers: H }),
+    fetch(`${SUPABASE_URL}/rest/v1/enroll_config?key=eq.contacts&select=value&limit=1`, { headers: H }),
+    fetchProgress(account, H),
+  ])
+  const sRows = sRes.ok ? await sRes.json() : []
+  const aRows = aRes.ok ? await aRes.json() : []
+  const cRows = cRes.ok ? await cRes.json() : []
+  const row = (Array.isArray(sRows) && sRows[0]) || null
+  const app = (Array.isArray(aRows) && aRows[0]) || {}
+  if (!row) return { ok: false, error: '查無入學準備學生' }
+  if (cur[3]?.data?.payment_pass_notice_sent_at) return { ok: true, skipped: true }
+  const email = app.email || ''
+  if (!email) return { ok: false, error: '查無 Email' }
+
+  const { track, message } = buildPaymentPassNotice({
+    row: { ...row, name_en: row.name_en || app.name_english || '' },
+    email,
+    contacts: (Array.isArray(cRows) && cRows[0]?.value) || {},
+    origin,
+  })
+  const created = await fetch(DRAFT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: DRAFT_TOKEN, action: 'create_drafts', messages: [message] }),
+    redirect: 'follow',
+  })
+  const out = await created.json().catch(() => null)
+  const draftId = out?.drafts?.[0]?.draftId
+  if (!created.ok || out?.ok === false || !draftId) return { ok: false, error: out?.error || `建立草稿失敗 HTTP ${created.status}` }
+
+  const sent = await fetch(DRAFT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: DRAFT_TOKEN, action: 'send_batch', draftIds: [draftId] }),
+    redirect: 'follow',
+  })
+  const sentOut = await sent.json().catch(() => null)
+  if (!sent.ok || sentOut?.ok === false) return { ok: false, error: sentOut?.error || `寄送失敗 HTTP ${sent.status}` }
+
+  const d0 = cur[3]?.data || {}
+  await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.3`, {
+    method: 'PATCH',
+    headers: { ...H, Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      data: {
+        ...d0,
+        visa_track: d0.visa_track || track,
+        visa_stage: d0.visa_stage || 'pending',
+        payment_pass_notice_sent_at: nowIso,
+        payment_pass_notice_error: null,
+      },
+    }),
+  }).catch(() => {})
+  await logRow(account, 3, 'payment_pass_notice_sent', { to: email, track })
+  return { ok: true, track }
+}
+
 export default async function handler(req) {
   if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405)
 
@@ -278,6 +391,21 @@ export default async function handler(req) {
       }
     }
     await logRow(account, step, 'admin_confirm', { step })
+    if (step === 2) {
+      const mail = await sendPaymentPassNotice({ account, H, origin: new URL(req.url).origin, nowIso, logRow })
+      if (!mail.ok) {
+        const cur = await fetchProgress(account, H)
+        const d0 = cur[3]?.data || {}
+        await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.3`, {
+          method: 'PATCH',
+          headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ data: { ...d0, payment_pass_notice_error: mail.error || '通知信寄送失敗' } }),
+        }).catch(() => {})
+        await logRow(account, 3, 'payment_pass_notice_error', { error: mail.error || 'unknown' })
+        return json({ ok: true, auto_mail_error: mail.error || '通知信寄送失敗' })
+      }
+      return json({ ok: true, auto_mail_sent: !mail.skipped })
+    }
     return json({ ok: true })
   }
 
@@ -331,6 +459,34 @@ export default async function handler(req) {
       ).catch(() => { /* 收回步驟3 失敗不阻斷 */ })
     }
     await logRow(account, 2, 'reopen_step2', { reason: body.reason || '', prev_step3: s3 || null })
+    return json({ ok: true })
+  }
+
+  // ── save-visa-data：第 3 步錄取通知書/簽證追蹤資料 ─────────────────────────
+  if (action === 'save-visa-data') {
+    const account = body.account ? String(body.account) : ''
+    const fields = body.fields && typeof body.fields === 'object' && !Array.isArray(body.fields) ? body.fields : null
+    if (!account || !fields) return json({ ok: false, error: '參數錯誤' }, 400)
+    const cur = await fetchProgress(account, H)
+    const d0 = (cur[3] && cur[3].data) || {}
+    const allow = [
+      'visa_track', 'admission_letter_url', 'paper_letter_sent_at', 'paper_letter_tracking_no',
+      'paper_letter_deadline', 'vn_collection_date', 'vn_collection_time', 'vn_collection_city',
+      'vn_collection_place', 'vn_collection_note', 'vn_pre_notice_sent_at', 'vn_student_ack_at',
+      'vn_documents_collected_at', 'paper_letter_received_at', 'paper_letter_help_requested_at',
+      'other_visa_apply_date', 'other_visa_expected_date', 'other_visa_note',
+    ]
+    const clean = {}
+    for (const k of allow) {
+      if (k in fields) clean[k] = fields[k] == null ? null : String(fields[k]).trim()
+    }
+    if (clean.visa_track && !['vn', 'other'].includes(clean.visa_track)) clean.visa_track = d0.visa_track || 'other'
+    const up = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.3`,
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ data: { ...d0, ...clean } }) },
+    )
+    if (!up.ok) return json({ ok: false, error: '儲存失敗：' + (await up.text()) }, 500)
+    await logRow(account, 3, 'visa_data_save', { fields: Object.keys(clean) })
     return json({ ok: true })
   }
 

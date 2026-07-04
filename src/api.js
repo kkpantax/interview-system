@@ -1362,6 +1362,10 @@ export const onboardAdminSetVisaStage = (username, password, { account, stage, s
 export const onboardAdminVisaUpload = (username, password, { account, filename, mimeType, dataBase64 }) =>
   onboardAdminPost({ action: 'visa-upload', username, password, account, filename, mimeType, dataBase64 })
 
+// 步驟③ 錄取通知書 / 簽證追蹤資料：payload = { account, fields }
+export const onboardAdminSaveVisaData = (username, password, { account, fields }) =>
+  onboardAdminPost({ action: 'save-visa-data', username, password, account, fields })
+
 // 設定某筆 stage4 的確認 token 與回覆期限（承辦寄信時呼叫；走既有 PATCH proxy）
 export async function setStage4Confirm(id, fields) {
   return updateStage4Status(id, fields)

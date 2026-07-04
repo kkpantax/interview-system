@@ -206,6 +206,37 @@ export default async function handler(req) {
       return json({ ok: true })
     }
 
+    // ── 步驟3：錄取通知書 / 簽證前置回報 ─────────────────────────────────────
+    if (['visa-paper-received', 'visa-paper-help', 'visa-other-dates', 'visa-vn-ack'].includes(action)) {
+      const before = await fetchProgress(student.account, H)
+      const d0 = before[3]?.data || {}
+      const patch = {}
+      if (action === 'visa-paper-received') {
+        patch.paper_letter_received_at = nowIso
+        patch.paper_letter_help_requested_at = null
+      }
+      if (action === 'visa-paper-help') patch.paper_letter_help_requested_at = nowIso
+      if (action === 'visa-vn-ack') patch.vn_student_ack_at = nowIso
+      if (action === 'visa-other-dates') {
+        const applyDate = String(data?.other_visa_apply_date || '').trim()
+        const expectedDate = String(data?.other_visa_expected_date || '').trim()
+        if (!applyDate || !expectedDate) return json({ ok: false, error: '請填寫辦理簽證日期與預計取得日期' }, 400)
+        patch.other_visa_apply_date = applyDate
+        patch.other_visa_expected_date = expectedDate
+        patch.other_visa_note = String(data?.other_visa_note || '').trim()
+        patch.other_visa_dates_submitted_at = nowIso
+      }
+      const up = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(student.account)}&step=eq.3`, {
+        method: 'PATCH',
+        headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ data: { ...d0, ...patch } }),
+      })
+      if (!up.ok) return json({ ok: false, error: '回報失敗：' + (await up.text()) }, 500)
+      await logRow(action, 3, patch)
+      const progress = await fetchProgress(student.account, H)
+      return json({ ok: true, progress })
+    }
+
     // ── 步驟1：資料確認（→ confirmed，並自動開步驟2）─────────────────────────
     if (stepN === 1) {
       if (line_joined !== true) return json({ ok: false, error: '請先加入 LINE 群組並勾選確認' }, 400)

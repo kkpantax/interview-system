@@ -8,7 +8,7 @@ import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdmi
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
   onboardAdminMailRecipients, onboardAdminMailMarkSent, onboardAdminMailLogDraft, onboardAdminStep1Data,
   onboardAdminReopenStep1, onboardAdminReopenStep2,
-  onboardAdminSetVisaStage, onboardAdminVisaUpload } from '../api'
+  onboardAdminSetVisaStage, onboardAdminVisaUpload, onboardAdminSaveVisaData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge, driveImageUrl } from '../utils'
 import { ENROLL_STEPS, deptZhFull, ONBOARD_STEP1_FIELDS } from '../constants'
@@ -130,6 +130,7 @@ export default function OnboardAdminApp() {
   const [detail, setDetail] = useState(null)          // 檢視資料彈窗：{account,name,loading,step1_state,data,department,campus}
   const [preview, setPreview] = useState(null)        // 上傳檔案站內預覽彈窗：{url,name}
   const [visaUp, setVisaUp] = useState(null)          // 步驟③ 代上傳簽證彈窗：{account,name}
+  const [visaEdit, setVisaEdit] = useState(null)      // 步驟③ 追蹤彈窗：{account,name,data}
   const [toast, setToast] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)   // 名單最後一次成功刷新的時間（含自動刷新），標頭顯示
 
@@ -188,8 +189,10 @@ export default function OnboardAdminApp() {
     if (!window.confirm(`確認「${stu.name || stu.account}」的『${ENROLL_STEPS[step - 1]?.zh}』已完成？\n將標記為已確認並開啟下一步。`)) return
     setBusy(true)
     try {
-      await onboardAdminConfirm(teacher.username, pw, stu.account, step)
-      showToast(`已確認 ${stu.name || stu.account} 的${ENROLL_STEPS[step - 1]?.zh}`)
+      const res = await onboardAdminConfirm(teacher.username, pw, stu.account, step)
+      if (step === 2 && res?.auto_mail_error) showToast(`已確認繳費，但第一封通知信寄送失敗：${res.auto_mail_error}`, 'warn')
+      else if (step === 2 && res?.auto_mail_sent) showToast(`已確認繳費，並已自動寄出簽證流程說明信`)
+      else showToast(`已確認 ${stu.name || stu.account} 的${ENROLL_STEPS[step - 1]?.zh}`)
       await load()
     } catch (e) { showToast('確認失敗：' + e.message, 'error') }
     finally { setBusy(false) }
@@ -319,6 +322,26 @@ export default function OnboardAdminApp() {
       setVisaUp(null)
       await load()
     } catch (e) { showToast('上傳失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const openVisaEdit = (stu) => {
+    setVisaEdit({
+      account: stu.account,
+      name: stu.name,
+      data: { ...(stu.steps?.[3]?.data || {}) },
+    })
+  }
+
+  const saveVisaEdit = async () => {
+    if (!visaEdit || busy) return
+    setBusy(true)
+    try {
+      await onboardAdminSaveVisaData(teacher.username, pw, { account: visaEdit.account, fields: visaEdit.data })
+      showToast(`已更新 ${visaEdit.name || visaEdit.account} 的簽證追蹤資料`)
+      setVisaEdit(null)
+      await load()
+    } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
     finally { setBusy(false) }
   }
 
@@ -847,6 +870,8 @@ export default function OnboardAdminApp() {
                                 title="標記為補件中"
                                 style={{ ...s.btn, ...s.btnSm, color: '#b45309', borderColor: '#fde68a',
                                   ...(visaStageOf(stu) === 'supplement' ? { background: '#fef3c7' } : {}) }}>補件</button>
+                              <button onClick={() => openVisaEdit(stu)} disabled={busy}
+                                style={{ ...s.btn, ...s.btnSm }}>追蹤</button>
                               <button onClick={() => setVisaUp({ account: stu.account, name: stu.name })} disabled={busy}
                                 style={{ ...s.btn, ...s.btnSm }}>⬆ 代上傳</button>
                               {visaStageOf(stu) === 'uploaded' && st !== 'confirmed' && (
@@ -1373,6 +1398,85 @@ export default function OnboardAdminApp() {
           </div>
         </Modal>
       )}
+
+      {visaEdit && (() => {
+        const d = visaEdit.data || {}
+        const setD = (k, v) => setVisaEdit((p) => ({ ...p, data: { ...(p.data || {}), [k]: v } }))
+        const isVn = (d.visa_track === 'vn')
+        const field = (key, label, type = 'text') => (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>{label}</div>
+            <input type={type} value={d[key] || ''} onChange={(e) => setD(key, e.target.value)}
+              style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontSize: 13 }} />
+          </div>
+        )
+        return (
+          <Modal title={`簽證追蹤 — ${visaEdit.name || ''}（${visaEdit.account}）`} onClose={() => busy ? null : setVisaEdit(null)} width={620}>
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, marginBottom: 8 }}>基本設定</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>簽證軌道</div>
+                    <select value={d.visa_track || 'other'} onChange={(e) => setD('visa_track', e.target.value)}
+                      style={{ ...s.sel, width: '100%', boxSizing: 'border-box' }}>
+                      <option value="vn">越南軌</option>
+                      <option value="other">非越南軌</option>
+                    </select>
+                  </div>
+                  {field('admission_letter_url', '錄取通知書電子檔連結')}
+                </div>
+                {d.payment_pass_notice_sent_at && <div style={{ fontSize: 12, color: '#15803d' }}>繳費通過通知已寄出：{fmtTime(d.payment_pass_notice_sent_at)}</div>}
+                {d.payment_pass_notice_error && <div style={{ fontSize: 12, color: '#b91c1c' }}>繳費通過通知寄送失敗：{d.payment_pass_notice_error}</div>}
+              </div>
+
+              {isVn ? (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, marginBottom: 8 }}>越南收件安排</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' }}>
+                    {field('vn_collection_date', '收件日期', 'date')}
+                    {field('vn_collection_time', '收件時間', 'time')}
+                    {field('vn_collection_city', '城市')}
+                    {field('vn_collection_place', '收件地點')}
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>備註</div>
+                    <textarea rows={3} value={d.vn_collection_note || ''} onChange={(e) => setD('vn_collection_note', e.target.value)}
+                      style={{ ...s.input, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => setD('vn_documents_collected_at', d.vn_documents_collected_at ? '' : new Date().toISOString())}
+                      style={{ ...s.btn, ...s.btnSm, ...(d.vn_documents_collected_at ? { background: '#dcfce7', color: '#15803d', borderColor: '#86efac' } : {}) }}>
+                      {d.vn_documents_collected_at ? '已收件' : '標記已收件'}
+                    </button>
+                    {d.vn_student_ack_at && <span style={{ fontSize: 12, color: '#15803d' }}>學生已確認會到場：{fmtTime(d.vn_student_ack_at)}</span>}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, marginBottom: 8 }}>非越南紙本與簽證日期</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' }}>
+                    {field('paper_letter_sent_at', '紙本寄出日期', 'date')}
+                    {field('paper_letter_deadline', '未收到聯繫期限', 'date')}
+                    {field('paper_letter_tracking_no', '掛號 / 追蹤號碼')}
+                    {field('other_visa_apply_date', '學生回報辦理日期', 'date')}
+                    {field('other_visa_expected_date', '學生回報預計取得日期', 'date')}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#666', lineHeight: 1.8 }}>
+                    {d.paper_letter_received_at && <div style={{ color: '#15803d' }}>學生已回報收到紙本：{fmtTime(d.paper_letter_received_at)}</div>}
+                    {d.paper_letter_help_requested_at && <div style={{ color: '#b45309' }}>學生回報尚未收到、需要協助：{fmtTime(d.paper_letter_help_requested_at)}</div>}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <Btn disabled={busy} onClick={() => setVisaEdit(null)}>取消</Btn>
+                <Btn variant="primary" disabled={busy} onClick={saveVisaEdit}>儲存追蹤資料</Btn>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {visaUp && (
         <Modal title={`代上傳簽證 — ${visaUp.name || ''}（${visaUp.account}）`} onClose={() => busy ? null : setVisaUp(null)} width={480}>

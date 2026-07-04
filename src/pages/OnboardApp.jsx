@@ -171,6 +171,7 @@ export default function OnboardApp({ token }) {
   const [info, setInfo] = useState(undefined)   // undefined=載入中, null=無效
   const [form, setForm] = useState({})
   const [form4, setForm4] = useState({})
+  const [visaForm, setVisaForm] = useState({})
   const [lineJoined, setLineJoined] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)       // 步驟1剛送出成功
@@ -205,6 +206,7 @@ export default function OnboardApp({ token }) {
       if (saved.line_joined) setLineJoined(true)
       // 步驟4表單回填（若曾送出過）
       setForm4(res.progress?.[4]?.data || {})
+      setVisaForm(res.progress?.[3]?.data || {})
     } catch {
       setInfo(null)
     }
@@ -289,6 +291,22 @@ export default function OnboardApp({ token }) {
       alert(e.message)
     } finally { setBusy(false) }
   }
+
+  const submitVisaAction = async (action, data = undefined) => {
+    setBusy(true)
+    try {
+      await onboardSubmit({ token, action, ...(data ? { data } : {}) })
+      await load()
+    } catch (e) {
+      alert(e.message)
+    } finally { setBusy(false) }
+  }
+
+  const submitOtherVisaDates = () => submitVisaAction('visa-other-dates', {
+    other_visa_apply_date: visaForm.other_visa_apply_date,
+    other_visa_expected_date: visaForm.other_visa_expected_date,
+    other_visa_note: visaForm.other_visa_note,
+  })
 
   // 版面（同 ConfirmApp）
   const wrap = { minHeight: '100vh', background: '#f5f4f0', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px', fontFamily: "system-ui, 'Noto Sans TC', sans-serif", color: '#1a1a18' }
@@ -570,8 +588,93 @@ export default function OnboardApp({ token }) {
 
   // ── 步驟3：簽證上傳 ──────────────────────────────────────────────────────────
   const visaFiles = (info.files || []).filter((f) => f.step === 3 && f.kind === 'visa')
+  const visaData = info.progress?.[3]?.data || {}
+  const isVnVisa = (visaData.visa_track === 'vn') || String(student.nationality || '').toLowerCase().includes('viet') || String(student.nationality || '').includes('越南')
+  const admissionUrl = visaData.admission_letter_url || ''
+  const smallActionBtn = {
+    padding: '9px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+    cursor: busy ? 'not-allowed' : 'pointer', border: '1px solid ' + ACCENT, background: ACCENT, color: '#fff',
+  }
+  const smallGhostBtn = { ...smallActionBtn, background: 'white', color: ACCENT }
   const step3Content = (
     <div>
+      <div style={sectionBox}>
+        <div style={sectionTitle}>錄取通知書與簽證辦理</div>
+        <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
+          繳費審核通過後，請依本頁狀態完成錄取通知書確認與簽證辦理回報。
+        </div>
+        {admissionUrl && <a href={admissionUrl} target="_blank" rel="noreferrer" style={linkBtn}>下載錄取通知書電子檔</a>}
+        {visaData.payment_pass_notice_sent_at && (
+          <div style={{ fontSize: 12, color: '#15803d', marginTop: 8 }}>繳費通過通知已寄出：{fmtDate(visaData.payment_pass_notice_sent_at)}</div>
+        )}
+      </div>
+
+      {isVnVisa ? (
+        <div style={sectionBox}>
+          <div style={sectionTitle}>越南簽證資料收件</div>
+          <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
+            學校將另行通知越南實體收件時間與地點。請密切注意通知，並準備簽證辦理所需資料。
+          </div>
+          {(visaData.vn_collection_date || visaData.vn_collection_place) && (
+            <div style={{ ...infoBox, marginBottom: 10 }}>
+              <Row label="收件日期" value={visaData.vn_collection_date || '待通知'} />
+              <Row label="收件時間" value={visaData.vn_collection_time || '待通知'} />
+              <Row label="城市" value={visaData.vn_collection_city || '—'} />
+              <Row label="地點" value={visaData.vn_collection_place || '待通知'} />
+              {visaData.vn_collection_note && <Row label="備註" value={visaData.vn_collection_note} />}
+            </div>
+          )}
+          {visaData.vn_student_ack_at ? (
+            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600 }}>✓ 已回覆會準時前往</div>
+          ) : (
+            <button onClick={() => submitVisaAction('visa-vn-ack')} disabled={busy || !visaData.vn_collection_date}
+              style={bigBtn(busy || !visaData.vn_collection_date)}>
+              我已收到通知，會準時前往
+            </button>
+          )}
+          {visaData.vn_documents_collected_at && (
+            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600, marginTop: 8 }}>✓ 學校已完成收件</div>
+          )}
+        </div>
+      ) : (
+        <div style={sectionBox}>
+          <div style={sectionTitle}>紙本錄取通知書與簽證日期</div>
+          <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
+            請確認是否已收到紙本錄取通知書。收到後即可安排前往台灣辦事處辦理簽證。
+          </div>
+          {visaData.paper_letter_sent_at && <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>紙本寄出：{fmtDate(visaData.paper_letter_sent_at)}</div>}
+          {visaData.paper_letter_received_at ? (
+            <div style={{ color: '#15803d', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>✓ 已回報收到紙本錄取通知書</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => submitVisaAction('visa-paper-received')} disabled={busy} style={{ ...smallActionBtn, flex: '1 1 160px' }}>已收到紙本錄取通知書</button>
+              <button onClick={() => submitVisaAction('visa-paper-help')} disabled={busy} style={{ ...smallGhostBtn, flex: '1 1 160px' }}>尚未收到，需要協助</button>
+            </div>
+          )}
+          {visaData.paper_letter_help_requested_at && (
+            <div style={{ color: '#b45309', fontSize: 12.5, marginBottom: 10 }}>已收到您的回報，承辦人員會協助確認紙本通知書寄送狀態。</div>
+          )}
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div>
+              <label style={labelStyle}>預計辦理簽證日期 *</label>
+              <input type="date" style={inputStyle} value={visaForm.other_visa_apply_date || ''} onChange={(e) => setVisaForm((p) => ({ ...p, other_visa_apply_date: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>預計取得簽證日期 *</label>
+              <input type="date" style={inputStyle} value={visaForm.other_visa_expected_date || ''} onChange={(e) => setVisaForm((p) => ({ ...p, other_visa_expected_date: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>備註</label>
+              <textarea rows={3} style={{ ...inputStyle, resize: 'vertical' }} value={visaForm.other_visa_note || ''} onChange={(e) => setVisaForm((p) => ({ ...p, other_visa_note: e.target.value }))} />
+            </div>
+          </div>
+          <button onClick={submitOtherVisaDates} disabled={busy} style={bigBtn(busy)}>儲存簽證辦理日期</button>
+          {visaData.other_visa_dates_submitted_at && (
+            <div style={{ color: '#15803d', fontSize: 12.5, marginTop: 8 }}>✓ 已回報簽證辦理日期</div>
+          )}
+        </div>
+      )}
+
       <div style={sectionBox}>
         <div style={sectionTitle}>{tr('s3Title')}</div>
         <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>{tr('s3Hint')}</div>
