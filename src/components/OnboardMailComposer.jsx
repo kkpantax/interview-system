@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Modal, Btn, s } from './UI'
 import { createDrafts, sendDraftBatch } from '../api'
-import { buildOnboardMail, onboardMailLang, ENROLL_STEPS, deptZhFull, ONBOARD_RESULT_LINK } from '../constants'
+import { buildOnboardMail, onboardMailLang, ENROLL_STEPS, batchInfo, deptZhFull, ONBOARD_RESULT_LINK } from '../constants'
+import { calcAge } from '../utils'
 
 // 入學準備通知信寄送視窗（比照 Stage4 MailComposer 版型；模板走 constants.js buildOnboardMail）。
 // 與 Stage4 MailComposer 的差異：
@@ -59,6 +60,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         account: r.account, name: r.name || '', name_en: r.name_english || r.name_en || '',
         department: r.department || '', campus: r.campus || '', batch: String(r.batch ?? ''),
         nationality: r.nationality || '', confirm_token: r.confirm_token || '', email: r.email,
+        gender: r.gender || '', birth_date: r.birth_date || '', center: r.center || '',
         lang: l === 'zh' ? 'en' : l,   // 下拉選的是外語；台/中籍預設中英
         sentCount: sc, sentKind: sk,
         sentNow: false, include: suggestInclude({ sentCount: sc, sentKind: sk }, initialTier),
@@ -187,6 +189,18 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
 
   const th = { padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#888', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap' }
   const td = { padding: '8px 12px', borderBottom: '1px solid #f5f4f0', fontSize: 12.5, lineHeight: 1.5, verticalAlign: 'middle' }
+  const studentMeta = (r) => {
+    const age = calcAge(r.birth_date)
+    const bi = batchInfo(r.account)
+    return [r.account, bi.short, r.gender, age != null ? `${age}歲` : ''].filter(Boolean).join('·') || '—'
+  }
+  const studentCell = (r) => (
+    <td style={{ ...td, minWidth: 160, whiteSpace: 'nowrap' }}>
+      <div style={{ fontWeight: 500 }}>{r.name || '—'}</div>
+      {r.name_en && <div style={{ color: '#aaa', fontSize: 11 }}>{r.name_en}</div>}
+      <div style={{ color: '#aaa', fontSize: 11 }}>{studentMeta(r)}</div>
+    </td>
+  )
   const statusOf = (r) => {
     if (r.sentNow) return <span style={{ color: '#15803d' }}>已寄送</span>
     if (created[r.account]) return <span style={{ color: '#b45309' }}>已建草稿</span>
@@ -253,7 +267,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
             <tr style={{ background: '#faf9f6', position: 'sticky', top: 0 }}>
               <th style={th}><input type="checkbox" checked={selected.length === rows.length && rows.length > 0}
                 onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, include: e.target.checked })))} /></th>
-              <th style={th}>姓名</th><th style={th}>系所</th><th style={th}>Email</th>
+              <th style={th}>姓名</th><th style={th}>系所</th><th style={th}>中心</th><th style={th}>Email</th>
               <th style={th}>語言</th><th style={th}>狀態</th><th style={th}></th>
             </tr>
           </thead>
@@ -261,8 +275,9 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
             {rows.map((r) => (
               <tr key={r.account}>
                 <td style={td}><input type="checkbox" checked={r.include} onChange={(e) => setRow(r.account, { include: e.target.checked })} /></td>
-                <td style={td}><div style={{ fontWeight: 500 }}>{r.name}</div><div style={{ color: '#aaa', fontSize: 11 }}>{r.name_en}</div></td>
+                {studentCell(r)}
                 <td style={td}>{deptZhFull(r.department) || r.department || '—'}</td>
+                <td style={td}>{r.center || '—'}</td>
                 <td style={td}>{r.email}</td>
                 <td style={td}>
                   <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.account, { lang: e.target.value })}>
@@ -273,7 +288,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
                 <td style={td}><button style={{ ...s.btn, ...s.btnSm }} disabled={!hasTemplate} onClick={() => setPreview(r)}>預覽</button></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
+            {!rows.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
           </tbody>
         </table>
       </div>

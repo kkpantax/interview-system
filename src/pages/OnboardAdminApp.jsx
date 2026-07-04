@@ -11,7 +11,7 @@ import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdmi
   onboardAdminSetVisaStage, onboardAdminVisaUpload, onboardAdminSaveVisaData } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge, driveImageUrl } from '../utils'
-import { ENROLL_STEPS, deptZhFull, ONBOARD_STEP1_FIELDS } from '../constants'
+import { ENROLL_STEPS, batchInfo, deptZhFull, ONBOARD_STEP1_FIELDS } from '../constants'
 import { exportBA0203 } from '../lib/ba0203'
 
 // 入學準備後台（superadmin 專用）。掛 #/onboard-admin，StageNav 顯示「⑤ 入學準備」。
@@ -129,7 +129,7 @@ function StatStrip({ items }) {
 }
 
 export default function OnboardAdminApp() {
-  const teacher = getTeacher()
+  const [teacher] = useState(() => getTeacher())
   useEffect(() => { if (!teacher || teacher.role !== 'superadmin') window.location.hash = '#/login?stage=admin' }, [teacher])
 
   const [pw, setPw] = useState('')          // 快取的超管密碼（記憶體）
@@ -364,11 +364,18 @@ export default function OnboardAdminApp() {
 
   // ── 中文姓名更改待審（步驟1分頁內）─────────────────────────────────────────
   const [nameReqs, setNameReqs] = useState([])
+  const nameReqErrorShownRef = useRef(false)
   const loadNameReqs = useCallback(async (password) => {
     try {
       const res = await onboardAdminNameRequests(teacher.username, password ?? pw)
       setNameReqs(res.list || [])
-    } catch (e) { showToast('載入更名申請失敗：' + e.message, 'error') }
+      nameReqErrorShownRef.current = false
+    } catch (e) {
+      if (!nameReqErrorShownRef.current) {
+        nameReqErrorShownRef.current = true
+        showToast('載入更名申請失敗：' + e.message, 'error')
+      }
+    }
   }, [pw, teacher, showToast])
 
   useEffect(() => { if (authed && tab === '1') loadNameReqs() }, [authed, tab, loadNameReqs])
@@ -642,12 +649,18 @@ export default function OnboardAdminApp() {
   const th = { padding: '10px 14px', textAlign: 'left', borderBottom: '1px solid #e8e7e3', color: '#666', fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap' }
   const td = { padding: '10px 14px', borderBottom: '1px solid #f5f4f0', fontSize: 13, lineHeight: 1.5, verticalAlign: 'middle' }
 
-  // 清單搜尋（帳號／中文姓名／英文姓名 contains、不分大小寫）＋ 身分欄顯示（截圖版型）
+  // 清單搜尋（帳號／中文姓名／英文姓名 contains、不分大小寫）＋ 姓名欄整合學生身分資訊
   const q = search.trim().toLowerCase()
   const matchText = (...vals) => !q || vals.some((v) => String(v || '').toLowerCase().includes(q))
-  const genderAge = (x) => {
+  const studentMeta = (x) => {
     const age = calcAge(x.birth_date)
-    const parts = [x.gender, age != null ? `${age}歲` : ''].filter(Boolean)
+    const bi = batchInfo(x.account)
+    const parts = [
+      x.account,
+      bi.short,
+      x.gender,
+      age != null ? `${age}歲` : '',
+    ].filter(Boolean)
     return parts.length ? parts.join('·') : '—'
   }
   const searchBox = (
@@ -657,9 +670,10 @@ export default function OnboardAdminApp() {
         padding: '9px 14px', borderRadius: 99, background: 'white' }} />
   )
   const nameCell = (x) => (
-    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+    <td style={{ ...td, whiteSpace: 'nowrap', minWidth: 160 }}>
       <div style={{ fontWeight: 600 }}>{x.name || '—'}</div>
       {x.name_english && <div style={{ color: '#999', fontSize: 11.5 }}>{x.name_english}</div>}
+      <div style={{ color: '#aaa', fontSize: 11.5 }}>{studentMeta(x)}</div>
     </td>
   )
 
@@ -834,7 +848,7 @@ export default function OnboardAdminApp() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#faf9f6' }}>
-                {['姓名', '帳號', '性別·年紀', '系所', '校區', '狀態', '送出時間', '檔案', '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '系所', '校區', '中心', '狀態', '送出時間', '檔案', '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {shown.map((stu) => {
@@ -846,10 +860,9 @@ export default function OnboardAdminApp() {
                   return (
                     <tr key={stu.account}>
                       {nameCell(stu)}
-                      <td style={{ ...td, color: '#888' }}>{stu.account}</td>
-                      <td style={{ ...td, whiteSpace: 'nowrap', color: '#666' }}>{genderAge(stu)}</td>
                       <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
                       <td style={td}>{stu.campus || '—'}</td>
+                      <td style={td}>{stu.center || '—'}</td>
                       <td style={td}>
                         {step === 3 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
@@ -919,7 +932,7 @@ export default function OnboardAdminApp() {
                     </tr>
                   )
                 })}
-                {!shown.length && <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : (q && rows.length ? '沒有符合搜尋的學生' : '目前沒有卡在這步的學生')}</td></tr>}
+                {!shown.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : (q && rows.length ? '沒有符合搜尋的學生' : '目前沒有卡在這步的學生')}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -941,7 +954,7 @@ export default function OnboardAdminApp() {
                 <div style={{ overflowX: 'auto', borderTop: '1px solid #f0efeb' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead><tr style={{ background: '#faf9f6' }}>
-                      {['姓名', '帳號', '性別·年紀', '系所', '校區', '通過時間', '檔案', ...(canView ? ['操作'] : [])].map((h) => <th key={h} style={th}>{h}</th>)}
+                      {['姓名', '系所', '校區', '中心', '通過時間', '檔案', ...(canView ? ['操作'] : [])].map((h) => <th key={h} style={th}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {shownP.map((stu) => {
@@ -949,10 +962,9 @@ export default function OnboardAdminApp() {
                         return (
                           <tr key={stu.account}>
                             {nameCell(stu)}
-                            <td style={{ ...td, color: '#888' }}>{stu.account}</td>
-                            <td style={{ ...td, whiteSpace: 'nowrap', color: '#666' }}>{genderAge(stu)}</td>
                             <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
                             <td style={td}>{stu.campus || '—'}</td>
+                            <td style={td}>{stu.center || '—'}</td>
                             <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.steps?.[step]?.confirmed_at || stu.steps?.[step]?.submitted_at)}</td>
                             <td style={td}>
                               {fileCell(files)}
@@ -966,7 +978,7 @@ export default function OnboardAdminApp() {
                           </tr>
                         )
                       })}
-                      {!shownP.length && <tr><td colSpan={canView ? 8 : 7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 22 }}>{q && passed.length ? '沒有符合搜尋的學生' : '目前還沒有人通過這步'}</td></tr>}
+                      {!shownP.length && <tr><td colSpan={canView ? 7 : 6} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 22 }}>{q && passed.length ? '沒有符合搜尋的學生' : '目前還沒有人通過這步'}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1105,16 +1117,15 @@ export default function OnboardAdminApp() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ background: '#faf9f6' }}>
-                    {['姓名', '帳號', '性別·年紀', '系所', '校區', '放棄時間', '原因', '來源', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                    {['姓名', '系所', '校區', '中心', '放棄時間', '原因', '來源', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {shown.map((stu) => (
                       <tr key={stu.account}>
                         {nameCell(stu)}
-                        <td style={{ ...td, color: '#888' }}>{stu.account}</td>
-                        <td style={{ ...td, whiteSpace: 'nowrap', color: '#666' }}>{genderAge(stu)}</td>
                         <td style={td}>{deptZhFull(stu.department) || stu.department || '—'}</td>
                         <td style={td}>{stu.campus || '—'}</td>
+                        <td style={td}>{stu.center || '—'}</td>
                         <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.abandoned_at)}</td>
                         <td style={{ ...td, color: '#666' }}>{stu.abandon_reason || '—'}</td>
                         <td style={td}>
@@ -1125,7 +1136,7 @@ export default function OnboardAdminApp() {
                         <td style={td}><button onClick={() => doReactivate(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm }}>復原</button></td>
                       </tr>
                     ))}
-                    {!shown.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{q && abandonedList.length ? '沒有符合搜尋的學生' : '沒有已放棄的學生'}</td></tr>}
+                    {!shown.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{q && abandonedList.length ? '沒有符合搜尋的學生' : '沒有已放棄的學生'}</td></tr>}
                   </tbody>
                 </table>
               </div>

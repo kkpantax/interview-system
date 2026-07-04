@@ -77,13 +77,13 @@ async function fetchMailRecipients(step, batch, campus, H) {
   if (stuck.length) {
     const accs = stuck.map((x) => x.account).join(',')
     const aRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/applications?account=in.(${encodeURIComponent(accs)})&select=account,email,name_english,gender,birth_date`,
+      `${SUPABASE_URL}/rest/v1/applications?account=in.(${encodeURIComponent(accs)})&select=account,email,name_english,gender,birth_date,center`,
       { headers: H },
     )
     const aRows = aRes.ok ? await aRes.json() : []
     for (const a of Array.isArray(aRows) ? aRows : []) {
       const cur = (appInfo[a.account] ||= {})
-      for (const k of ['email', 'name_english', 'gender', 'birth_date']) if (a[k] && !cur[k]) cur[k] = a[k]
+      for (const k of ['email', 'name_english', 'gender', 'birth_date', 'center']) if (a[k] && !cur[k]) cur[k] = a[k]
     }
   }
   return stuck.map((x) => ({
@@ -92,6 +92,7 @@ async function fetchMailRecipients(step, batch, campus, H) {
     name_english: appInfo[x.account]?.name_english || x.name_en || '',
     gender: appInfo[x.account]?.gender || '',
     birth_date: appInfo[x.account]?.birth_date || '',
+    center: appInfo[x.account]?.center || '',
     state: pMap[x.account].state,
     reminder_count: pMap[x.account].reminder_count || 0,
     last_reminder_at: pMap[x.account].last_reminder_at || null,
@@ -304,7 +305,7 @@ export default async function handler(req) {
       fetch(sUrl, { headers: H }),
       fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,data,submitted_at,confirmed_at&order=account.asc,step.asc`, H),
       fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_files?select=account,step,kind,drive_url,uploaded_at&order=uploaded_at.desc,id.desc`, H),
-      fetchAllRows(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date&order=id.asc`, H),
+      fetchAllRows(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date,center&order=id.asc`, H),
     ])
     if (!sRes.ok) return json({ ok: false, error: '查詢學生失敗' }, 500)
     const students = await sRes.json()
@@ -322,7 +323,7 @@ export default async function handler(req) {
     const appByAcct = {}
     for (const r of Array.isArray(apps) ? apps : []) {
       const cur = (appByAcct[r.account] ||= {})
-      for (const k of ['name_english', 'gender', 'birth_date']) if (r[k] && !cur[k]) cur[k] = r[k]
+      for (const k of ['name_english', 'gender', 'birth_date', 'center']) if (r[k] && !cur[k]) cur[k] = r[k]
     }
 
     const list = (Array.isArray(students) ? students : []).map((s) => ({
@@ -330,6 +331,7 @@ export default async function handler(req) {
       name_english: appByAcct[s.account]?.name_english || '',
       gender: appByAcct[s.account]?.gender || '',
       birth_date: appByAcct[s.account]?.birth_date || '',
+      center: appByAcct[s.account]?.center || '',
       batch: s.batch, status: s.status,
       abandoned_at: s.abandoned_at, abandoned_by: s.abandoned_by, abandon_reason: s.abandon_reason,
       dorm_room: s.dorm_room, dorm_bed: s.dorm_bed, classroom: s.classroom,
