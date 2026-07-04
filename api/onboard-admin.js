@@ -102,7 +102,7 @@ async function fetchMailRecipients(step, batch, campus, H) {
 // 攤平某帳號的五步進度 { [step]: row }
 async function fetchProgress(account, H) {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&select=step,state,submitted_at,confirmed_at`,
+    `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&select=step,state,data,submitted_at,confirmed_at`,
     { headers: H },
   )
   const rows = res.ok ? await res.json() : []
@@ -157,7 +157,7 @@ export default async function handler(req) {
 
     const [sRes, pRes, fRes, aRes] = await Promise.all([
       fetch(sUrl, { headers: H }),
-      fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,submitted_at,confirmed_at`, { headers: H }),
+      fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,data,submitted_at,confirmed_at`, { headers: H }),
       fetch(`${SUPABASE_URL}/rest/v1/enroll_files?select=account,step,kind,drive_url,uploaded_at&order=uploaded_at.desc`, { headers: H }),
       fetch(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date`, { headers: H }),
     ])
@@ -170,7 +170,7 @@ export default async function handler(req) {
     // 依 account 分組
     const progByAcct = {}
     for (const r of Array.isArray(progress) ? progress : []) {
-      (progByAcct[r.account] ||= {})[r.step] = { state: r.state, submitted_at: r.submitted_at, confirmed_at: r.confirmed_at }
+      (progByAcct[r.account] ||= {})[r.step] = { state: r.state, submitted_at: r.submitted_at, confirmed_at: r.confirmed_at, ...(r.step === 3 ? { data: r.data || {} } : {}) }
     }
     const filesByAcct = {}
     for (const r of Array.isArray(files) ? files : []) {
@@ -239,6 +239,13 @@ export default async function handler(req) {
     const step = Number(body.step)
     if (!account || !Number.isInteger(step) || step < 1 || step > 5) {
       return json({ ok: false, error: '參數錯誤' }, 400)
+    }
+    // 步驟3（簽證）：visa_stage 必須為 uploaded 才可最終確認開步驟4
+    if (step === 3) {
+      const cur3 = await fetchProgress(account, H)
+      if ((cur3[3] && cur3[3].data && cur3[3].data.visa_stage) !== 'uploaded') {
+        return json({ ok: false, error: '簽證檔尚未上傳完成，無法確認（需 visa_stage=uploaded）' }, 409)
+      }
     }
     const up = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
       method: 'POST', headers: upsertH,
@@ -312,6 +319,87 @@ export default async function handler(req) {
     }
     await logRow(account, 2, 'reopen_step2', { reason: body.reason || '', prev_step3: s3 || null })
     return json({ ok: true })
+  }
+
+  // ── set-visa-stage：簽證流水線推進（B 方案狀態機，寫在 enroll_progress[3].data）─
+  //   vn 軌：pending→notified→collected→submitted→(supplement↔submitted)→obtained→uploaded
+  //   other 軌：同上但無 collected。track 由 seed 依國籍寫死，不在此變更。
+  //   行政可設為該軌任一合法 stage（允許回退／修正）；stage=supplement 時可帶 note；可帶 submitter。
+  if (action === 'set-visa-stage') {
+    const account = body.account ? String(body.account) : ''
+    const stage = body.stage ? String(body.stage) : ''
+    if (!account || !stage) return json({ ok: false, error: '缺少帳號或階段' }, 400)
+    const ORDER = ['pending', 'notified', 'collected', 'submitted', 'supplement', 'obtained', 'uploaded']
+    if (!ORDER.includes(stage)) return json({ ok: false, error: '無效的簽證階段' }, 400)
+    const cur = await fetchProgress(account, H)
+    const d0 = (cur[3] && cur[3].data) || {}
+    const track = d0.visa_track === 'vn' ? 'vn' : 'other'
+    if (track === 'other' && stage === 'collected') {
+      return json({ ok: false, error: '非越南軌無「現場收件」階段' }, 400)
+    }
+    const nextData = { ...d0, visa_stage: stage }
+    if (body.submitter !== undefined) nextData.submitter = String(body.submitter || '')
+    if (stage === 'supplement' && body.note !== undefined) nextData.supplement_note = String(body.note || '')
+    const up = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.3`,
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData }) },
+    )
+    if (!up.ok) return json({ ok: false, error: '更新失敗：' + (await up.text()) }, 500)
+    await logRow(account, 3, 'visa_stage', { stage, track, submitter: nextData.submitter, note: nextData.supplement_note })
+    return json({ ok: true, visa_stage: stage })
+  }
+
+  // ── visa-upload：行政／外部人員代上傳簽證（vn 軌主用；other 軌亦可）。────────────
+  //   沿用學生上傳同一組 Apps Script relay（ONBOARD_UPLOAD_URL/TOKEN），以 account 定位，
+  //   uploaded_by='admin'；成功後 visa_stage→uploaded（不自動確認，最終確認另按 confirm）。
+  if (action === 'visa-upload') {
+    const account = body.account ? String(body.account) : ''
+    const { filename, mimeType, dataBase64 } = body
+    if (!account) return json({ ok: false, error: '缺少帳號' }, 400)
+    if (!dataBase64 || typeof dataBase64 !== 'string') return json({ ok: false, error: '缺少檔案內容' }, 400)
+    if (dataBase64.length > 4_200_000) return json({ ok: false, error: '檔案過大（上限約 3MB）' }, 413)
+    const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']
+    if (!ALLOWED.includes(mimeType)) return json({ ok: false, error: '只接受 JPG / PNG / WEBP / HEIC / PDF' }, 400)
+    const upUrl = process.env.ONBOARD_UPLOAD_URL
+    const upSecret = process.env.ONBOARD_UPLOAD_TOKEN
+    if (!upUrl || !upSecret) return json({ ok: false, error: '伺服器未設定 ONBOARD_UPLOAD_URL / ONBOARD_UPLOAD_TOKEN' }, 500)
+
+    const sRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(account)}&select=account,name,drive_folder_id&limit=1`,
+      { headers: H },
+    )
+    const sRows = sRes.ok ? await sRes.json() : []
+    const student = (Array.isArray(sRows) && sRows[0]) || null
+    if (!student) return json({ ok: false, error: '查無此帳號' }, 404)
+
+    const safeName = String(filename || '').replace(/[\\/]/g, '_').slice(0, 120)
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)
+    const finalName = `visa_${stamp}${safeName ? '_' + safeName : ''}`
+
+    const upstream = await fetch(upUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'follow',
+      body: JSON.stringify({ secret: upSecret, account: student.account, name: student.name || '', kind: 'visa', filename: finalName, mimeType, dataBase64 }),
+    })
+    let result
+    try { result = await upstream.json() } catch { return json({ ok: false, error: '上傳服務回應異常' }, 502) }
+    if (!result.ok) return json({ ok: false, error: '上傳失敗：' + (result.error || '') }, 502)
+
+    if (result.folderId && !student.drive_folder_id) {
+      await fetch(`${SUPABASE_URL}/rest/v1/enroll_students?account=eq.${encodeURIComponent(student.account)}`,
+        { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ drive_folder_id: result.folderId }) }).catch(() => {})
+    }
+    await fetch(`${SUPABASE_URL}/rest/v1/enroll_files`, {
+      method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+      body: JSON.stringify({ account: student.account, step: 3, kind: 'visa', drive_file_id: result.fileId, drive_url: result.url, uploaded_by: 'admin' }),
+    }).catch(() => {})
+
+    const cur = await fetchProgress(student.account, H)
+    const d0 = (cur[3] && cur[3].data) || {}
+    await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(student.account)}&step=eq.3`,
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ data: { ...d0, visa_stage: 'uploaded' } }) }).catch(() => {})
+
+    await logRow(student.account, 3, 'visa_upload', { fileId: result.fileId, by: username })
+    return json({ ok: true, url: result.url, filename: finalName, fileId: result.fileId })
   }
 
   // ── abandon：標記放棄 ────────────────────────────────────────────────────────

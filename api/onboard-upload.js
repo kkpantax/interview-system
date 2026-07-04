@@ -134,6 +134,17 @@ export default async function handler(req) {
     } catch { /* 進度更新失敗不影響上傳結果 */ }
   }
 
+  // 3c-2) 步驟3 簽證：學生自助上傳＝簽證已到位，visa_stage → uploaded（保留 visa_track 等既有欄）
+  if (step === 3 && kind === 'visa') {
+    try {
+      const d0 = (before[3] && before[3].data) || {}
+      await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(student.account)}&step=eq.3`, {
+        method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ data: { ...d0, visa_stage: 'uploaded' } }),
+      })
+    } catch { /* visa_stage 更新失敗不影響上傳結果 */ }
+  }
+
   // 3d) 稽核軌跡（失敗不阻斷）
   try {
     await fetch(`${SUPABASE_URL}/rest/v1/enroll_log`, {
