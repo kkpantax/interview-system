@@ -99,6 +99,22 @@ async function fetchMailRecipients(step, batch, campus, H) {
   }))
 }
 
+// 分頁撈整表：Supabase REST 單次最多回 1000 列（enroll_progress 已 200 人 × 5 步 = 1000+，
+// 超出的列被無聲截斷 → 部分學生在後台變 locked、從漏斗統計消失）。
+// 需搭配穩定排序（呼叫端在 url 帶 order=唯一鍵），否則跨頁可能重複或漏列。
+async function fetchAllRows(url, H, pageSize = 1000) {
+  const out = []
+  for (let from = 0; ; from += pageSize) {
+    const res = await fetch(url, { headers: { ...H, Range: `${from}-${from + pageSize - 1}` } })
+    if (!res.ok) break
+    const rows = await res.json()
+    if (!Array.isArray(rows) || !rows.length) break
+    out.push(...rows)
+    if (rows.length < pageSize) break
+  }
+  return out
+}
+
 // 攤平某帳號的五步進度 { [step]: row }
 async function fetchProgress(account, H) {
   const res = await fetch(
@@ -155,17 +171,14 @@ export default async function handler(req) {
     if (campus) sUrl += `&campus=eq.${encodeURIComponent(campus)}`
     if (!includeTest) sUrl += `&is_test=eq.false`
 
-    const [sRes, pRes, fRes, aRes] = await Promise.all([
+    const [sRes, progress, files, apps] = await Promise.all([
       fetch(sUrl, { headers: H }),
-      fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,data,submitted_at,confirmed_at`, { headers: H }),
-      fetch(`${SUPABASE_URL}/rest/v1/enroll_files?select=account,step,kind,drive_url,uploaded_at&order=uploaded_at.desc`, { headers: H }),
-      fetch(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date`, { headers: H }),
+      fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,data,submitted_at,confirmed_at&order=account.asc,step.asc`, H),
+      fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_files?select=account,step,kind,drive_url,uploaded_at&order=uploaded_at.desc,id.desc`, H),
+      fetchAllRows(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date&order=id.asc`, H),
     ])
     if (!sRes.ok) return json({ ok: false, error: '查詢學生失敗' }, 500)
     const students = await sRes.json()
-    const progress = pRes.ok ? await pRes.json() : []
-    const files = fRes.ok ? await fRes.json() : []
-    const apps = aRes.ok ? await aRes.json() : []
 
     // 依 account 分組
     const progByAcct = {}
