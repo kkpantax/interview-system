@@ -110,6 +110,7 @@ export default function OnboardAdminApp() {
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)   // BA0203 匯出中
   const [detail, setDetail] = useState(null)          // 檢視資料彈窗：{account,name,loading,step1_state,data,department,campus}
+  const [preview, setPreview] = useState(null)        // 上傳檔案站內預覽彈窗：{url,name}
   const [toast, setToast] = useState(null)
 
   const showToast = useCallback((msg, type = 'ok') => {
@@ -674,6 +675,20 @@ export default function OnboardAdminApp() {
     </Card>
   )
 
+  // 上傳檔案格：預覽鈕（站內看圖，走 driveImageUrl 的 lh3 圖片端點，繞過 Drive「需下載才能看」的預覽卡關）＋ Drive 原檔連結
+  const fileCell = (files) => (
+    files.length
+      ? files.map((f, i) => (
+        <span key={i} style={{ marginRight: 10, whiteSpace: 'nowrap', display: 'inline-block' }}>
+          <button onClick={() => setPreview({ url: f.drive_url, name: `檔案${files.length > 1 ? i + 1 : ''}` })} disabled={busy}
+            style={{ ...s.btn, ...s.btnSm, color: ACCENT, borderColor: '#f0d0dd' }}>預覽{files.length > 1 ? i + 1 : ''}</button>
+          <a href={f.drive_url} target="_blank" rel="noreferrer" title="在 Drive 開啟原檔"
+            style={{ color: '#bbb', marginLeft: 4, fontSize: 12, textDecoration: 'none' }}>↗</a>
+        </span>
+      ))
+      : <span style={{ color: '#ccc' }}>—</span>
+  )
+
   // 名單表（每個步驟分頁共用）；搜尋框在最上方，同時篩此頁清單（步驟1含更名待審）
   const stepTable = (step) => {
     const rows = stuckAt(step)
@@ -712,11 +727,7 @@ export default function OnboardAdminApp() {
                       <td style={td}><Pill color={meta.color} bg={meta.bg}>{meta.label}</Pill></td>
                       <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.steps?.[step]?.submitted_at)}</td>
                       <td style={td}>
-                        {files.length
-                          ? files.map((f, i) => (
-                            <a key={i} href={f.drive_url} target="_blank" rel="noreferrer" style={{ color: ACCENT, marginRight: 8 }}>檔案{files.length > 1 ? i + 1 : ''}</a>
-                          ))
-                          : <span style={{ color: '#ccc' }}>—</span>}
+                        {fileCell(files)}
                       </td>
                       <td style={{ ...td, whiteSpace: 'nowrap', color: mr?.reminder_count ? '#555' : '#ccc' }}>
                         {mr?.reminder_count
@@ -776,11 +787,7 @@ export default function OnboardAdminApp() {
                             <td style={td}>{stu.campus || '—'}</td>
                             <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.steps?.[step]?.confirmed_at || stu.steps?.[step]?.submitted_at)}</td>
                             <td style={td}>
-                              {files.length
-                                ? files.map((f, i) => (
-                                  <a key={i} href={f.drive_url} target="_blank" rel="noreferrer" style={{ color: ACCENT, marginRight: 8 }}>檔案{files.length > 1 ? i + 1 : ''}</a>
-                                ))
-                                : <span style={{ color: '#ccc' }}>—</span>}
+                              {fileCell(files)}
                             </td>
                             {canView && (
                               <td style={td}>
@@ -1225,6 +1232,20 @@ export default function OnboardAdminApp() {
               </div>
             </>
           )}
+        </Modal>
+      )}
+
+      {/* 上傳檔案站內預覽：走 driveImageUrl 的 lh3 圖片端點直接顯圖，繞過 Drive「需下載才能看」的預覽卡關 */}
+      {preview && (
+        <Modal title={`預覽 — ${preview.name}`} onClose={() => setPreview(null)} width={720}>
+          <div style={{ padding: 12, textAlign: 'center' }}>
+            <img src={driveImageUrl(preview.url)} alt={preview.name}
+              style={{ maxWidth: '100%', maxHeight: '72vh', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,.12)' }}
+              onError={(e) => { e.currentTarget.style.display = 'none' }} />
+            <div style={{ marginTop: 12, fontSize: 12.5, color: '#888', lineHeight: 1.7 }}>
+              若上方沒有顯示（例如多頁 PDF），請 <a href={preview.url} target="_blank" rel="noreferrer" style={{ color: ACCENT }}>在 Drive 開啟原檔 ↗</a>
+            </div>
+          </div>
         </Modal>
       )}
     </PageShell>
