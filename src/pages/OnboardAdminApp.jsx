@@ -1446,6 +1446,21 @@ export default function OnboardAdminApp() {
                 </div>
                 {d.payment_pass_notice_sent_at && <div style={{ fontSize: 12, color: '#15803d' }}>繳費通過通知已寄出：{fmtTime(d.payment_pass_notice_sent_at)}</div>}
                 {d.payment_pass_notice_error && <div style={{ fontSize: 12, color: '#b91c1c' }}>繳費通過通知寄送失敗：{d.payment_pass_notice_error}</div>}
+                {(d.payment_pass_notice_subject || d.payment_pass_notice_body) && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: ACCENT }}>查看寄出信件內容</summary>
+                    <div style={{ marginTop: 8, border: '1px solid #eee', borderRadius: 10, overflow: 'hidden' }}>
+                      <div style={{ padding: '10px 12px', background: '#faf9f6', borderBottom: '1px solid #eee' }}>
+                        <div style={{ fontSize: 11.5, color: '#888', marginBottom: 4 }}>主旨</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#333', lineHeight: 1.5 }}>{d.payment_pass_notice_subject || '—'}</div>
+                      </div>
+                      <div style={{ padding: '10px 12px' }}>
+                        <div style={{ fontSize: 11.5, color: '#888', marginBottom: 6 }}>信件內容</div>
+                        <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12.5, color: '#444', lineHeight: 1.75, margin: 0, maxHeight: 320, overflow: 'auto' }}>{d.payment_pass_notice_body || '—'}</pre>
+                      </div>
+                    </div>
+                  </details>
+                )}
               </div>
 
               {isVn ? (

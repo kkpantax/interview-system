@@ -186,7 +186,7 @@ function buildPaymentPassNotice({ row, email, contacts, origin }) {
   const subject = lang === 'zh' ? subjects[track].zh : `${nativeSubject} / ${subjects[track].zh}`
   const nativeBody = lang === 'vi' ? viBody : lang === 'id' ? idBody : lang === 'zh' ? zhBody : enBody
   const body = lang === 'zh' ? zhBody : `${nativeBody}\n\n------------------------------\n\n${zhBody}`
-  return { track, message: { to: email, subject, body } }
+  return { track, lang, message: { to: email, subject, body } }
 }
 
 async function sendPaymentPassNotice({ account, H, origin, nowIso, logRow }) {
@@ -210,7 +210,7 @@ async function sendPaymentPassNotice({ account, H, origin, nowIso, logRow }) {
   const email = app.email || ''
   if (!email) return { ok: false, error: '查無 Email' }
 
-  const { track, message } = buildPaymentPassNotice({
+  const { track, lang, message } = buildPaymentPassNotice({
     row: { ...row, name_en: row.name_en || app.name_english || '' },
     email,
     contacts: (Array.isArray(cRows) && cRows[0]?.value) || {},
@@ -246,6 +246,9 @@ async function sendPaymentPassNotice({ account, H, origin, nowIso, logRow }) {
         visa_stage: d0.visa_stage || 'pending',
         payment_pass_notice_sent_at: nowIso,
         payment_pass_notice_error: null,
+        payment_pass_notice_lang: lang,
+        payment_pass_notice_subject: message.subject,
+        payment_pass_notice_body: message.body,
       },
     }),
   }).catch(() => {})
