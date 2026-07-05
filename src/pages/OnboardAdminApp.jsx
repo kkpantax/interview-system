@@ -76,6 +76,13 @@ const visaSignalOf = (stuOrData) => {
 
 // 通知信：狀態欄的次別簡稱（寄送流程都在 OnboardMailComposer 內）
 const MAIL_TIER_SHORT = { first: '首次', second: '二次', final: '最後' }
+const VISA_MAIL_SHORT = {
+  admission_letter_e: '電子',
+  vn_collection: '收件',
+  vn_supplement: '補件',
+  paper_letter_sent: '紙本',
+  visa_date_reminder: '日期',
+}
 
 const fmtTime = (iso) => {
   if (!iso) return '—'
@@ -841,6 +848,23 @@ export default function OnboardAdminApp() {
       ))
       : <span style={{ color: '#ccc' }}>—</span>
   )
+  const visaMailCell = (stu) => {
+    const vm = stu.steps?.[3]?.data?.visa_mail || {}
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 170 }}>
+        {VISA_MAIL_TYPES.map((t) => {
+          const n = vm[t.key]?.sent_count || 0
+          return (
+            <span key={t.key} title={t.label}
+              style={{ fontSize: 11.5, color: n ? '#15803d' : '#bbb', background: n ? '#f0fdf4' : '#fafafa',
+                border: '1px solid ' + (n ? '#bbf7d0' : '#eee'), borderRadius: 6, padding: '2px 5px' }}>
+              {VISA_MAIL_SHORT[t.key] || t.label} {n}
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
 
   // 名單表（每個步驟分頁共用）；搜尋框在最上方，同時篩此頁清單（步驟1含更名待審）
   const stepTable = (step) => {
@@ -861,7 +885,7 @@ export default function OnboardAdminApp() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#faf9f6' }}>
-                {['姓名', '系所', '校區', '中心', '狀態', '送出時間', '檔案', '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '系所', '校區', '中心', '狀態', '送出時間', '檔案', step === 3 ? '簽證通知' : '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {shown.map((stu) => {
@@ -893,10 +917,12 @@ export default function OnboardAdminApp() {
                       <td style={td}>
                         {fileCell(files)}
                       </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap', color: mr?.reminder_count ? '#555' : '#ccc' }}>
-                        {mr?.reminder_count
-                          ? `${mr.reminder_count} 次（${MAIL_TIER_SHORT[mr.last_reminder_kind] || '—'}）`
-                          : '—'}
+                      <td style={{ ...td, whiteSpace: step === 3 ? 'normal' : 'nowrap', color: mr?.reminder_count ? '#555' : '#ccc' }}>
+                        {step === 3 ? visaMailCell(stu) : (
+                          mr?.reminder_count
+                            ? `${mr.reminder_count} 次（${MAIL_TIER_SHORT[mr.last_reminder_kind] || '—'}）`
+                            : '—'
+                        )}
                       </td>
                       <td style={td}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
