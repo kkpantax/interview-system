@@ -57,6 +57,12 @@ async function fetchProgress(account, H) {
   return out
 }
 
+// 伺服器端 gating 判準（與學生端 effectiveStates 同規則）：步驟 1..n 是否全部 confirmed
+function confirmedThrough(before, n) {
+  for (let s = 1; s <= n; s++) if (before[s]?.state !== 'confirmed') return false
+  return true
+}
+
 export default async function handler(req) {
   const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!KEY) return json({ ok: false, error: '伺服器尚未設定金鑰' }, 500)
@@ -209,6 +215,10 @@ export default async function handler(req) {
     // ── 步驟3：錄取通知書 / 簽證前置回報 ─────────────────────────────────────
     if (['visa-paper-received', 'visa-paper-help', 'visa-other-dates', 'visa-vn-ack'].includes(action)) {
       const before = await fetchProgress(student.account, H)
+      // 伺服器端 gating：步驟1、2 都已確認且步驟3 尚未確認，才接受簽證回報（不能只靠前端鎖）
+      if (!confirmedThrough(before, 2) || before[3]?.state === 'confirmed') {
+        return json({ ok: false, error: '簽證步驟目前不開放操作' }, 409)
+      }
       const d0 = before[3]?.data || {}
       const patch = {}
       if (action === 'visa-paper-received') {
@@ -221,6 +231,12 @@ export default async function handler(req) {
         const applyDate = String(data?.other_visa_apply_date || '').trim()
         const expectedDate = String(data?.other_visa_expected_date || '').trim()
         if (!applyDate || !expectedDate) return json({ ok: false, error: '請填寫辦理簽證日期與預計取得日期' }, 400)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(applyDate) || !/^\d{4}-\d{2}-\d{2}$/.test(expectedDate)) {
+          return json({ ok: false, error: '日期格式錯誤' }, 400)
+        }
+        if (expectedDate < applyDate) {
+          return json({ ok: false, error: '預計取得簽證日期不可早於預計辦理簽證日期' }, 400)
+        }
         patch.other_visa_apply_date = applyDate
         patch.other_visa_expected_date = expectedDate
         patch.other_visa_note = String(data?.other_visa_note || '').trim()
@@ -290,6 +306,11 @@ export default async function handler(req) {
 
     // ── 步驟4：來台時間（→ confirmed 免行政確認，並自動開步驟5）──────────────────
     if (stepN === 4) {
+      // 伺服器端 gating：步驟1~3 都已確認且步驟4 尚未確認，才接受送出（不能只靠前端鎖）
+      const before = await fetchProgress(student.account, H)
+      if (!confirmedThrough(before, 3) || before[4]?.state === 'confirmed') {
+        return json({ ok: false, error: '此步驟目前不開放' }, 409)
+      }
       // 白名單：字串欄位轉字串修剪；need_pickup 一律轉布林
       const clean = {}
       for (const k of ['flight_no', 'arrival_date', 'arrival_time', 'note']) {
@@ -307,8 +328,7 @@ export default async function handler(req) {
       })
       if (!up4.ok) return json({ ok: false, error: '寫入失敗：' + (await up4.text()) }, 500)
 
-      // 步驟5 → open（已是 submitted/confirmed 則不動）
-      const before = await fetchProgress(student.account, H)
+      // 步驟5 → open（已是 submitted/confirmed 則不動；up4 不影響步驟5，沿用先前撈的 before）
       const s5 = before[5]?.state
       if (!s5 || s5 === 'locked' || s5 === 'open') {
         const up5 = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
@@ -327,6 +347,12 @@ export default async function handler(req) {
     // ── 步驟5：行前通知已閱讀（→ confirmed，並把學生 status 標為 completed）──────────
     if (stepN === 5) {
       if (ack !== true) return json({ ok: false, error: '請先閱讀並勾選確認知悉' }, 400)
+
+      // 伺服器端 gating：步驟1~4 都已確認且步驟5 尚未確認，才接受送出
+      const before = await fetchProgress(student.account, H)
+      if (!confirmedThrough(before, 4) || before[5]?.state === 'confirmed') {
+        return json({ ok: false, error: '此步驟目前不開放' }, 409)
+      }
 
       const up = await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
         method: 'POST',

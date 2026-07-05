@@ -99,3 +99,15 @@
 - **怎麼應用**：做「點統計格 → 過濾名單」的互動時，統計計數跟名單過濾要用同一組
   篩選鏈（差異只允許顯示用的搜尋框，且註腳寫明）；controlled select 的 value 若可能
   是選項序以外的旁支值，render 時要條件式補上該 option。
+
+## 開放新步驟給學生前的三件事（2026-07-05 簽證步驟體檢得出）
+- **為什麼**：簽證步驟開放前體檢發現：(1) api/onboard.js 四個 visa action 與
+  onboard-upload.js 都只驗 token 不驗 step state——「伺服器端也要擋 gating」的教訓
+  寫了但 Phase 2 實作時沒落地，靠對抗複查才抓回；(2) TEST0001/TEST0002 的
+  enroll_students.is_test = false，而名單/寄信收件人全靠 is_test=eq.false 過濾，
+  測試帳號會混進真實批次寄信與統計（漏斗 +2）；(3) admission_letter_url 等
+  「行政要先填的營運資料」全空，對應的學生端按鈕條件渲染直接不出現，程式看起來
+  正常但功能形同沒做。
+- **怎麼應用**：每次要開放一個步驟，照三清單檢查：①該步所有寫入 action 在伺服器端
+  grep 一次，逐個確認有驗 state；②測試帳號 is_test 旗標實查 DB，不信記憶；
+  ③該步引用的營運資料欄位（信件連結、收件時間地點）用 execute_sql 數非空筆數。

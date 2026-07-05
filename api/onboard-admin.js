@@ -528,9 +528,16 @@ export default async function handler(req) {
     const nextData = { ...d0, visa_stage: stage }
     if (body.submitter !== undefined) nextData.submitter = String(body.submitter || '')
     if (stage === 'supplement' && body.note !== undefined) nextData.supplement_note = String(body.note || '')
+    const patchBody = { data: nextData }
+    // 補件時若步驟3已確認 → 退回 submitted：否則學生端不再顯示步驟3、上傳端 gating 也會擋重傳
+    if (stage === 'supplement' && cur[3]?.state === 'confirmed') {
+      patchBody.state = 'submitted'
+      patchBody.confirmed_at = null
+      patchBody.confirmed_by = null
+    }
     const up = await fetch(
       `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(account)}&step=eq.3`,
-      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData }) },
+      { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(patchBody) },
     )
     if (!up.ok) return json({ ok: false, error: '更新失敗：' + (await up.text()) }, 500)
     await logRow(account, 3, 'visa_stage', { stage, track, submitter: nextData.submitter, note: nextData.supplement_note })

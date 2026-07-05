@@ -139,6 +139,10 @@ Object.assign(T, {
   visaExpectedDate: { zh: '預計取得簽證日期 *', en: 'Expected visa pickup date *', vi: 'Ngày dự kiến nhận thị thực *', id: 'Tanggal perkiraan menerima visa *' },
   visaSaveDates: { zh: '儲存簽證辦理日期', en: 'Save visa dates', vi: 'Lưu ngày làm thủ tục thị thực', id: 'Simpan tanggal visa' },
   visaDatesSubmitted: { zh: '✓ 已回報簽證辦理日期', en: '✓ Visa dates have been submitted.', vi: '✓ Đã báo ngày làm thủ tục thị thực.', id: '✓ Tanggal visa telah dilaporkan.' },
+  visaSupplementNotice: { zh: '簽證資料需要補件，請依下方說明補齊後重新上傳。', en: 'Your visa documents need to be supplemented. Please complete them according to the note below and upload again.', vi: 'Hồ sơ thị thực của bạn cần được bổ sung. Vui lòng bổ sung theo ghi chú bên dưới và tải lên lại.', id: 'Dokumen visa Anda perlu dilengkapi. Silakan lengkapi sesuai catatan di bawah lalu unggah ulang.' },
+  visaSupplementNoteLabel: { zh: '補件說明：', en: 'Supplement note: ', vi: 'Nội dung cần bổ sung: ', id: 'Catatan kekurangan: ' },
+  visaDateOrderErr: { zh: '「預計取得簽證日期」不可早於「預計辦理簽證日期」', en: 'The expected visa pickup date cannot be earlier than the planned application date.', vi: 'Ngày dự kiến nhận thị thực không được sớm hơn ngày dự kiến xin thị thực.', id: 'Tanggal perkiraan menerima visa tidak boleh lebih awal dari tanggal rencana pengajuan.' },
+  stepClosedNotice: { zh: '本步驟暫停開放，請稍後再回來查看，或聯繫承辦窗口。', en: 'This step is temporarily closed. Please check back later or contact the coordinator.', vi: 'Bước này tạm thời đóng. Vui lòng quay lại sau hoặc liên hệ cán bộ phụ trách.', id: 'Langkah ini ditutup sementara. Silakan kembali lagi nanti atau hubungi petugas.' },
 })
 
 const CAMPUS_I18N = {
@@ -331,11 +335,20 @@ export default function OnboardApp({ token }) {
     } finally { setBusy(false) }
   }
 
-  const submitOtherVisaDates = () => submitVisaAction('visa-other-dates', {
-    other_visa_apply_date: visaForm.other_visa_apply_date,
-    other_visa_expected_date: visaForm.other_visa_expected_date,
-    other_visa_note: visaForm.other_visa_note,
-  })
+  const submitOtherVisaDates = () => {
+    const applyDate = String(visaForm.other_visa_apply_date || '').trim()
+    const expectedDate = String(visaForm.other_visa_expected_date || '').trim()
+    if (!applyDate || !expectedDate) {
+      alert(tr('s1Missing') + [!applyDate && tr('visaApplyDate'), !expectedDate && tr('visaExpectedDate')].filter(Boolean).join('、'))
+      return
+    }
+    if (expectedDate < applyDate) { alert(tr('visaDateOrderErr')); return }
+    return submitVisaAction('visa-other-dates', {
+      other_visa_apply_date: applyDate,
+      other_visa_expected_date: expectedDate,
+      other_visa_note: visaForm.other_visa_note,
+    })
+  }
 
   // 版面（同 ConfirmApp）
   const wrap = { minHeight: '100vh', background: '#f5f4f0', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px', fontFamily: "system-ui, 'Noto Sans TC', sans-serif", color: '#1a1a18' }
@@ -627,6 +640,13 @@ export default function OnboardApp({ token }) {
   const smallGhostBtn = { ...smallActionBtn, background: 'white', color: ACCENT }
   const step3Content = (
     <div>
+      {/* 行政標記補件中：顯著提示 + 補件說明（visa_stage 為旁支狀態，不影響 gating） */}
+      {visaData.visa_stage === 'supplement' && (
+        <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px', marginTop: 14, fontSize: 13, color: '#92400e', lineHeight: 1.7 }}>
+          <div style={{ fontWeight: 700 }}>⚠ {tr('visaSupplementNotice')}</div>
+          {visaData.supplement_note && <div style={{ marginTop: 4 }}>{tr('visaSupplementNoteLabel')}{visaData.supplement_note}</div>}
+        </div>
+      )}
       <div style={sectionBox}>
         <div style={sectionTitle}>{tr('visaLetterTitle')}</div>
         <div style={{ fontSize: 12.5, color: '#666', lineHeight: 1.7, marginBottom: 10 }}>
@@ -935,7 +955,16 @@ export default function OnboardApp({ token }) {
 
           {/* 目前步驟內容 */}
           {currentStep ? (
-            currentStep.step === 1 && states[1] === 'open' ? (
+            currentSetting?.open === false ? (
+              /* 行政緊急關閉（enroll_settings.open=false）：暫停顯示本步內容，僅留期限與聯絡窗口 */
+              <div style={sectionBox}>
+                <div style={sectionTitle}>{currentStep[lang] || currentStep.zh}</div>
+                <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#b45309', lineHeight: 1.7, marginBottom: 10 }}>
+                  ⏸ {tr('stepClosedNotice')}
+                </div>
+                {metaBox(currentSetting)}
+              </div>
+            ) : currentStep.step === 1 && states[1] === 'open' ? (
               step1Form
             ) : currentStep.step === 2 && (states[2] === 'open' || states[2] === 'submitted') ? (
               step2Content

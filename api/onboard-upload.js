@@ -74,6 +74,17 @@ export default async function handler(req) {
   const student = (Array.isArray(sRows) && sRows[0]) || null
   if (!student) return json({ ok: false, error: '連結無效或已失效' }, 401)
 
+  // 1.5) 伺服器端 gating（與學生端 effectiveStates 同規則）：前面步驟都 confirmed、
+  //      本步尚未 confirmed 才可上傳。簽證補件：行政設 supplement 時會把已確認的步驟3
+  //      退回 submitted（見 onboard-admin.js set-visa-stage），故補件重傳不會被擋
+  const before = await fetchProgress(student.account, H)
+  for (let s = 1; s < step; s++) {
+    if (before[s]?.state !== 'confirmed') return json({ ok: false, error: '此步驟尚未開放，無法上傳' }, 409)
+  }
+  if (before[step]?.state === 'confirmed') {
+    return json({ ok: false, error: '此步驟已確認完成，如需補件請聯繫承辦人員' }, 409)
+  }
+
   // 檔名：kind_時間戳_原檔名（去除路徑字元），方便同類多次上傳不互蓋
   const safeName = String(filename || '').replace(/[\\/]/g, '_').slice(0, 120)
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)
@@ -123,7 +134,7 @@ export default async function handler(req) {
   } catch { /* 記錄失敗不影響上傳結果 */ }
 
   // 3c) 該步 → submitted（待行政確認）；若已 confirmed 不降級。不自動開下一步。
-  const before = await fetchProgress(student.account, H)
+  //     （before 已於 gating 時撈過；上傳期間狀態不會被本請求改動）
   if (before[step]?.state !== 'confirmed') {
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/enroll_progress?on_conflict=account,step`, {
