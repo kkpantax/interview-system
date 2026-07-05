@@ -162,7 +162,7 @@ export default function OnboardAdminApp() {
   const [preview, setPreview] = useState(null)        // 上傳檔案站內預覽彈窗：{url,name}
   const [visaUp, setVisaUp] = useState(null)          // 步驟③ 上傳簽證彈窗：{account,name}
   const [visaEdit, setVisaEdit] = useState(null)      // 步驟③ 簽證辦理追蹤彈窗：{account,name,data}
-  const [centerFilter, setCenterFilter] = useState('all')   // 步驟③ 名單的中心下拉篩選，切分頁重置
+  const [centerFilter, setCenterFilter] = useState('all')   // 各步驟名單的中心下拉篩選（批次寄信跟著篩），切分頁重置
   const [chartSel, setChartSel] = useState(null)      // 步驟③ 日期長條圖選取：{track,date}，點長條展開當日名單
   const [stageFilter, setStageFilter] = useState(null) // 步驟③ 簽證階段統計點選過濾：{track,stage}，僅影響顯示，切分頁重置
   const [batchVn, setBatchVn] = useState(null)        // 步驟③ 批次設定越南現場收件彈窗：{fields,targets,prog}
@@ -883,7 +883,7 @@ export default function OnboardAdminApp() {
           <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
             {step === 3
               ? '簽證批次信依信件類型分開追蹤寄送次數；已寄過同類型的學生預設不勾，避免重複寄送。名單會吃上方「中心」下拉篩選（搜尋框只影響顯示）。'
-              : '開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。'}
+              : '開啟寄信視窗：對「目前梯次×校區×中心篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。搜尋框只影響顯示。'}
           </span>
         </div>
       </Card>
@@ -1081,28 +1081,29 @@ export default function OnboardAdminApp() {
   // 名單表（每個步驟分頁共用）；搜尋框在最上方，同時篩此頁清單（步驟1含更名待審）
   const stepTable = (step) => {
     const rows = stuckAt(step)
-    const matchCenter = (x) => step !== 3 || centerFilter === 'all' || x.center === centerFilter
+    const matchCenter = (x) => centerFilter === 'all' || x.center === centerFilter
+    const filtered = q || centerFilter !== 'all'
     const shown = rows.filter((x) => matchText(x.account, x.name, x.name_english) && matchCenter(x))
     // 簽證階段點選過濾只作用於表格顯示；批次收件（吃 shown）與寄信（吃 rows×中心）範圍不受影響
     const matchStage = (x) => step !== 3 || !stageFilter || (visaTrackOf(x) === stageFilter.track && visaStageOf(x) === stageFilter.stage)
     const listed = shown.filter(matchStage)
-    const centers = [...new Set(rows.map((x) => x.center).filter(Boolean))].sort()
+    const centers = [...new Set(active.map((x) => x.center).filter(Boolean))].sort()
     return (
       <>
-        {step === 3 ? (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
-            <div style={{ flex: '1 1 260px', maxWidth: 360 }}>{searchInput}</div>
-            <select value={centerFilter} onChange={(e) => setCenterFilter(e.target.value)}
-              title="依面試中心篩選名單"
-              style={{ ...s.sel, padding: '8px 12px', borderRadius: 99, background: 'white' }}>
-              <option value="all">全部中心</option>
-              {centers.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+          <div style={{ flex: '1 1 260px', maxWidth: 360 }}>{searchInput}</div>
+          <select value={centerFilter} onChange={(e) => setCenterFilter(e.target.value)}
+            title="依面試中心篩選名單（批次寄信也會跟著篩）"
+            style={{ ...s.sel, padding: '8px 12px', borderRadius: 99, background: 'white' }}>
+            <option value="all">全部中心</option>
+            {centers.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {step === 3 && (
             <Btn disabled={busy} onClick={() => openBatchVn(shown.filter((x) => visaTrackOf(x) === 'vn'))}>
               🇻🇳 批次設定現場收件（{shown.filter((x) => visaTrackOf(x) === 'vn').length} 人）
             </Btn>
-          </div>
-        ) : searchBox}
+          )}
+        </div>
         {step === 1 && nameReqBlock}
         <StatStrip items={[
           { label: '待處理', value: countState(step, 'open'), color: '#9d174d', bg: '#fdf2f8', border: '#fbcfe8' },
@@ -1111,9 +1112,9 @@ export default function OnboardAdminApp() {
         ]} />
         {step === 3 && visaStageStrip(rows.filter(matchCenter))}
         {step === 3 && visaChartCard()}
-        {mailControl(step, step === 3 ? rows.filter(matchCenter) : rows)}
+        {mailControl(step, rows.filter(matchCenter))}
         <Card>
-          <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${listed.length}${(q || (step === 3 && (stageFilter || centerFilter !== 'all'))) ? ` / ${rows.length}` : ''}）`} />
+          <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${listed.length}${(filtered || (step === 3 && stageFilter)) ? ` / ${rows.length}` : ''}）`} />
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#faf9f6' }}>
@@ -1201,7 +1202,7 @@ export default function OnboardAdminApp() {
                     </tr>
                   )
                 })}
-                {!listed.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : ((q || (step === 3 && (stageFilter || centerFilter !== 'all'))) && rows.length ? '沒有符合搜尋／篩選的學生' : '目前沒有卡在這步的學生')}</td></tr>}
+                {!listed.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : ((filtered || (step === 3 && stageFilter)) && rows.length ? '沒有符合搜尋／篩選的學生' : '目前沒有卡在這步的學生')}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1216,7 +1217,7 @@ export default function OnboardAdminApp() {
             <Card style={{ marginTop: 16 }}>
               <div onClick={() => setShowPassed((v) => !v)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '14px 18px', userSelect: 'none' }}>
-                <span style={{ fontSize: 13.5, color: '#15803d', fontWeight: 600 }}>{showPassed ? '▾' : '▸'} 已通過本步（{shownP.length}{q ? ` / ${passed.length}` : ''}）</span>
+                <span style={{ fontSize: 13.5, color: '#15803d', fontWeight: 600 }}>{showPassed ? '▾' : '▸'} 已通過本步（{shownP.length}{filtered ? ` / ${passed.length}` : ''}）</span>
                 <span style={{ fontSize: 12, color: '#999' }}>{showPassed ? '點此收合' : (canView ? '點此展開（含退回補件入口）' : '點此展開')}</span>
               </div>
               {showPassed && (
@@ -1247,7 +1248,7 @@ export default function OnboardAdminApp() {
                           </tr>
                         )
                       })}
-                      {!shownP.length && <tr><td colSpan={canView ? 7 : 6} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 22 }}>{q && passed.length ? '沒有符合搜尋的學生' : '目前還沒有人通過這步'}</td></tr>}
+                      {!shownP.length && <tr><td colSpan={canView ? 7 : 6} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 22 }}>{filtered && passed.length ? '沒有符合篩選的學生' : '目前還沒有人通過這步'}</td></tr>}
                     </tbody>
                   </table>
                 </div>
