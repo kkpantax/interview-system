@@ -111,3 +111,13 @@
 - **怎麼應用**：每次要開放一個步驟，照三清單檢查：①該步所有寫入 action 在伺服器端
   grep 一次，逐個確認有驗 state；②測試帳號 is_test 旗標實查 DB，不信記憶；
   ③該步引用的營運資料欄位（信件連結、收件時間地點）用 execute_sql 數非空筆數。
+
+## 個別學生繳費單開錯的下架/重掛標準做法（2026-07-06 宿舍費檔位開錯案）
+- **為什麼**：繳費單連結存在 enroll_progress step=2 的 data.slip_url。下架只需刪掉該 key
+  （`data = data - 'slip_url'`），學生端自動顯示四語「繳費單準備中」，不動 gating 也不影響他人。
+  備份舊連結時**不要留在 data jsonb 裡**（api/onboard 會把 data 原樣回給學生端，改名藏在裡面
+  仍會外洩），要 INSERT 進 enroll_log（action: slip_unpublished / slip_republished，payload 帶
+  舊/新 url 與原因）。另外：DB 下架 ≠ 徹底下架——步驟②曾 open 的學生可能已存過 Drive 連結，
+  必須同步刪除或關閉舊 Drive 檔案的分享才算收乾淨。
+- **怎麼應用**：重掛前先用 Drive metadata 核對新檔（檔名學號 + 內文金額）再寫 DB，避免兩人貼反；
+  掛完用 `curl /api/onboard?token=` 實測回傳，舊檔刪除後再查一次 metadata 確認連結失效。
