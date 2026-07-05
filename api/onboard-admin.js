@@ -15,8 +15,9 @@
 //   - abandon：{account, reason} → enroll_students.status='abandoned'；log abandon。
 //   - reactivate：{account} → status 回 'active'；log reactivate。
 //   - settings：回全部 enroll_settings（batch×step 10 列）＋ enroll_config 的 line_qr 與 contacts。
-//   - save-settings：{batch, step, deadline?, notice?} → upsert 該 (batch,step) 列；
+//   - save-settings：{batch, step, deadline?, fee_items?, notice?} → upsert 該 (batch,step) 列；
 //     deadline 收日期字串(YYYY-MM-DD)，存為當日 Asia/Taipei 23:59:59（null 允許）；
+//     step=2 時把 fee_items（{台北:{zh,en,vi,id},高雄:{...}}，原樣存）合併進 extra.fee_items；
 //     step=5 時把 notice（{台北:{zh,en,vi,id},高雄:{...}}，原樣存）合併進 extra.notice；log settings_save。
 //     （承辦人已改存 enroll_config，本 action 不再寫 contact_* 欄。）
 //   - save-contacts：{value: {台北:{name,email,phone}, 高雄:{...}}} → upsert enroll_config
@@ -639,7 +640,7 @@ export default async function handler(req) {
     return json({ ok: true, settings: Array.isArray(settings) ? settings : [], line_qr: cfg.line_qr || {}, contacts: cfg.contacts || {}, result_link: cfg.result_link || {} })
   }
 
-  // ── save-settings：upsert (batch,step) 截止日/承辦資訊；step5 另存 extra.notice ──
+  // ── save-settings：upsert (batch,step) 截止日/承辦資訊；step2/5 另存 extra 內容 ──
   if (action === 'save-settings') {
     const batch = String(body.batch ?? '')
     const step = Number(body.step)
@@ -658,15 +659,18 @@ export default async function handler(req) {
         row.deadline = `${m[1]}-${m[2]}-${m[3]}T23:59:59+08:00`
       }
     }
-    // step5 的行前須知寫進 extra.notice（字串或 {台北,高雄} 物件原樣存），保留 extra 其他鍵
-    if (step === 5 && 'notice' in body) {
+    const extraPatch = {}
+    if (step === 2 && 'fee_items' in body) extraPatch.fee_items = body.fee_items
+    if (step === 5 && 'notice' in body) extraPatch.notice = body.notice
+    // step2 的收費明細、step5 的行前須知寫進 extra，保留 extra 其他鍵
+    if (Object.keys(extraPatch).length) {
       const exRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/enroll_settings?batch=eq.${encodeURIComponent(batch)}&step=eq.5&select=extra&limit=1`,
+        `${SUPABASE_URL}/rest/v1/enroll_settings?batch=eq.${encodeURIComponent(batch)}&step=eq.${step}&select=extra&limit=1`,
         { headers: H },
       )
       const exRows = exRes.ok ? await exRes.json() : []
       const extra = (Array.isArray(exRows) && exRows[0]?.extra) || {}
-      row.extra = { ...(extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {}), notice: body.notice }
+      row.extra = { ...(extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {}), ...extraPatch }
     }
     const up = await fetch(`${SUPABASE_URL}/rest/v1/enroll_settings?on_conflict=batch,step`, {
       method: 'POST', headers: upsertH, body: JSON.stringify(row),

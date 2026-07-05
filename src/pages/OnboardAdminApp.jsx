@@ -533,9 +533,10 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
-  // ── 設定分頁：每步截止日 + 承辦窗口（分校區） + 步驟5行前須知（校區×四語） + LINE QR ──
+  // ── 設定分頁：每步截止日 + 承辦窗口（分校區） + 步驟2收費明細 + 步驟5行前須知 + LINE QR ──
   const [cfgLoaded, setCfgLoaded] = useState(false)
   const [rowForm, setRowForm] = useState({})   // { `${batch}-${step}`: {deadline: 'YYYY-MM-DD'} }
+  const [feeItems, setFeeItems] = useState({ 台北: emptyLangs(), 高雄: emptyLangs() })
   const [notice, setNotice] = useState({ 台北: emptyLangs(), 高雄: emptyLangs() })
   const [contacts, setContacts] = useState({ 台北: emptyContact(), 高雄: emptyContact() })
   const [qrForm, setQrForm] = useState({ 台北: '', 高雄: '' })
@@ -549,6 +550,18 @@ export default function OnboardAdminApp() {
       const f = {}
       for (const r of rows) f[`${r.batch}-${r.step}`] = { deadline: isoToTpeDate(r.deadline) }
       setRowForm(f)
+      // 繳費收費明細以第一梯 step2 為準（兩梯共通儲存）。格式：{台北:{zh,en,vi,id},高雄:{...}}
+      const n2 = rows.find((r) => String(r.batch) === '1' && Number(r.step) === 2)?.extra?.fee_items
+      const nextFee = { 台北: emptyLangs(), 高雄: emptyLangs() }
+      if (typeof n2 === 'string') { nextFee['台北'].zh = n2; nextFee['高雄'].zh = n2 }
+      else if (n2 && typeof n2 === 'object') {
+        for (const c of CAMPUSES) {
+          const v = n2[c]
+          if (typeof v === 'string') nextFee[c].zh = v
+          else if (v && typeof v === 'object') for (const [lk] of NOTICE_LANGS) nextFee[c][lk] = v[lk] || ''
+        }
+      }
+      setFeeItems(nextFee)
       // 行前須知以第一梯 step5 為準（兩梯共通儲存）。舊格式相容：
       // 純字串 → 兩校區 zh；{台北:"字串"} → 該校區 zh；{台北:{zh,...}} → 原樣帶入
       const n5 = rows.find((r) => String(r.batch) === '1' && Number(r.step) === 5)?.extra?.notice
@@ -596,6 +609,19 @@ export default function OnboardAdminApp() {
     try {
       await onboardAdminSaveContacts(teacher.username, pw, contacts)
       showToast('已儲存承辦窗口')
+      await loadSettings()
+    } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const saveFeeItems = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const n = { 台北: feeItems['台北'], 高雄: feeItems['高雄'] }
+      await onboardAdminSaveSettings(teacher.username, pw, { batch: '1', step: 2, fee_items: n })
+      await onboardAdminSaveSettings(teacher.username, pw, { batch: '2', step: 2, fee_items: n })
+      showToast('已儲存繳費收費明細（兩梯次共通）')
       await loadSettings()
     } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
     finally { setBusy(false) }
@@ -1530,6 +1556,36 @@ export default function OnboardAdminApp() {
               </div>
               <div style={{ marginTop: 10 }}>
                 <Btn variant="primary" disabled={busy} onClick={saveContacts}>儲存承辦窗口</Btn>
+              </div>
+            </div>
+          </Card>
+
+          {/* 步驟2 繳費收費明細（校區 × 四語，兩梯次共通儲存） */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardHead left="② 繳費收費明細（校區 × 四語，兩梯次共通）" />
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 10 }}>
+                這段文字會顯示在學生端「繳費單」區塊內、下載按鈕上方。可依校區填入不同金額與項目；
+                建議每行一項，例如「學費：NT$…」。該語言留空時，學生端會顯示中文。
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                {CAMPUSES.map((c) => (
+                  <div key={c} style={{ flex: '1 1 320px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: ACCENT, marginBottom: 6 }}>{c}校區</div>
+                    {NOTICE_LANGS.map(([lk, ll]) => (
+                      <div key={lk} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>{ll}</div>
+                        <textarea rows={5} value={feeItems[c][lk]}
+                          placeholder={lk === 'zh' ? '例：\n學費：NT$...\n雜費：NT$...\n學生團體保險費：NT$...\n合計：NT$...' : ''}
+                          onChange={(e) => setFeeItems((p) => ({ ...p, [c]: { ...p[c], [lk]: e.target.value } }))}
+                          style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, resize: 'vertical' }} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Btn variant="primary" disabled={busy} onClick={saveFeeItems}>儲存繳費收費明細</Btn>
               </div>
             </div>
           </Card>

@@ -88,6 +88,7 @@ const T = {
   // 步驟2 繳費
   s2NoticeTitle:  { zh: '繳費注意事項', en: 'Payment Notes', vi: 'Lưu ý khi nộp học phí', id: 'Catatan Pembayaran' },
   s2SlipTitle:    { zh: '繳費單', en: 'Payment Slip', vi: 'Phiếu nộp học phí', id: 'Slip Pembayaran' },
+  s2FeeItemsTitle:{ zh: '收費明細', en: 'Fee Details', vi: 'Chi tiết khoản thu', id: 'Rincian Biaya' },
   s2SlipDownload: { zh: '下載繳費單', en: 'Download payment slip', vi: 'Tải phiếu nộp học phí', id: 'Unduh slip pembayaran' },
   s2SlipPending:  { zh: '繳費單準備中，請稍後再回來查看。', en: 'Your payment slip is being prepared. Please check back later.', vi: 'Phiếu nộp học phí đang được chuẩn bị. Vui lòng quay lại sau.', id: 'Slip pembayaran sedang disiapkan. Silakan periksa kembali nanti.' },
   s2ReceiptTitle: { zh: '上傳繳費收據', en: 'Upload Payment Receipt', vi: 'Tải lên biên lai nộp tiền', id: 'Unggah Bukti Pembayaran' },
@@ -568,6 +569,22 @@ export default function OnboardApp({ token }) {
       : []
     return (Array.isArray(arr) ? arr : []).map((x) => String(x ?? '').trim()).filter(Boolean)
   })()
+  const s2FeeItems = (() => {
+    const src = info.settings?.[2]?.extra?.fee_items || info.settings?.[2]?.extra?.feeItems
+    if (!src) return ''
+    const campusKey = String(student.campus || '').replace(/校區$/, '') || '台北'
+    const pickText = (v) => {
+      if (typeof v === 'string') return v
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v[lang] || v.zh || ''
+      return ''
+    }
+    if (typeof src === 'string') return src.trim()
+    if (src && typeof src === 'object' && !Array.isArray(src)) {
+      const byCampus = src[campusKey] || src[`${campusKey}校區`] || src.common || src.default || src.zh || ''
+      return pickText(byCampus).trim()
+    }
+    return ''
+  })()
   const slipUrl = info.progress?.[2]?.data?.slip_url || ''
   const receipts = (info.files || []).filter((f) => f.step === 2 && f.kind === 'receipt')
   const linkBtn = { display: 'inline-block', padding: '9px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, textDecoration: 'none', background: ACCENT, color: '#fff' }
@@ -591,6 +608,12 @@ export default function OnboardApp({ token }) {
       {/* 繳費單下載 */}
       <div style={sectionBox}>
         <div style={sectionTitle}>{tr('s2SlipTitle')}</div>
+        {s2FeeItems && (
+          <div style={{ background: '#fff', border: '1px solid #eee9dd', borderRadius: 8, padding: '10px 12px', margin: '8px 0 12px', fontSize: 12.5, lineHeight: 1.75, color: '#4b4036' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, marginBottom: 4 }}>{tr('s2FeeItemsTitle')}</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{s2FeeItems}</div>
+          </div>
+        )}
         {slipUrl ? (
           <a href={slipUrl} target="_blank" rel="noreferrer" style={linkBtn}>⬇ {tr('s2SlipDownload')}</a>
         ) : (
