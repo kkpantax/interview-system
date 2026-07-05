@@ -41,7 +41,7 @@ const TABS = [
 const NEEDS_CONFIRM = new Set([2, 3])
 
 // ── 步驟③ 簽證階段（enroll_progress[3].data.visa_stage）中文標籤 ─────────────
-// supplement（補件中）為送件後的旁支，另以「補件」鈕處理、不列入推進下拉。
+// supplement（補件中）為送件後旁支；目前由上方批次簽證補件信處理，不列入推進下拉。
 const VISA_STAGE_META = {
   pending:    { label: '待通知',     color: '#9ca3af', bg: '#f3f4f6' },
   notified:   { label: '已通知辦理', color: '#9d174d', bg: '#fce7f3' },
@@ -146,7 +146,7 @@ export default function OnboardAdminApp() {
   const [exporting, setExporting] = useState(false)   // BA0203 匯出中
   const [detail, setDetail] = useState(null)          // 檢視資料彈窗：{account,name,loading,step1_state,data,department,campus}
   const [preview, setPreview] = useState(null)        // 上傳檔案站內預覽彈窗：{url,name}
-  const [visaUp, setVisaUp] = useState(null)          // 步驟③ 代上傳簽證彈窗：{account,name}
+  const [visaUp, setVisaUp] = useState(null)          // 步驟③ 上傳簽證彈窗：{account,name}
   const [visaEdit, setVisaEdit] = useState(null)      // 步驟③ 追蹤彈窗：{account,name,data}
   const [toast, setToast] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)   // 名單最後一次成功刷新的時間（含自動刷新），標頭顯示
@@ -320,7 +320,7 @@ export default function OnboardAdminApp() {
     finally { setBusy(false) }
   }
 
-  // ── 步驟③ 簽證：行政代上傳簽證檔 → visa_stage=uploaded（不自動確認）────────────
+  // ── 步驟③ 簽證：上傳簽證檔 → visa_stage=uploaded（不自動確認）────────────
   const doVisaUpload = async (file) => {
     if (!visaUp || !file || busy) return
     const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']
@@ -910,20 +910,14 @@ export default function OnboardAdminApp() {
                                   <option key={sg} value={sg}>{VISA_STAGE_META[sg]?.label || sg}</option>
                                 ))}
                               </select>
-                              <button onClick={() => doSetVisaStage(stu, 'supplement')} disabled={busy}
-                                title="標記為補件中"
-                                style={{ ...s.btn, ...s.btnSm, color: '#b45309', borderColor: '#fde68a',
-                                  ...(visaStageOf(stu) === 'supplement' ? { background: '#fef3c7' } : {}) }}>補件</button>
                               <button onClick={() => openVisaEdit(stu)} disabled={busy}
                                 style={{ ...s.btn, ...s.btnSm }}>追蹤</button>
                               <button onClick={() => setVisaUp({ account: stu.account, name: stu.name })} disabled={busy}
-                                style={{ ...s.btn, ...s.btnSm }}>⬆ 代上傳</button>
+                                style={{ ...s.btn, ...s.btnSm }}>⬆ 上傳簽證</button>
                               {visaStageOf(stu) === 'uploaded' && st !== 'confirmed' && (
                                 <button onClick={() => doConfirm(stu, 3)} disabled={busy}
                                   style={{ ...s.btn, ...s.btnSm, background: ACCENT, color: '#fff', borderColor: ACCENT }}>確認</button>
                               )}
-                              <button onClick={() => openComposer(step, [stu.account])} disabled={busy}
-                                style={{ ...s.btn, ...s.btnSm }}>✉ 寄信</button>
                               <button onClick={() => doAbandon(stu)} disabled={busy} style={{ ...s.btn, ...s.btnSm, color: '#b91c1c', borderColor: '#fecaca' }}>放棄</button>
                             </>
                           ) : (
@@ -1537,7 +1531,7 @@ export default function OnboardAdminApp() {
       })()}
 
       {visaUp && (
-        <Modal title={`代上傳簽證 — ${visaUp.name || ''}（${visaUp.account}）`} onClose={() => busy ? null : setVisaUp(null)} width={480}>
+        <Modal title={`上傳簽證 — ${visaUp.name || ''}（${visaUp.account}）`} onClose={() => busy ? null : setVisaUp(null)} width={480}>
           <div style={{ padding: 4, fontSize: 13, color: '#555', lineHeight: 1.85 }}>
             <p style={{ margin: '0 0 14px' }}>
               為此學生上傳簽證頁掃描／清晰照片（JPG／PNG／WEBP／HEIC／PDF，上限約 3&nbsp;MB）。
