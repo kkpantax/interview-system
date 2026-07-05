@@ -41,35 +41,107 @@ export const VISA_MAIL_TYPES = [
 
 const VISA_MAIL_LABEL = Object.fromEntries(VISA_MAIL_TYPES.map((x) => [x.key, x.label]))
 
-const buildVisaMail = (kind, data) => {
-  const name = data.name || data.name_english || '同學'
+// 簽證批次信（五種 × 四語）。單語組信；雙語整封由 msgFor 縫合（母語在前、中文在後），
+// 主旨格式「外語 / 中文」，同其他步驟通知信慣例。
+const VISA_MAIL_SUBJECTS = {
+  admission_letter_e: {
+    zh: '【實踐大學國際專修部】電子錄取通知書已開放下載',
+    en: '[Shih Chien University IFP] Your Electronic Admission Letter Is Ready for Download',
+    vi: '[Đại học Thực Tiễn - IFP] Giấy báo nhập học điện tử đã sẵn sàng để tải xuống',
+    id: '[Universitas Shih Chien - IFP] Surat Penerimaan Elektronik Anda Siap Diunduh',
+  },
+  vn_collection: {
+    zh: '【實踐大學國際專修部】越南簽證資料現場收件通知',
+    en: '[Shih Chien University IFP] Visa Document Collection in Vietnam',
+    vi: '[Đại học Thực Tiễn - IFP] Thông báo thu hồ sơ thị thực tại Việt Nam',
+    id: '[Universitas Shih Chien - IFP] Pengumpulan Dokumen Visa di Vietnam',
+  },
+  vn_supplement: {
+    zh: '【實踐大學國際專修部】簽證資料補件通知',
+    en: '[Shih Chien University IFP] Additional Visa Documents Required',
+    vi: '[Đại học Thực Tiễn - IFP] Thông báo bổ sung hồ sơ thị thực',
+    id: '[Universitas Shih Chien - IFP] Pemberitahuan Kelengkapan Dokumen Visa',
+  },
+  paper_letter_sent: {
+    zh: '【實踐大學國際專修部】紙本錄取通知書已寄出，請留意收件',
+    en: '[Shih Chien University IFP] Your Printed Admission Letter Has Been Sent',
+    vi: '[Đại học Thực Tiễn - IFP] Giấy báo nhập học bản giấy đã được gửi',
+    id: '[Universitas Shih Chien - IFP] Surat Penerimaan Cetak Anda Telah Dikirim',
+  },
+  visa_date_reminder: {
+    zh: '【實踐大學國際專修部】請回報簽證辦理日期',
+    en: '[Shih Chien University IFP] Please Report Your Visa Application Dates',
+    vi: '[Đại học Thực Tiễn - IFP] Vui lòng báo ngày làm thủ tục thị thực',
+    id: '[Universitas Shih Chien - IFP] Mohon Laporkan Tanggal Pengurusan Visa Anda',
+  },
+}
+
+const buildVisaMail = (kind, data, lang = 'zh') => {
+  if (!VISA_MAIL_SUBJECTS[kind]) return null
+  const L = ['zh', 'en', 'vi', 'id'].includes(lang) ? lang : 'en'
+  const zhName = data.name || data.name_english || '同學'
+  const fxName = data.name_english || data.name || 'Student'
   const contact = [data.contact_name, data.contact_email, data.contact_phone].filter(Boolean).join(' / ')
-  const contactLine = contact ? `\n\n如有任何問題，請聯繫承辦人 ${contact}。` : ''
-  const linkLine = data.link ? `\n${data.link}` : ''
-  const letterUrl = data.admission_letter_url ? `\n${data.admission_letter_url}` : ''
-  const templates = {
+  const contactLine = contact ? {
+    zh: `\n\n如有任何問題，歡迎聯繫承辦人 ${contact}。`,
+    en: `\n\nIf you have any questions, please contact ${contact}.`,
+    vi: `\n\nNếu có thắc mắc, vui lòng liên hệ cán bộ phụ trách ${contact}.`,
+    id: `\n\nJika ada pertanyaan, silakan hubungi petugas ${contact}.`,
+  }[L] : ''
+  const greeting = {
+    zh: `親愛的 ${zhName} 同學，您好：`, en: `Dear ${fxName},`,
+    vi: `${fxName} thân mến,`, id: `Yth. ${fxName},`,
+  }[L]
+  const signoff = {
+    zh: '實踐大學 國際事務處 敬啟', en: 'Office of International Affairs, Shih Chien University',
+    vi: 'Phòng Sự vụ Quốc tế, Đại học Thực Tiễn', id: 'Kantor Urusan Internasional, Universitas Shih Chien',
+  }[L]
+  const link = data.link || ''
+  const letterUrl = data.admission_letter_url || ''
+  const na = { zh: '—', en: 'TBA', vi: '(sẽ thông báo sau)', id: '(akan diumumkan)' }[L]
+  const noteBlock = data.vn_collection_note ? `\n\n${data.vn_collection_note}` : ''
+  // date input 存 YYYY-MM-DD，信中統一顯示 YYYY/MM/DD
+  const dstr = (v) => String(v || '').replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1/$2/$3')
+  const vnDate = dstr(data.vn_collection_date)
+  const paperSent = dstr(data.paper_letter_sent_at)
+  const paperDeadline = dstr(data.paper_letter_deadline)
+
+  const middles = {
     admission_letter_e: {
-      subject: '【實踐大學國際專修部】電子錄取通知書已開放下載',
-      body: `親愛的 ${name} 同學，您好：\n\n您的電子錄取通知書已開放下載，請登入入學準備系統查看並下載檔案。\n\n電子錄取通知書連結：${letterUrl || '\n（尚未提供）'}\n\n您也可以登入入學準備系統查看最新狀態：${linkLine}\n\n請妥善保存錄取通知書。後續若需辦理簽證、入境或入學相關程序，請依各階段通知與系統頁面指示完成。${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+      zh: `您的電子錄取通知書已開放下載，請由下方連結下載檔案，或登入入學準備系統查看最新狀態。\n\n電子錄取通知書：\n${letterUrl || '（尚未提供，開放後將顯示於系統頁面）'}\n\n入學準備系統：\n${link}\n\n請妥善保存錄取通知書；後續辦理簽證、入境與入學等相關程序時皆會使用，請依各階段通知與系統頁面指示完成。`,
+      en: `Your electronic admission letter is now available for download. Please download it via the link below, or log in to the enrollment preparation system to check the latest status.\n\nElectronic admission letter:\n${letterUrl || '(Not yet available — it will appear on your system page once ready.)'}\n\nEnrollment preparation system:\n${link}\n\nPlease keep your admission letter in a safe place. You will need it for your visa application, entry to Taiwan, and enrollment procedures. Please follow the notices for each stage and the instructions on the system page.`,
+      vi: `Giấy báo nhập học bản điện tử của bạn đã sẵn sàng để tải xuống. Vui lòng tải tệp qua đường dẫn bên dưới, hoặc đăng nhập hệ thống chuẩn bị nhập học để xem trạng thái mới nhất.\n\nGiấy báo nhập học điện tử:\n${letterUrl || '(Chưa có — sẽ hiển thị trên trang hệ thống khi sẵn sàng.)'}\n\nHệ thống chuẩn bị nhập học:\n${link}\n\nVui lòng lưu giữ cẩn thận giấy báo nhập học; bạn sẽ cần dùng đến khi làm thủ tục thị thực, nhập cảnh và nhập học. Vui lòng thực hiện theo thông báo của từng giai đoạn và hướng dẫn trên trang hệ thống.`,
+      id: `Surat penerimaan elektronik Anda kini dapat diunduh. Silakan unduh melalui tautan di bawah ini, atau masuk ke sistem persiapan pendaftaran untuk melihat status terbaru.\n\nSurat penerimaan elektronik:\n${letterUrl || '(Belum tersedia — akan muncul di halaman sistem setelah siap.)'}\n\nSistem persiapan pendaftaran:\n${link}\n\nMohon simpan surat penerimaan Anda dengan baik; surat ini akan diperlukan untuk pengurusan visa, masuk ke Taiwan, dan prosedur pendaftaran. Mohon ikuti pemberitahuan setiap tahap dan petunjuk pada halaman sistem.`,
     },
     vn_collection: {
-      subject: '【實踐大學國際專修部】越南簽證資料收件通知',
-      body: `親愛的 ${name} 同學，您好：\n\n您的入學繳費資料已審核通過，接下來學校將安排越南現場收件，協助您後續辦理簽證相關程序。\n\n請依以下時間與地點準備並攜帶簽證辦理所需資料：\n\n收件日期：${data.vn_collection_date || '—'}\n收件時間：${data.vn_collection_time || '—'}\n收件城市：${data.vn_collection_city || '—'}\n收件地點：${data.vn_collection_place || '—'}\n\n${data.vn_collection_note || ''}\n\n請登入入學準備系統查看收件資訊，並點選確認您會到場：${linkLine}${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+      zh: `您的入學繳費資料已審核通過。接下來學校將安排人員於越南現場收取簽證辦理所需資料，協助您完成後續簽證程序。\n\n請依以下時間與地點，準備並攜帶簽證辦理所需資料前往：\n\n收件日期：${vnDate || na}\n收件時間：${data.vn_collection_time || na}\n收件城市：${data.vn_collection_city || na}\n收件地點：${data.vn_collection_place || na}${noteBlock}\n\n請登入入學準備系統確認收件資訊，並點選「我已收到通知，會準時前往」：\n${link}`,
+      en: `Your enrollment payment has been reviewed and approved. The university will collect your visa application documents in person in Vietnam to assist you with the visa process.\n\nPlease prepare the required visa documents and bring them at the following time and place:\n\nCollection date: ${vnDate || na}\nCollection time: ${data.vn_collection_time || na}\nCity: ${data.vn_collection_city || na}\nLocation: ${data.vn_collection_place || na}${noteBlock}\n\nPlease log in to the enrollment preparation system to check the collection details, then click "I received the notice and will attend on time":\n${link}`,
+      vi: `Hồ sơ nộp học phí của bạn đã được kiểm tra và xác nhận. Tiếp theo, nhà trường sẽ cử nhân viên đến thu hồ sơ xin thị thực trực tiếp tại Việt Nam để hỗ trợ bạn hoàn tất thủ tục.\n\nVui lòng chuẩn bị và mang theo các giấy tờ cần thiết cho việc xin thị thực, đến đúng thời gian và địa điểm sau:\n\nNgày thu hồ sơ: ${vnDate || na}\nThời gian thu hồ sơ: ${data.vn_collection_time || na}\nThành phố: ${data.vn_collection_city || na}\nĐịa điểm: ${data.vn_collection_place || na}${noteBlock}\n\nVui lòng đăng nhập hệ thống chuẩn bị nhập học để xem thông tin thu hồ sơ, sau đó nhấn "Tôi đã nhận thông báo và sẽ đến đúng giờ":\n${link}`,
+      id: `Pembayaran pendaftaran Anda telah diperiksa dan disetujui. Selanjutnya, pihak universitas akan mengumpulkan dokumen aplikasi visa Anda secara langsung di Vietnam untuk membantu proses visa Anda.\n\nMohon siapkan dan bawa dokumen visa yang diperlukan pada waktu dan tempat berikut:\n\nTanggal pengumpulan: ${vnDate || na}\nWaktu pengumpulan: ${data.vn_collection_time || na}\nKota: ${data.vn_collection_city || na}\nLokasi: ${data.vn_collection_place || na}${noteBlock}\n\nSilakan masuk ke sistem persiapan pendaftaran untuk memeriksa informasi pengumpulan, lalu klik "Saya sudah menerima pemberitahuan dan akan hadir tepat waktu":\n${link}`,
     },
     vn_supplement: {
-      subject: '【實踐大學國際專修部】簽證資料補件通知',
-      body: `親愛的 ${name} 同學，您好：\n\n您的簽證資料目前需要補件或修正，請依下列說明準備相關資料：\n\n補件說明：\n${data.supplement_note || '請依承辦人通知補齊或修正相關資料。'}\n\n請您儘快依說明完成補件，並與承辦人保持聯繫，以免影響後續簽證辦理與入學時程。\n\n入學準備系統：${linkLine}${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+      zh: `您的簽證資料經檢核後，尚有需要補齊或修正的項目，請依下列說明準備：\n\n補件說明：\n${data.supplement_note || '請依承辦人通知補齊或修正相關資料。'}\n\n請儘快依說明完成補件，並與承辦人保持聯繫，以免影響後續簽證辦理與入學時程。\n\n入學準備系統：\n${link}`,
+      en: `After review, some of your visa documents need to be supplemented or corrected. Please prepare them according to the instructions below:\n\nSupplement instructions:\n${data.supplement_note || 'Please supplement or correct the documents as notified by the coordinator.'}\n\nPlease complete the supplement as soon as possible and stay in contact with the coordinator, so that your visa processing and enrollment schedule are not affected.\n\nEnrollment preparation system:\n${link}`,
+      vi: `Sau khi kiểm tra, hồ sơ thị thực của bạn còn một số mục cần bổ sung hoặc chỉnh sửa. Vui lòng chuẩn bị theo hướng dẫn dưới đây:\n\nNội dung cần bổ sung:\n${data.supplement_note || 'Vui lòng bổ sung hoặc chỉnh sửa hồ sơ theo thông báo của cán bộ phụ trách.'}\n\nVui lòng hoàn thành việc bổ sung sớm nhất có thể và giữ liên lạc với cán bộ phụ trách, để không ảnh hưởng đến việc xử lý thị thực và lịch trình nhập học của bạn.\n\nHệ thống chuẩn bị nhập học:\n${link}`,
+      id: `Setelah diperiksa, beberapa dokumen visa Anda masih perlu dilengkapi atau diperbaiki. Mohon siapkan sesuai petunjuk berikut:\n\nPetunjuk kelengkapan:\n${data.supplement_note || 'Mohon lengkapi atau perbaiki dokumen sesuai pemberitahuan petugas.'}\n\nMohon selesaikan kelengkapan dokumen sesegera mungkin dan tetap berkomunikasi dengan petugas, agar proses visa dan jadwal pendaftaran Anda tidak terpengaruh.\n\nSistem persiapan pendaftaran:\n${link}`,
     },
     paper_letter_sent: {
-      subject: '【實踐大學國際專修部】紙本錄取通知書已寄出，請留意收件',
-      body: `親愛的 ${name} 同學，您好：\n\n您的紙本錄取通知書已寄出，請留意收件。\n\n寄出日期：${data.paper_letter_sent_at || '—'}\n掛號／追蹤號碼：${data.paper_letter_tracking_no || '—'}\n\n收到紙本錄取通知書後，請登入入學準備系統點選「已收到紙本錄取通知書」，並安排前往台灣辦事處辦理簽證。\n\n如果您在 ${data.paper_letter_deadline || '指定期限'} 前仍未收到紙本錄取通知書，請在系統中回報「尚未收到，需要協助」，或直接聯繫承辦人。\n\n入學準備系統：${linkLine}${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+      zh: `您的紙本錄取通知書已由學校寄出，請留意收件。\n\n寄出日期：${paperSent || na}\n掛號／追蹤號碼：${data.paper_letter_tracking_no || na}\n\n收到紙本錄取通知書後，請登入入學準備系統點選「已收到紙本錄取通知書」，並儘早安排前往當地台灣辦事處辦理簽證。\n\n若您於 ${paperDeadline || '指定期限'} 前仍未收到，請在系統中點選「尚未收到，需要協助」，或直接與承辦人聯繫。\n\n入學準備系統：\n${link}`,
+      en: `Your printed admission letter has been sent by the university. Please watch for its delivery.\n\nDate sent: ${paperSent || na}\nRegistered mail / tracking number: ${data.paper_letter_tracking_no || na}\n\nAfter receiving the printed admission letter, please log in to the enrollment preparation system, click "I have received the printed admission letter," and arrange your visa application at your local Taiwan office as soon as possible.\n\nIf you have not received it by ${paperDeadline || 'the specified deadline'}, please click "Not received yet, I need assistance" in the system, or contact the coordinator directly.\n\nEnrollment preparation system:\n${link}`,
+      vi: `Giấy báo nhập học bản giấy của bạn đã được nhà trường gửi đi, vui lòng chú ý nhận thư.\n\nNgày gửi: ${paperSent || na}\nSố bảo đảm / mã theo dõi: ${data.paper_letter_tracking_no || na}\n\nSau khi nhận được giấy báo nhập học bản giấy, vui lòng đăng nhập hệ thống chuẩn bị nhập học, nhấn "Tôi đã nhận giấy báo nhập học bản giấy", và sớm sắp xếp đến Văn phòng Kinh tế và Văn hóa Đài Bắc tại địa phương để làm thủ tục xin thị thực.\n\nNếu đến ngày ${paperDeadline || 'thời hạn quy định'} bạn vẫn chưa nhận được, vui lòng nhấn "Chưa nhận được, tôi cần hỗ trợ" trong hệ thống, hoặc liên hệ trực tiếp với cán bộ phụ trách.\n\nHệ thống chuẩn bị nhập học:\n${link}`,
+      id: `Surat penerimaan cetak Anda telah dikirim oleh universitas. Mohon perhatikan pengirimannya.\n\nTanggal pengiriman: ${paperSent || na}\nNomor pos tercatat / pelacakan: ${data.paper_letter_tracking_no || na}\n\nSetelah menerima surat penerimaan cetak, silakan masuk ke sistem persiapan pendaftaran, klik "Saya sudah menerima surat penerimaan cetak", dan segera atur pengajuan visa di kantor perwakilan Taiwan setempat.\n\nJika Anda belum menerimanya sebelum ${paperDeadline || 'batas waktu yang ditentukan'}, silakan klik "Belum menerima, saya perlu bantuan" di sistem, atau hubungi petugas secara langsung.\n\nSistem persiapan pendaftaran:\n${link}`,
     },
     visa_date_reminder: {
-      subject: '【實踐大學國際專修部】請回報簽證辦理日期',
-      body: `親愛的 ${name} 同學，您好：\n\n請您於收到紙本錄取通知書後，儘快安排前往台灣辦事處辦理簽證。\n\n完成預約或確認辦理時間後，請登入入學準備系統回報以下資訊：\n\n1. 預計辦理簽證日期\n2. 預計取得簽證日期\n3. 其他需要學校協助或備註的事項\n\n入學準備系統：${linkLine}\n\n請務必儘早回報，以便學校掌握您的來台準備進度，避免影響後續入學安排。${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+      zh: `請您於收到紙本錄取通知書後，儘早向當地台灣辦事處預約並辦理簽證。\n\n完成預約或確認辦理時間後，請登入入學準備系統回報以下資訊：\n\n1. 預計辦理簽證日期\n2. 預計取得簽證日期\n3. 其他需要學校協助的事項（備註）\n\n入學準備系統：\n${link}\n\n請務必儘早回報，讓學校掌握您的來台準備進度，以免影響後續入學安排。`,
+      en: `After receiving your printed admission letter, please make an appointment with your local Taiwan office and apply for your visa as early as possible.\n\nOnce you have booked or confirmed your application date, please log in to the enrollment preparation system and report the following:\n\n1. Planned visa application date\n2. Expected visa pickup date\n3. Anything else you need the university's assistance with (notes)\n\nEnrollment preparation system:\n${link}\n\nPlease report these dates as early as possible so the university can keep track of your preparation progress and your enrollment schedule is not affected.`,
+      vi: `Sau khi nhận được giấy báo nhập học bản giấy, vui lòng sớm đặt lịch hẹn với Văn phòng Kinh tế và Văn hóa Đài Bắc tại địa phương để làm thủ tục xin thị thực.\n\nSau khi đặt lịch hoặc xác nhận thời gian làm thủ tục, vui lòng đăng nhập hệ thống chuẩn bị nhập học và báo các thông tin sau:\n\n1. Ngày dự kiến làm thủ tục thị thực\n2. Ngày dự kiến nhận thị thực\n3. Các vấn đề khác cần nhà trường hỗ trợ (ghi chú)\n\nHệ thống chuẩn bị nhập học:\n${link}\n\nVui lòng báo sớm nhất có thể để nhà trường nắm được tiến độ chuẩn bị đến Đài Loan của bạn, tránh ảnh hưởng đến việc sắp xếp nhập học sau này.`,
+      id: `Setelah menerima surat penerimaan cetak, mohon segera membuat janji dengan kantor perwakilan Taiwan setempat dan mengurus visa Anda.\n\nSetelah membuat janji atau memastikan jadwal pengurusan, silakan masuk ke sistem persiapan pendaftaran dan laporkan informasi berikut:\n\n1. Tanggal rencana pengurusan visa\n2. Tanggal perkiraan penerimaan visa\n3. Hal lain yang memerlukan bantuan universitas (catatan)\n\nSistem persiapan pendaftaran:\n${link}\n\nMohon laporkan sesegera mungkin agar universitas dapat memantau persiapan keberangkatan Anda ke Taiwan, sehingga jadwal pendaftaran tidak terpengaruh.`,
     },
   }
-  return templates[kind] || null
+  return {
+    subject: VISA_MAIL_SUBJECTS[kind][L],
+    body: `${greeting}\n\n${middles[kind][L]}${contactLine}\n\n${signoff}`,
+  }
 }
 
 // 依通知次別自動預選收件對象：
@@ -142,10 +214,16 @@ export default function OnboardMailComposer({ step, mailKind = '', initialTier =
       ...(r.data || {}),
     }
   }
-  // 雙語組信：外語（該列下拉）在前、中文在後
+  // 雙語組信：外語（該列下拉，依國籍自動帶）在前、中文在後；簽證批次信同規則
   const msgFor = (r) => {
     const data = dataFor(r)
-    if (mailKind) return buildVisaMail(mailKind, data)
+    if (mailKind) {
+      const fx = buildVisaMail(mailKind, data, r.lang)
+      const zh = buildVisaMail(mailKind, data, 'zh')
+      if (!fx || !zh) return null
+      if (r.lang === 'zh') return zh
+      return { subject: `${fx.subject} / ${zh.subject}`, body: fx.body + SEP + zh.body }
+    }
     const fx = buildOnboardMail({ step, tier, lang: r.lang, data })
     const zh = buildOnboardMail({ step, tier, lang: 'zh', data })
     if (!fx || !zh) return null
@@ -325,7 +403,7 @@ export default function OnboardMailComposer({ step, mailKind = '', initialTier =
               <th style={th}><input type="checkbox" checked={selected.length === rows.length && rows.length > 0}
                 onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, include: e.target.checked })))} /></th>
               <th style={th}>姓名</th><th style={th}>系所</th><th style={th}>中心</th><th style={th}>Email</th>
-              {!mailKind && <th style={th}>語言</th>}<th style={th}>狀態</th><th style={th}></th>
+              <th style={th}>語言</th><th style={th}>狀態</th><th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -336,18 +414,16 @@ export default function OnboardMailComposer({ step, mailKind = '', initialTier =
                 <td style={td}>{deptZhFull(r.department) || r.department || '—'}</td>
                 <td style={td}>{r.center || '—'}</td>
                 <td style={td}>{r.email}</td>
-                {!mailKind && (
-                  <td style={td}>
-                    <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.account, { lang: e.target.value })}>
-                      {LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                  </td>
-                )}
+                <td style={td}>
+                  <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.account, { lang: e.target.value })}>
+                    {LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </td>
                 <td style={td}>{statusOf(r)}</td>
                 <td style={td}><button style={{ ...s.btn, ...s.btnSm }} disabled={!hasTemplate} onClick={() => setPreview(r)}>預覽</button></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={mailKind ? 7 : 8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
+            {!rows.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
           </tbody>
         </table>
       </div>
@@ -372,7 +448,7 @@ export default function OnboardMailComposer({ step, mailKind = '', initialTier =
       </div>
       <div style={{ fontSize: 11.5, color: '#aaa', marginTop: 10, lineHeight: 1.8 }}>
         流程：先「① 建立草稿」→ 草稿會進公務信箱草稿夾，可在 Gmail 逐封檢查／微調 → 回來按「② 送出本批」一次寄出；
-        或建完草稿直接按「② 送出本批」。{mailKind ? '簽證批次信目前使用已確認的中文稿。' : '信件一律雙語（外語在前、中文在後），語言依國籍自動帶、可逐列改；'}
+        或建完草稿直接按「② 送出本批」。信件一律雙語（母語在前、中文在後），語言依國籍自動帶、可逐列改；
         建議先按逐列「預覽」確認內容。送出成功才計入「已寄送次數」，同一人可重寄。
       </div>
 

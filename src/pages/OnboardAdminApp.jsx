@@ -91,6 +91,13 @@ const fmtTime = (iso) => {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+// 日期字串（YYYY-MM-DD，date input 存的格式）只顯示日期；ISO timestamptz 顯示到分
+const fmtD = (v) => {
+  if (!v) return '—'
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : fmtTime(v)
+}
+
 const stepStateOf = (stu, step) => stu.steps?.[step]?.state || 'locked'
 
 // timestamptz ISO → 台北時區的日期字串（YYYY-MM-DD，供 <input type="date">）
@@ -154,7 +161,10 @@ export default function OnboardAdminApp() {
   const [detail, setDetail] = useState(null)          // 檢視資料彈窗：{account,name,loading,step1_state,data,department,campus}
   const [preview, setPreview] = useState(null)        // 上傳檔案站內預覽彈窗：{url,name}
   const [visaUp, setVisaUp] = useState(null)          // 步驟③ 上傳簽證彈窗：{account,name}
-  const [visaEdit, setVisaEdit] = useState(null)      // 步驟③ 追蹤彈窗：{account,name,data}
+  const [visaEdit, setVisaEdit] = useState(null)      // 步驟③ 簽證辦理追蹤彈窗：{account,name,data}
+  const [centerFilter, setCenterFilter] = useState('all')   // 步驟③ 名單的中心下拉篩選，切分頁重置
+  const [chartSel, setChartSel] = useState(null)      // 步驟③ 日期長條圖選取：{track,date}，點長條展開當日名單
+  const [batchVn, setBatchVn] = useState(null)        // 步驟③ 批次設定越南現場收件彈窗：{fields,targets,prog}
   const [toast, setToast] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)   // 名單最後一次成功刷新的時間（含自動刷新），標頭顯示
 
@@ -206,7 +216,7 @@ export default function OnboardAdminApp() {
     setBusy(false)
   }
 
-  const changeBatch = (b) => { setBatch(b); if (authed) load(b, pw) }
+  const changeBatch = (b) => { setBatch(b); setCenterFilter('all'); if (authed) load(b, pw) }
 
   const doConfirm = async (stu, step) => {
     if (busy) return
@@ -367,6 +377,49 @@ export default function OnboardAdminApp() {
       await load()
     } catch (e) { showToast('儲存失敗：' + e.message, 'error') }
     finally { setBusy(false) }
+  }
+
+  // ── 步驟③ 簽證：批次設定越南軌現場收件資訊（對目前篩選下的越南軌學生逐筆寫入）──
+  const openBatchVn = (targets) => {
+    if (!targets.length) { showToast('目前篩選下沒有越南軌學生', 'warn'); return }
+    setBatchVn({
+      fields: { vn_collection_date: '', vn_collection_time: '', vn_collection_city: '', vn_collection_place: '', vn_collection_note: '' },
+      targets: targets.map((x) => ({
+        account: x.account, name: x.name, center: x.center,
+        cur: x.steps?.[3]?.data?.vn_collection_date || '', checked: true,
+      })),
+      prog: null,
+    })
+  }
+
+  const doBatchVn = async () => {
+    if (!batchVn || busy) return
+    const picked = batchVn.targets.filter((t) => t.checked)
+    const fields = Object.fromEntries(
+      Object.entries(batchVn.fields).filter(([, v]) => String(v).trim() !== ''))
+    if (!picked.length) { showToast('沒有勾選任何學生', 'warn'); return }
+    if (!Object.keys(fields).length) { showToast('請至少填一個要更新的欄位（空欄不會覆蓋）', 'warn'); return }
+    if (!window.confirm(`將為 ${picked.length} 位越南軌學生批次更新現場收件資訊？\n（只更新有填的欄位，空欄不覆蓋既有資料）`)) return
+    setBusy(true)
+    let okN = 0
+    const fails = []
+    try {
+      for (let i = 0; i < picked.length; i++) {
+        setBatchVn((p) => (p ? { ...p, prog: { done: i + 1, total: picked.length } } : p))
+        try {
+          await onboardAdminSaveVisaData(teacher.username, pw, { account: picked[i].account, fields })
+          okN++
+        } catch (e) { fails.push(`${picked[i].name || picked[i].account}（${e.message}）`) }
+      }
+      if (fails.length) {
+        showToast(`已更新 ${okN} 位、失敗 ${fails.length} 位：${fails.join('、')}`, 'warn')
+        setBatchVn((p) => (p ? { ...p, prog: null } : p))
+      } else {
+        showToast(`已批次更新 ${okN} 位越南軌學生的現場收件資訊`)
+        setBatchVn(null)
+      }
+      await load()
+    } finally { setBusy(false) }
   }
 
   // ── 中文姓名更改待審（步驟1分頁內）─────────────────────────────────────────
@@ -671,12 +724,13 @@ export default function OnboardAdminApp() {
     ].filter(Boolean)
     return parts.length ? parts.join('·') : '—'
   }
-  const searchBox = (
+  const searchInput = (
     <input value={search} onChange={(e) => setSearch(e.target.value)}
       placeholder="🔍 搜尋：帳號／中文姓名／英文姓名…"
-      style={{ ...s.input, maxWidth: 360, boxSizing: 'border-box', marginBottom: 14, display: 'block',
+      style={{ ...s.input, maxWidth: 360, width: '100%', boxSizing: 'border-box',
         padding: '9px 14px', borderRadius: 99, background: 'white' }} />
   )
+  const searchBox = <div style={{ marginBottom: 14 }}>{searchInput}</div>
   const nameCell = (x) => (
     <td style={{ ...td, whiteSpace: 'nowrap', minWidth: 160 }}>
       <div style={{ fontWeight: 600 }}>{x.name || '—'}</div>
@@ -827,7 +881,7 @@ export default function OnboardAdminApp() {
           )}
           <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
             {step === 3
-              ? '簽證批次信會依信件類型分開追蹤寄送次數；已寄過同類型的學生預設不勾，避免重複寄送。'
+              ? '簽證批次信依信件類型分開追蹤寄送次數；已寄過同類型的學生預設不勾，避免重複寄送。名單會吃上方「中心」下拉篩選（搜尋框只影響顯示）。'
               : '開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。'}
           </span>
         </div>
@@ -866,26 +920,156 @@ export default function OnboardAdminApp() {
     )
   }
 
+  // ── 步驟③ 簽證日期統計：依軌道把 active 學生（含已通過本步）按日期分組 ─────────
+  //   vn → vn_collection_date（現場收件日）；other → other_visa_apply_date（學生回報預計辦簽證日）
+  const visaDateGroups = (track) => {
+    const key = track === 'vn' ? 'vn_collection_date' : 'other_visa_apply_date'
+    const m = {}
+    for (const x of active) {
+      const d = x.steps?.[3]?.data || {}
+      if ((d.visa_track === 'vn' ? 'vn' : 'other') !== track) continue
+      const v = String(d[key] || '').slice(0, 10)
+      if (!v) continue
+      ;(m[v] ||= []).push(x)
+    }
+    return Object.entries(m).sort(([a], [b]) => (a < b ? -1 : 1))
+  }
+
+  const visaChartCard = () => {
+    const section = (track, title, dateLabel, color, last) => {
+      const groups = visaDateGroups(track)
+      const total = groups.reduce((n, [, xs]) => n + xs.length, 0)
+      const max = Math.max(1, ...groups.map(([, xs]) => xs.length))
+      const sel = chartSel?.track === track ? chartSel.date : null
+      const selStudents = sel ? (groups.find(([d]) => d === sel)?.[1] || []) : []
+      return (
+        <div style={{ padding: '14px 18px', borderBottom: last ? 'none' : '1px solid #f5f4f0' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{title}</div>
+          <div style={{ fontSize: 11.5, color: '#999', marginBottom: 10 }}>
+            {groups.length ? `共 ${total} 人、${groups.length} 個日期；點長條可展開當日名單` : `目前沒有已填「${dateLabel}」的學生`}
+          </div>
+          {groups.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+              {groups.map(([date, xs]) => {
+                const on = sel === date
+                return (
+                  <div key={date} onClick={() => setChartSel(on ? null : { track, date })}
+                    title={`${date}：${xs.length} 人`}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', flex: '0 0 auto', width: 48 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: on ? color : '#888' }}>{xs.length}</div>
+                    <div style={{ width: 26, height: Math.max(6, Math.round((xs.length / max) * 90)),
+                      background: on ? color : color + '55', borderRadius: '4px 4px 0 0' }} />
+                    <div style={{ fontSize: 10, color: on ? color : '#999', fontWeight: on ? 700 : 400, whiteSpace: 'nowrap' }}>
+                      {date.slice(5).replace('-', '/')}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {sel && (
+            <div style={{ marginTop: 10, border: '1px solid #eee', borderRadius: 10, padding: '10px 14px', background: '#faf9f6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color }}>
+                  {sel.replace(/-/g, '/')}（{selStudents.length} 人）{track === 'vn' ? ' 現場收件名單' : ' 預計辦簽證名單'}
+                </span>
+                <button onClick={() => setChartSel(null)} style={{ ...s.btn, ...s.btnSm, marginLeft: 'auto' }}>收合</button>
+              </div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {selStudents.map((x) => {
+                  const vm = VISA_STAGE_META[visaStageOf(x)] || VISA_STAGE_META.pending
+                  return (
+                    <div key={x.account} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600, minWidth: 88 }}>{x.name || '—'}</span>
+                      <span style={{ color: '#999' }}>{x.account}</span>
+                      <span style={{ color: '#888' }}>{deptZhFull(x.department) || x.department || '—'}</span>
+                      <span style={{ color: '#888' }}>{x.center || x.campus || '—'}</span>
+                      <Pill color={vm.color} bg={vm.bg}>{vm.label}</Pill>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+    return (
+      <Card style={{ marginBottom: 16 }}>
+        <CardHead left="📊 簽證日期統計" right="含已通過本步的學生，隨上方梯次×校區篩選" />
+        {section('vn', '🇻🇳 越南軌 · 現場收件日期', '收件日期', '#be123c', false)}
+        {section('other', '🌐 非越南軌 · 學生回報預計辦簽證日期', '預計辦理簽證日期', '#0369a1', true)}
+      </Card>
+    )
+  }
+
+  // 步驟③「辦理時間」欄：列出簽證流程各節點的發生時間（只列有值的節點）
+  const visaTimeCell = (stu) => {
+    const d = stu.steps?.[3]?.data || {}
+    const vFiles = (stu.files || []).filter((f) => f.step === 3 && f.kind === 'visa')
+    const upAt = vFiles.length ? vFiles[0].uploaded_at : null   // 後端已按 uploaded_at desc 排序
+    const items = (visaTrackOf(stu) === 'vn' ? [
+      ['流程說明信', d.payment_pass_notice_sent_at],
+      ['學生確認到場', d.vn_student_ack_at],
+      ['現場收件', d.vn_documents_collected_at],
+      ['簽證上傳', upAt],
+    ] : [
+      ['流程說明信', d.payment_pass_notice_sent_at],
+      ['紙本寄出', d.paper_letter_sent_at],
+      ['回報未收到', d.paper_letter_help_requested_at],
+      ['回報已收到', d.paper_letter_received_at],
+      ['回報簽證日期', d.other_visa_dates_submitted_at],
+      ['簽證上傳', upAt],
+    ]).filter(([, v]) => v)
+    if (!items.length) return <span style={{ color: '#ccc' }}>—</span>
+    return (
+      <div style={{ display: 'grid', gap: 2 }}>
+        {items.map(([l, v]) => (
+          <div key={l} style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+            <span style={{ color: '#aaa' }}>{l}</span>{' '}
+            <span style={{ color: '#555' }}>{fmtD(v)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   // 名單表（每個步驟分頁共用）；搜尋框在最上方，同時篩此頁清單（步驟1含更名待審）
   const stepTable = (step) => {
     const rows = stuckAt(step)
-    const shown = rows.filter((x) => matchText(x.account, x.name, x.name_english))
+    const matchCenter = (x) => step !== 3 || centerFilter === 'all' || x.center === centerFilter
+    const shown = rows.filter((x) => matchText(x.account, x.name, x.name_english) && matchCenter(x))
+    const centers = [...new Set(rows.map((x) => x.center).filter(Boolean))].sort()
     return (
       <>
-        {searchBox}
+        {step === 3 ? (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ flex: '1 1 260px', maxWidth: 360 }}>{searchInput}</div>
+            <select value={centerFilter} onChange={(e) => setCenterFilter(e.target.value)}
+              title="依面試中心篩選名單"
+              style={{ ...s.sel, padding: '8px 12px', borderRadius: 99, background: 'white' }}>
+              <option value="all">全部中心</option>
+              {centers.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <Btn disabled={busy} onClick={() => openBatchVn(shown.filter((x) => visaTrackOf(x) === 'vn'))}>
+              🇻🇳 批次設定現場收件（{shown.filter((x) => visaTrackOf(x) === 'vn').length} 人）
+            </Btn>
+          </div>
+        ) : searchBox}
         {step === 1 && nameReqBlock}
         <StatStrip items={[
           { label: '待處理', value: countState(step, 'open'), color: '#9d174d', bg: '#fdf2f8', border: '#fbcfe8' },
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: '已通過本步', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
-        {mailControl(step, rows)}
+        {step === 3 && visaChartCard()}
+        {mailControl(step, step === 3 ? rows.filter(matchCenter) : rows)}
         <Card>
           <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${shown.length}${q ? ` / ${rows.length}` : ''}）`} />
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#faf9f6' }}>
-                {['姓名', '系所', '校區', '中心', '狀態', '送出時間', '檔案', step === 3 ? '簽證通知' : '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
+                {['姓名', '系所', '校區', '中心', '狀態', step === 3 ? '辦理時間' : '送出時間', '檔案', step === 3 ? '簽證通知' : '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {shown.map((stu) => {
@@ -913,7 +1097,9 @@ export default function OnboardAdminApp() {
                           <Pill color={meta.color} bg={meta.bg}>{meta.label}</Pill>
                         )}
                       </td>
-                      <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(stu.steps?.[step]?.submitted_at)}</td>
+                      <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>
+                        {step === 3 ? visaTimeCell(stu) : fmtTime(stu.steps?.[step]?.submitted_at)}
+                      </td>
                       <td style={td}>
                         {fileCell(files)}
                       </td>
@@ -936,8 +1122,8 @@ export default function OnboardAdminApp() {
                                   <option key={sg} value={sg}>{VISA_STAGE_META[sg]?.label || sg}</option>
                                 ))}
                               </select>
-                              <button onClick={() => openVisaEdit(stu)} disabled={busy}
-                                style={{ ...s.btn, ...s.btnSm }}>追蹤</button>
+                              <button onClick={() => openVisaEdit(stu)} disabled={busy} title="查看／編輯此生的簽證辦理追蹤資料"
+                                style={{ ...s.btn, ...s.btnSm }}>簽證辦理追蹤</button>
                               <button onClick={() => setVisaUp({ account: stu.account, name: stu.name })} disabled={busy}
                                 style={{ ...s.btn, ...s.btnSm }}>⬆ 上傳簽證</button>
                               {visaStageOf(stu) === 'uploaded' && st !== 'confirmed' && (
@@ -974,7 +1160,7 @@ export default function OnboardAdminApp() {
         {/* 已通過本步（confirmed）：預設摺疊。步驟① 提供「檢視 → 退回補件」入口；其餘步驟僅供對照。 */}
         {(() => {
           const passed = passedAt(step)
-          const shownP = passed.filter((x) => matchText(x.account, x.name, x.name_english))
+          const shownP = passed.filter((x) => matchText(x.account, x.name, x.name_english) && matchCenter(x))
           const canView = step === 1
           return (
             <Card style={{ marginTop: 16 }}>
@@ -1028,7 +1214,7 @@ export default function OnboardAdminApp() {
       {/* 分頁列 + 梯次篩選 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setShowPassed(false) }}
+          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setShowPassed(false); setCenterFilter('all'); setChartSel(null) }}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
               borderColor: tab === t.key ? ACCENT : '#ddd', fontWeight: tab === t.key ? 600 : 400 }}>
             {t.label}
@@ -1040,7 +1226,7 @@ export default function OnboardAdminApp() {
             <option value="all">全部</option><option value="1">第一梯</option><option value="2">第二梯</option>
           </select>
           <span style={{ fontSize: 12, color: '#999', marginLeft: 4 }}>校區</span>
-          <select style={{ ...s.sel, padding: '5px 8px' }} value={campus} onChange={(e) => setCampus(e.target.value)}>
+          <select style={{ ...s.sel, padding: '5px 8px' }} value={campus} onChange={(e) => { setCampus(e.target.value); setCenterFilter('all') }}>
             <option value="all">全部</option><option value="台北">台北</option><option value="高雄">高雄</option>
           </select>
         </div>
@@ -1474,7 +1660,7 @@ export default function OnboardAdminApp() {
           </div>
         )
         return (
-          <Modal title={`簽證追蹤 — ${visaEdit.name || ''}（${visaEdit.account}）`} onClose={() => busy ? null : setVisaEdit(null)} width={620}>
+          <Modal title={`簽證辦理追蹤 — ${visaEdit.name || ''}（${visaEdit.account}）`} onClose={() => busy ? null : setVisaEdit(null)} width={620}>
             <div style={{ display: 'grid', gap: 14 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, marginBottom: 8 }}>基本設定</div>
@@ -1555,6 +1741,63 @@ export default function OnboardAdminApp() {
           </Modal>
         )
       })()}
+
+      {/* 步驟③ 批次設定越南軌現場收件資訊：對開啟時的篩選名單逐筆寫入（空欄不覆蓋） */}
+      {batchVn && (
+        <Modal title={`批次設定現場收件 — 越南軌 ${batchVn.targets.length} 人`} onClose={() => busy ? null : setBatchVn(null)} width={640}>
+          <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 12 }}>
+            將下方收件資訊寫入所有勾選的越南軌學生（依開啟時的搜尋／中心篩選帶入）。
+            <b>只更新有填的欄位</b>，空欄不會覆蓋學生既有資料；寫入後可再逐人用「簽證辦理追蹤」微調。
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' }}>
+            {[['vn_collection_date', '收件日期', 'date'], ['vn_collection_time', '收件時間', 'time'],
+              ['vn_collection_city', '收件城市', 'text'], ['vn_collection_place', '收件地點', 'text']].map(([k, label, type]) => (
+              <div key={k} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>{label}</div>
+                <input type={type} value={batchVn.fields[k]}
+                  onChange={(e) => setBatchVn((p) => ({ ...p, fields: { ...p.fields, [k]: e.target.value } }))}
+                  style={{ ...s.input, width: '100%', boxSizing: 'border-box', fontSize: 13 }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>備註（會顯示在學生端與通知信）</div>
+            <textarea rows={2} value={batchVn.fields.vn_collection_note}
+              onChange={(e) => setBatchVn((p) => ({ ...p, fields: { ...p.fields, vn_collection_note: e.target.value } }))}
+              style={{ ...s.input, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: ACCENT }}>
+              套用對象（已勾 {batchVn.targets.filter((t) => t.checked).length} / {batchVn.targets.length} 人）
+            </span>
+            <label style={{ marginLeft: 'auto', fontSize: 12, color: '#666', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={batchVn.targets.every((t) => t.checked)}
+                onChange={(e) => setBatchVn((p) => ({ ...p, targets: p.targets.map((t) => ({ ...t, checked: e.target.checked })) }))} /> 全選
+            </label>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #eee', borderRadius: 8, padding: '6px 10px', marginBottom: 14 }}>
+            {batchVn.targets.map((t) => (
+              <label key={t.account} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5, cursor: 'pointer', borderBottom: '1px solid #f7f6f2' }}>
+                <input type="checkbox" checked={t.checked}
+                  onChange={(e) => setBatchVn((p) => ({ ...p, targets: p.targets.map((x) => (x.account === t.account ? { ...x, checked: e.target.checked } : x)) }))} />
+                <span style={{ fontWeight: 600, minWidth: 88 }}>{t.name || '—'}</span>
+                <span style={{ color: '#999' }}>{t.account}</span>
+                <span style={{ color: '#888' }}>{t.center || '—'}</span>
+                <span style={{ marginLeft: 'auto', color: t.cur ? '#b45309' : '#bbb', fontSize: 11.5 }}>
+                  {t.cur ? `現排 ${t.cur.replace(/-/g, '/')}` : '未排收件'}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+            {busy && batchVn.prog && <span style={{ fontSize: 12, color: ACCENT }}>寫入中 {batchVn.prog.done}/{batchVn.prog.total}…</span>}
+            <Btn disabled={busy} onClick={() => setBatchVn(null)}>取消</Btn>
+            <Btn variant="primary" disabled={busy} onClick={doBatchVn}>
+              批次寫入（{batchVn.targets.filter((t) => t.checked).length} 人）
+            </Btn>
+          </div>
+        </Modal>
+      )}
 
       {visaUp && (
         <Modal title={`上傳簽證 — ${visaUp.name || ''}（${visaUp.account}）`} onClose={() => busy ? null : setVisaUp(null)} width={480}>
