@@ -425,11 +425,14 @@ export default function OnboardAdminApp() {
 
   // ── 中文姓名更改待審（步驟1分頁內）─────────────────────────────────────────
   const [nameReqs, setNameReqs] = useState([])
+  const [nameApproved, setNameApproved] = useState([])       // 已核准更名（修正前後對照）
+  const [showNameApproved, setShowNameApproved] = useState(false)
   const nameReqErrorShownRef = useRef(false)
   const loadNameReqs = useCallback(async (password) => {
     try {
       const res = await onboardAdminNameRequests(teacher.username, password ?? pw)
       setNameReqs(res.list || [])
+      setNameApproved(res.approved || [])
       nameReqErrorShownRef.current = false
     } catch (e) {
       if (!nameReqErrorShownRef.current) {
@@ -856,6 +859,56 @@ export default function OnboardAdminApp() {
     </Card>
   )
 
+  // 已核准更名對照（步驟1分頁最下方；預設收合）：修正前 → 修正後
+  const nameApprovedShown = nameApproved.filter((r) =>
+    matchText(r.account, r.name, r.old_name, r.new_name, r.name_english))
+  const nameApprovedBlock = (
+    <Card style={{ marginTop: 16 }}>
+      <div onClick={() => setShowNameApproved((v) => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '14px 18px', userSelect: 'none' }}>
+        <span style={{ fontSize: 13.5, color: '#0369a1', fontWeight: 600 }}>
+          {showNameApproved ? '▾' : '▸'} 已核准更名對照（{nameApprovedShown.length}{q ? ` / ${nameApproved.length}` : ''}）
+        </span>
+        <span style={{ fontSize: 12, color: '#999' }}>{showNameApproved ? '點此收合' : '點此展開（修正前 → 修正後）'}</span>
+      </div>
+      {showNameApproved && (
+        <div style={{ overflowX: 'auto', borderTop: '1px solid #f0efeb' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: '#faf9f6' }}>
+              {['帳號', '修正前', '修正後', '系所', '校區', '核准時間', '審核人'].map((h) => <th key={h} style={th}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {nameApprovedShown.map((r) => {
+                const unchanged = (r.old_name || '') === (r.new_name || '')   // 申請同名照准：對照不畫刪除線
+                return (
+                <tr key={r.id}>
+                  <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{r.account}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    <span style={{ color: '#888', textDecoration: unchanged ? 'none' : 'line-through' }}>{r.old_name || '—'}</span>
+                  </td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    <b>{r.new_name}</b>
+                    {unchanged && <span style={{ marginLeft: 6, fontSize: 11, color: '#aaa' }}>（未變更）</span>}
+                  </td>
+                  <td style={td}>{deptZhFull(r.department) || r.department || '—'}</td>
+                  <td style={td}>{r.campus || '—'}</td>
+                  <td style={{ ...td, color: '#888', whiteSpace: 'nowrap' }}>{fmtTime(r.reviewed_at)}</td>
+                  <td style={{ ...td, color: '#888' }}>{r.reviewed_by || '—'}</td>
+                </tr>
+                )
+              })}
+              {!nameApprovedShown.length && (
+                <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 22 }}>
+                  {q && nameApproved.length ? '沒有符合搜尋的更名紀錄' : '目前還沒有核准過的更名'}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  )
+
   // 通知信控制列（每個步驟分頁的名單上方）：開 OnboardMailComposer 系統內預覽＋批次寄出
   const mailControl = (step, rows) => {
     const selectedVisaType = VISA_MAIL_TYPES.find((x) => x.key === visaMailKind) || VISA_MAIL_TYPES[0]
@@ -1256,6 +1309,7 @@ export default function OnboardAdminApp() {
             </Card>
           )
         })()}
+        {step === 1 && nameApprovedBlock}
       </>
     )
   }

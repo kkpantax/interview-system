@@ -742,7 +742,8 @@ export default async function handler(req) {
     return json({ ok: true, updated, skipped })
   }
 
-  // ── name-requests：pending 更名申請清單（join enroll_students 帶系所/校區）─────
+  // ── name-requests：pending 更名申請清單（join enroll_students 帶系所/校區）
+  //    另回傳 approved 已核准清單（修正前後對照，步驟①分頁底部收合區用）──────────
   if (action === 'name-requests') {
     const rRes = await fetch(
       `${SUPABASE_URL}/rest/v1/enroll_name_requests?status=eq.pending&select=id,account,old_name,new_name,reason,created_at&order=created_at.asc`,
@@ -750,7 +751,16 @@ export default async function handler(req) {
     )
     if (!rRes.ok) return json({ ok: false, error: '查詢更名申請失敗' }, 500)
     const reqs = await rRes.json()
-    const accts = [...new Set((Array.isArray(reqs) ? reqs : []).map((r) => r.account))]
+    const aRes0 = await fetch(
+      `${SUPABASE_URL}/rest/v1/enroll_name_requests?status=eq.approved&select=id,account,old_name,new_name,reviewed_by,reviewed_at&order=reviewed_at.desc`,
+      { headers: H },
+    )
+    const approvedRows = aRes0.ok ? await aRes0.json() : []
+    const approvedList = Array.isArray(approvedRows) ? approvedRows : []
+    const accts = [...new Set([
+      ...(Array.isArray(reqs) ? reqs : []).map((r) => r.account),
+      ...approvedList.map((r) => r.account),
+    ])]
     const stuMap = {}
     const appMap = {}
     if (accts.length) {
@@ -777,7 +787,14 @@ export default async function handler(req) {
       email: appMap[r.account]?.email ?? '',
       confirm_token: stuMap[r.account]?.confirm_token ?? '',
     }))
-    return json({ ok: true, list })
+    const approved = approvedList.map((r) => ({
+      ...r,
+      name: stuMap[r.account]?.name ?? r.new_name,
+      department: stuMap[r.account]?.department ?? '',
+      campus: stuMap[r.account]?.campus ?? '',
+      name_english: appMap[r.account]?.name_english ?? stuMap[r.account]?.name_en ?? '',
+    }))
+    return json({ ok: true, list, approved })
   }
 
   // ── name-review：核准/駁回更名申請；核准才真的改 enroll_students.name ──────────
