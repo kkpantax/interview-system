@@ -400,6 +400,7 @@ export const ONBOARD_MAIL_S2 = {
     zh: {
       greeting: '親愛的 {{name}} 同學，您好：',
       opened: '您的入學繳費作業已開通。請點選以下專屬連結登入，於「繳費」步驟下載您的專屬繳費單，並依單上金額與方式完成繳費；繳費後請回到頁面上傳繳費證明。\n{{link}}',
+      feeItems: '繳費單金額主要包含以下收費項目：\n1. 學費\n2. 雜費\n3. 電腦及網路通訊使用費\n4. 學生團體保險費\n5. 住宿相關費用（如適用）\n6. 其他入學必要代收費用\n\n每位學生實際應繳金額與項目仍以個人專屬繳費單為準。',
       notice: '繳費注意事項：\n1. 請依繳費單上的金額與方式完成繳費，繳費後回到本頁上傳繳費證明。\n2. 請務必留意繳費期限；若未如期完成繳費，將暫停辦理您的簽證作業，恐影響入學。\n3. 若已完成繳費，但於開學前選擇退學，或因簽證等不可抗力因素無法如期來校就讀，學校將依規定辦理退費至您指定之帳戶。\n4. 如有任何問題，歡迎聯繫承辦人 {{contact_name}}（{{contact_email}}{{contact_phone}}）。',
       deadlineLine: '請於 {{deadline}} 前完成繳費。',
       deadlineAsap: '請儘速完成繳費。',
@@ -408,6 +409,7 @@ export const ONBOARD_MAIL_S2 = {
     en: {
       greeting: 'Dear {{name_english}},',
       opened: 'Your enrollment payment process is now open. Please log in via your personal link below, download your payment slip under the "Payment" step, and complete the payment according to the amount and method shown on the slip. After paying, please return to the page to upload your proof of payment.\n{{link}}',
+      feeItems: 'The payment slip mainly includes the following fee items:\n1. Tuition\n2. Miscellaneous fees\n3. Computer and internet usage fee\n4. Student group insurance fee\n5. Accommodation-related fees, if applicable\n6. Other required enrollment-related collected fees\n\nThe actual amount and fee items for each student are based on the individual payment slip.',
       notice: 'Payment notes:\n1. Please pay according to the amount and method shown on your payment slip, then return to this page to upload your proof of payment.\n2. Please be mindful of the payment deadline. If payment is not completed on time, your visa processing will be suspended, which may affect your enrollment.\n3. If you complete the payment but choose to withdraw before the semester begins, or cannot arrive on time due to force majeure such as visa issues, the university will process a refund to your designated account in accordance with the regulations.\n4. If you have any questions, please contact {{contact_name}} ({{contact_email}}{{contact_phone}}).',
       deadlineLine: 'Please complete your payment before {{deadline}}.',
       deadlineAsap: 'Please complete your payment as soon as possible.',
@@ -416,6 +418,7 @@ export const ONBOARD_MAIL_S2 = {
     vi: {
       greeting: '{{name_english}} thân mến,',
       opened: 'Quy trình nộp học phí nhập học của bạn đã được mở. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập, tải phiếu nộp học phí riêng của bạn ở bước "Nộp học phí", và hoàn thành việc nộp theo số tiền và phương thức ghi trên phiếu. Sau khi nộp, vui lòng quay lại trang để tải lên chứng từ đã nộp.\n{{link}}',
+      feeItems: 'Phiếu nộp học phí chủ yếu bao gồm các khoản sau:\n1. Học phí\n2. Các khoản phí khác của trường\n3. Phí sử dụng máy tính và mạng internet\n4. Phí bảo hiểm nhóm học sinh/sinh viên\n5. Các khoản liên quan đến chỗ ở, nếu có\n6. Các khoản thu hộ cần thiết khác liên quan đến nhập học\n\nSố tiền và các khoản phải nộp thực tế của từng sinh viên sẽ căn cứ theo phiếu nộp học phí riêng.',
       notice: 'Lưu ý khi nộp học phí:\n1. Vui lòng nộp theo số tiền và phương thức ghi trên phiếu nộp học phí, sau đó quay lại trang này để tải lên chứng từ đã nộp.\n2. Vui lòng lưu ý thời hạn nộp. Nếu không nộp đúng hạn, việc xử lý thị thực của bạn sẽ bị tạm dừng, có thể ảnh hưởng đến việc nhập học.\n3. Nếu bạn đã nộp học phí nhưng chọn thôi học trước khi bắt đầu học kỳ, hoặc không thể đến trường đúng hạn vì lý do bất khả kháng như vấn đề thị thực, nhà trường sẽ hoàn phí về tài khoản bạn chỉ định theo quy định.\n4. Nếu có thắc mắc, vui lòng liên hệ cán bộ phụ trách {{contact_name}} ({{contact_email}}{{contact_phone}}).',
       deadlineLine: 'Vui lòng hoàn thành việc nộp học phí trước ngày {{deadline}}.',
       deadlineAsap: 'Vui lòng hoàn thành việc nộp học phí trong thời gian sớm nhất.',
@@ -424,6 +427,7 @@ export const ONBOARD_MAIL_S2 = {
     id: {
       greeting: 'Yth. {{name_english}},',
       opened: 'Proses pembayaran pendaftaran Anda kini telah dibuka. Silakan masuk melalui tautan pribadi Anda di bawah ini, unduh slip pembayaran Anda pada langkah "Pembayaran", dan selesaikan pembayaran sesuai jumlah dan metode yang tertera pada slip. Setelah membayar, kembalilah ke halaman untuk mengunggah bukti pembayaran Anda.\n{{link}}',
+      feeItems: 'Slip pembayaran terutama mencakup item biaya berikut:\n1. Uang kuliah\n2. Biaya lain-lain\n3. Biaya penggunaan komputer dan internet\n4. Biaya asuransi kelompok mahasiswa\n5. Biaya terkait akomodasi, jika berlaku\n6. Biaya titipan wajib lainnya yang terkait dengan pendaftaran\n\nJumlah dan item biaya aktual untuk setiap mahasiswa mengikuti slip pembayaran pribadi masing-masing.',
       notice: 'Catatan pembayaran:\n1. Silakan bayar sesuai jumlah dan metode yang tertera pada slip pembayaran Anda, lalu kembali ke halaman ini untuk mengunggah bukti pembayaran.\n2. Mohon perhatikan batas waktu pembayaran. Jika pembayaran tidak diselesaikan tepat waktu, proses visa Anda akan dihentikan, yang dapat memengaruhi pendaftaran Anda.\n3. Jika Anda telah membayar tetapi memutuskan mengundurkan diri sebelum semester dimulai, atau tidak dapat tiba tepat waktu karena keadaan kahar seperti masalah visa, universitas akan memproses pengembalian dana ke rekening yang Anda tentukan sesuai peraturan.\n4. Jika ada pertanyaan, silakan hubungi petugas {{contact_name}} ({{contact_email}}{{contact_phone}}).',
       deadlineLine: 'Mohon selesaikan pembayaran Anda sebelum {{deadline}}.',
       deadlineAsap: 'Mohon selesaikan pembayaran Anda sesegera mungkin.',
@@ -526,7 +530,7 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
     parts.push(p.greeting, p.body)
     if (hasContact) parts.push(p.contact)
   } else {
-    parts.push(p.greeting, p.opened, p.notice)
+    parts.push(p.greeting, p.opened, p.feeItems, p.notice)
     parts.push(hasDeadline ? p.deadlineLine : p.deadlineAsap)
   }
   if (String(data.custom || '').trim()) parts.push(String(data.custom).trim())
