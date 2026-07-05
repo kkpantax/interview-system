@@ -381,7 +381,7 @@ export default function OnboardAdminApp() {
 
   // ── 步驟③ 簽證：批次設定越南軌現場收件資訊（對目前篩選下的越南軌學生逐筆寫入）──
   const openBatchVn = (targets) => {
-    if (!targets.length) { showToast('目前篩選下沒有越南軌學生', 'warn'); return }
+    if (!targets.length) { showToast('目前篩選下沒有越南學生', 'warn'); return }
     setBatchVn({
       fields: { vn_collection_date: '', vn_collection_time: '', vn_collection_city: '', vn_collection_place: '', vn_collection_note: '' },
       targets: targets.map((x) => ({
@@ -399,7 +399,7 @@ export default function OnboardAdminApp() {
       Object.entries(batchVn.fields).filter(([, v]) => String(v).trim() !== ''))
     if (!picked.length) { showToast('沒有勾選任何學生', 'warn'); return }
     if (!Object.keys(fields).length) { showToast('請至少填一個要更新的欄位（空欄不會覆蓋）', 'warn'); return }
-    if (!window.confirm(`將為 ${picked.length} 位越南軌學生批次更新現場收件資訊？\n（只更新有填的欄位，空欄不覆蓋既有資料）`)) return
+    if (!window.confirm(`將為 ${picked.length} 位越南學生批次更新現場收件資訊？\n（只更新有填的欄位，空欄不覆蓋既有資料）`)) return
     setBusy(true)
     let okN = 0
     const fails = []
@@ -415,7 +415,7 @@ export default function OnboardAdminApp() {
         showToast(`已更新 ${okN} 位、失敗 ${fails.length} 位：${fails.join('、')}`, 'warn')
         setBatchVn((p) => (p ? { ...p, prog: null } : p))
       } else {
-        showToast(`已批次更新 ${okN} 位越南軌學生的現場收件資訊`)
+        showToast(`已批次更新 ${okN} 位越南學生的現場收件資訊`)
         setBatchVn(null)
       }
       await load()
@@ -997,8 +997,8 @@ export default function OnboardAdminApp() {
     return (
       <Card style={{ marginBottom: 16 }}>
         <CardHead left="📊 簽證日期統計" right="含已通過本步的學生，隨上方梯次×校區篩選" />
-        {section('vn', '🇻🇳 越南軌 · 現場收件日期', '收件日期', '#be123c', false)}
-        {section('other', '🌐 非越南軌 · 學生回報預計辦簽證日期', '預計辦理簽證日期', '#0369a1', true)}
+        {section('vn', '🇻🇳 越南學生 · 現場收件日期', '收件日期', '#be123c', false)}
+        {section('other', '🌐 其他學生 · 回報預計辦簽證日期', '預計辦理簽證日期', '#0369a1', true)}
       </Card>
     )
   }
@@ -1088,7 +1088,7 @@ export default function OnboardAdminApp() {
                         {step === 3 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
                             <span style={{ fontSize: 11, fontWeight: 600, color: visaTrackOf(stu) === 'vn' ? '#be123c' : '#0369a1' }}>
-                              {visaTrackOf(stu) === 'vn' ? '🇻🇳 越南軌' : '🌐 非越南軌'}
+                              {visaTrackOf(stu) === 'vn' ? '🇻🇳 越南學生' : '🌐 其他學生'}
                             </span>
                             {(() => { const vm = VISA_STAGE_META[visaStageOf(stu)] || VISA_STAGE_META.pending; return <Pill color={vm.color} bg={vm.bg}>{vm.label}</Pill> })()}
                             {(() => { const sig = visaSignalOf(stu); return <Pill color={sig.color} bg={sig.bg}>● {sig.label}</Pill> })()}
@@ -1669,8 +1669,8 @@ export default function OnboardAdminApp() {
                     <div style={{ fontSize: 11.5, color: '#888', marginBottom: 3 }}>簽證軌道</div>
                     <select value={d.visa_track || 'other'} onChange={(e) => setD('visa_track', e.target.value)}
                       style={{ ...s.sel, width: '100%', boxSizing: 'border-box' }}>
-                      <option value="vn">越南軌</option>
-                      <option value="other">非越南軌</option>
+                      <option value="vn">越南學生</option>
+                      <option value="other">其他學生</option>
                     </select>
                   </div>
                   {field('admission_letter_url', '錄取通知書電子檔連結')}
@@ -1744,9 +1744,9 @@ export default function OnboardAdminApp() {
 
       {/* 步驟③ 批次設定越南軌現場收件資訊：對開啟時的篩選名單逐筆寫入（空欄不覆蓋） */}
       {batchVn && (
-        <Modal title={`批次設定現場收件 — 越南軌 ${batchVn.targets.length} 人`} onClose={() => busy ? null : setBatchVn(null)} width={640}>
+        <Modal title={`批次設定現場收件 — 越南學生 ${batchVn.targets.length} 人`} onClose={() => busy ? null : setBatchVn(null)} width={640}>
           <div style={{ fontSize: 12.5, color: '#888', lineHeight: 1.7, marginBottom: 12 }}>
-            將下方收件資訊寫入所有勾選的越南軌學生（依開啟時的搜尋／中心篩選帶入）。
+            將下方收件資訊寫入所有勾選的越南學生（依開啟時的搜尋／中心篩選帶入）。
             <b>只更新有填的欄位</b>，空欄不會覆蓋學生既有資料；寫入後可再逐人用「簽證辦理追蹤」微調。
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' }}>

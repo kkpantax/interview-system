@@ -523,7 +523,7 @@ export default async function handler(req) {
     const d0 = (cur[3] && cur[3].data) || {}
     const track = d0.visa_track === 'vn' ? 'vn' : 'other'
     if (track === 'other' && stage === 'collected') {
-      return json({ ok: false, error: '非越南軌無「現場收件」階段' }, 400)
+      return json({ ok: false, error: '其他學生（非越南）無「現場收件」階段' }, 400)
     }
     const nextData = { ...d0, visa_stage: stage }
     if (body.submitter !== undefined) nextData.submitter = String(body.submitter || '')
