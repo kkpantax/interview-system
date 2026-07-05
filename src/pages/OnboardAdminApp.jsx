@@ -164,6 +164,7 @@ export default function OnboardAdminApp() {
   const [visaEdit, setVisaEdit] = useState(null)      // 步驟③ 簽證辦理追蹤彈窗：{account,name,data}
   const [centerFilter, setCenterFilter] = useState('all')   // 步驟③ 名單的中心下拉篩選，切分頁重置
   const [chartSel, setChartSel] = useState(null)      // 步驟③ 日期長條圖選取：{track,date}，點長條展開當日名單
+  const [stageFilter, setStageFilter] = useState(null) // 步驟③ 簽證階段統計點選過濾：{track,stage}，僅影響顯示，切分頁重置
   const [batchVn, setBatchVn] = useState(null)        // 步驟③ 批次設定越南現場收件彈窗：{fields,targets,prog}
   const [toast, setToast] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)   // 名單最後一次成功刷新的時間（含自動刷新），標頭顯示
@@ -216,7 +217,7 @@ export default function OnboardAdminApp() {
     setBusy(false)
   }
 
-  const changeBatch = (b) => { setBatch(b); setCenterFilter('all'); if (authed) load(b, pw) }
+  const changeBatch = (b) => { setBatch(b); setCenterFilter('all'); setStageFilter(null); if (authed) load(b, pw) }
 
   const doConfirm = async (stu, step) => {
     if (busy) return
@@ -1003,6 +1004,49 @@ export default function OnboardAdminApp() {
     )
   }
 
+  // ── 步驟③ 簽證階段統計：卡在本步的學生依軌道 × visa_stage 計數，點格過濾下方名單 ──
+  //   母體＝stuckAt(3)（open/submitted），不含已通過本步；補件中為旁支固定放最後一格
+  const visaStageStrip = (rows) => {
+    const TRACKS = [
+      ['vn', '🇻🇳 越南學生', [...VISA_STAGES_VN, 'supplement'], '#be123c'],
+      ['other', '🌐 其他學生', [...VISA_STAGES_OTHER, 'supplement'], '#0369a1'],
+    ]
+    return (
+      <Card style={{ marginBottom: 16, padding: '12px 16px' }}>
+        {TRACKS.map(([tk, tLabel, stages, tColor]) => {
+          const trackRows = rows.filter((x) => visaTrackOf(x) === tk)
+          return (
+            <div key={tk} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '5px 0' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: tColor, width: 118, flexShrink: 0 }}>
+                {tLabel}（{trackRows.length}）
+              </span>
+              {stages.map((sg) => {
+                const m = VISA_STAGE_META[sg]
+                const n = trackRows.filter((x) => visaStageOf(x) === sg).length
+                const on = stageFilter?.track === tk && stageFilter?.stage === sg
+                return (
+                  <button key={sg} onClick={() => setStageFilter(on ? null : { track: tk, stage: sg })}
+                    disabled={busy || (!n && !on)}
+                    title={n || on ? '點選過濾下方名單，再點一次取消' : '目前沒有學生在此階段'}
+                    style={{ border: '1.5px solid ' + (on ? m.color : (n ? m.bg : '#f0efeb')), borderRadius: 99,
+                      padding: '4px 10px', fontSize: 12, cursor: (n || on) ? 'pointer' : 'default',
+                      background: (n || on) ? m.bg : '#fbfaf8', color: (n || on) ? m.color : '#c4c1ba',
+                      fontWeight: on ? 700 : 500, whiteSpace: 'nowrap' }}>
+                    {m.label} {n}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+        <div style={{ fontSize: 11.5, color: '#a8a49c', marginTop: 6 }}>
+          卡在本步學生的簽證階段分布（不含已通過本步），隨上方梯次×校區與「中心」下拉篩選；搜尋框不影響統計數字。
+          點階段格可過濾下方名單，再點一次取消；此過濾僅影響顯示，不影響批次收件與寄信按鈕的對象。
+        </div>
+      </Card>
+    )
+  }
+
   // 步驟③「辦理時間」欄：列出簽證流程各節點的發生時間（只列有值的節點）
   const visaTimeCell = (stu) => {
     const d = stu.steps?.[3]?.data || {}
@@ -1039,6 +1083,9 @@ export default function OnboardAdminApp() {
     const rows = stuckAt(step)
     const matchCenter = (x) => step !== 3 || centerFilter === 'all' || x.center === centerFilter
     const shown = rows.filter((x) => matchText(x.account, x.name, x.name_english) && matchCenter(x))
+    // 簽證階段點選過濾只作用於表格顯示；批次收件（吃 shown）與寄信（吃 rows×中心）範圍不受影響
+    const matchStage = (x) => step !== 3 || !stageFilter || (visaTrackOf(x) === stageFilter.track && visaStageOf(x) === stageFilter.stage)
+    const listed = shown.filter(matchStage)
     const centers = [...new Set(rows.map((x) => x.center).filter(Boolean))].sort()
     return (
       <>
@@ -1062,17 +1109,18 @@ export default function OnboardAdminApp() {
           { label: '待確認', value: countState(step, 'submitted'), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: '已通過本步', value: countState(step, 'confirmed'), color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
         ]} />
+        {step === 3 && visaStageStrip(rows.filter(matchCenter))}
         {step === 3 && visaChartCard()}
         {mailControl(step, step === 3 ? rows.filter(matchCenter) : rows)}
         <Card>
-          <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${shown.length}${q ? ` / ${rows.length}` : ''}）`} />
+          <CardHead left={`當前卡在「${ENROLL_STEPS[step - 1]?.zh}」的學生（${listed.length}${(q || (step === 3 && (stageFilter || centerFilter !== 'all'))) ? ` / ${rows.length}` : ''}）`} />
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#faf9f6' }}>
                 {['姓名', '系所', '校區', '中心', '狀態', step === 3 ? '辦理時間' : '送出時間', '檔案', step === 3 ? '簽證通知' : '已寄通知', '操作'].map((h) => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {shown.map((stu) => {
+                {listed.map((stu) => {
                   const st = stepStateOf(stu, step)
                   const meta = STATE_META[st] || STATE_META.locked
                   const files = (stu.files || []).filter((f) => f.step === step)
@@ -1121,6 +1169,8 @@ export default function OnboardAdminApp() {
                                 {(visaTrackOf(stu) === 'vn' ? VISA_STAGES_VN : VISA_STAGES_OTHER).map((sg) => (
                                   <option key={sg} value={sg}>{VISA_STAGE_META[sg]?.label || sg}</option>
                                 ))}
+                                {/* 補件中為旁支不在推進序，但作為當前值時需有對應 option 才能正確顯示 */}
+                                {visaStageOf(stu) === 'supplement' && <option value="supplement">{VISA_STAGE_META.supplement.label}</option>}
                               </select>
                               <button onClick={() => openVisaEdit(stu)} disabled={busy} title="查看／編輯此生的簽證辦理追蹤資料"
                                 style={{ ...s.btn, ...s.btnSm }}>簽證辦理追蹤</button>
@@ -1151,7 +1201,7 @@ export default function OnboardAdminApp() {
                     </tr>
                   )
                 })}
-                {!shown.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : (q && rows.length ? '沒有符合搜尋的學生' : '目前沒有卡在這步的學生')}</td></tr>}
+                {!listed.length && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 28 }}>{loading ? '載入中…' : ((q || (step === 3 && (stageFilter || centerFilter !== 'all'))) && rows.length ? '沒有符合搜尋／篩選的學生' : '目前沒有卡在這步的學生')}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1214,7 +1264,7 @@ export default function OnboardAdminApp() {
       {/* 分頁列 + 梯次篩選 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setShowPassed(false); setCenterFilter('all'); setChartSel(null) }}
+          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setShowPassed(false); setCenterFilter('all'); setChartSel(null); setStageFilter(null) }}
             style={{ ...s.btn, background: tab === t.key ? ACCENT : 'white', color: tab === t.key ? '#fff' : '#555',
               borderColor: tab === t.key ? ACCENT : '#ddd', fontWeight: tab === t.key ? 600 : 400 }}>
             {t.label}
@@ -1226,7 +1276,7 @@ export default function OnboardAdminApp() {
             <option value="all">全部</option><option value="1">第一梯</option><option value="2">第二梯</option>
           </select>
           <span style={{ fontSize: 12, color: '#999', marginLeft: 4 }}>校區</span>
-          <select style={{ ...s.sel, padding: '5px 8px' }} value={campus} onChange={(e) => { setCampus(e.target.value); setCenterFilter('all') }}>
+          <select style={{ ...s.sel, padding: '5px 8px' }} value={campus} onChange={(e) => { setCampus(e.target.value); setCenterFilter('all'); setStageFilter(null) }}>
             <option value="all">全部</option><option value="台北">台北</option><option value="高雄">高雄</option>
           </select>
         </div>
