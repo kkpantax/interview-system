@@ -63,7 +63,7 @@ async function fetchMailRecipients(step, batch, campus, H) {
   const [sRes, pRes] = await Promise.all([
     fetch(sUrl, { headers: H }),
     fetch(
-      `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.${step}&state=in.(open,submitted)&select=account,state,reminder_count,last_reminder_at,last_reminder_kind`,
+      `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.${step}&state=in.(open,submitted)&select=account,state,data,reminder_count,last_reminder_at,last_reminder_kind`,
       { headers: H },
     ),
   ])
@@ -94,6 +94,7 @@ async function fetchMailRecipients(step, batch, campus, H) {
     birth_date: appInfo[x.account]?.birth_date || '',
     center: appInfo[x.account]?.center || '',
     state: pMap[x.account].state,
+    data: pMap[x.account].data || {},
     reminder_count: pMap[x.account].reminder_count || 0,
     last_reminder_at: pMap[x.account].last_reminder_at || null,
     last_reminder_kind: pMap[x.account].last_reminder_kind || null,
@@ -818,11 +819,47 @@ export default async function handler(req) {
   if (action === 'mail-mark-sent') {
     const step = Number(body.step)
     const tier = ['first', 'second', 'final'].includes(body.tier) ? body.tier : 'first'
+    const mailKind = String(body.mail_kind || '').trim()
     const accounts = Array.isArray(body.accounts) ? body.accounts.map((a) => String(a).trim()).filter(Boolean) : []
     if (!Number.isInteger(step) || step < 1 || step > 5 || !accounts.length) {
       return json({ ok: false, error: '參數錯誤' }, 400)
     }
     if (accounts.length > 50) return json({ ok: false, error: '一次最多回報 50 筆' }, 400)
+
+    if (step === 3 && mailKind) {
+      const pRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.3&account=in.(${encodeURIComponent(accounts.join(','))})&select=account,data`,
+        { headers: H },
+      )
+      const pRows = pRes.ok ? await pRes.json() : []
+      const cur = {}
+      for (const r of Array.isArray(pRows) ? pRows : []) cur[r.account] = r.data || {}
+
+      let updated = 0
+      for (const a of accounts) {
+        const d0 = cur[a] || {}
+        const visaMail = d0.visa_mail || {}
+        const prev = visaMail[mailKind] || {}
+        const nextData = {
+          ...d0,
+          visa_mail: {
+            ...visaMail,
+            [mailKind]: {
+              sent_count: (prev.sent_count || 0) + 1,
+              last_sent_at: nowIso,
+              last_tier: tier,
+            },
+          },
+        }
+        const up = await fetch(
+          `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(a)}&step=eq.3`,
+          { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData }) },
+        ).catch(() => null)
+        if (up?.ok) updated++
+        await logRow(a, 3, 'visa_mail_sent', { mail_kind: mailKind, tier, account: a })
+      }
+      return json({ ok: true, updated })
+    }
 
     // 先撈現值再逐筆 +1（收件名單來自 mail-recipients，該步進度列必然存在）
     const pRes = await fetch(
@@ -850,12 +887,13 @@ export default async function handler(req) {
   if (action === 'mail-log-draft') {
     const step = Number(body.step)
     const tier = ['first', 'second', 'final'].includes(body.tier) ? body.tier : 'first'
+    const mailKind = String(body.mail_kind || '').trim()
     const accounts = Array.isArray(body.accounts) ? body.accounts.map((a) => String(a).trim()).filter(Boolean) : []
     if (!Number.isInteger(step) || step < 1 || step > 5 || !accounts.length) {
       return json({ ok: false, error: '參數錯誤' }, 400)
     }
     if (accounts.length > 50) return json({ ok: false, error: '一次最多回報 50 筆' }, 400)
-    for (const a of accounts) await logRow(a, step, 'mail_draft', { step, tier, account: a })
+    for (const a of accounts) await logRow(a, step, step === 3 && mailKind ? 'visa_mail_draft' : 'mail_draft', { step, tier, mail_kind: mailKind || null, account: a })
     return json({ ok: true })
   }
 

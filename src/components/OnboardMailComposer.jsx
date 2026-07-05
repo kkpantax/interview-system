@@ -31,6 +31,47 @@ const LANGS = [['en', '中英'], ['vi', '中越'], ['id', '中印尼']]
 const CHUNK = 8   // 每批封數（建草稿／送出皆分批，同 Stage4，避免 Apps Script 逾時）
 const SEP = '\n\n────────────────────────────\n\n'   // 外語段／中文段分隔線（同 mailTemplates 慣例）
 
+export const VISA_MAIL_TYPES = [
+  { key: 'admission_letter_e', label: '電子錄取通知書寄送通知' },
+  { key: 'vn_collection', label: '越南現場收件通知', track: 'vn' },
+  { key: 'vn_supplement', label: '越南簽證資料補件通知', track: 'vn' },
+  { key: 'paper_letter_sent', label: '紙本錄取通知書寄出通知', track: 'other' },
+  { key: 'visa_date_reminder', label: '簽證日期回報提醒', track: 'other' },
+]
+
+const VISA_MAIL_LABEL = Object.fromEntries(VISA_MAIL_TYPES.map((x) => [x.key, x.label]))
+
+const buildVisaMail = (kind, data) => {
+  const name = data.name || data.name_english || '同學'
+  const contact = [data.contact_name, data.contact_email, data.contact_phone].filter(Boolean).join(' / ')
+  const contactLine = contact ? `\n\n如有任何問題，請聯繫承辦人 ${contact}。` : ''
+  const linkLine = data.link ? `\n${data.link}` : ''
+  const letterUrl = data.admission_letter_url ? `\n${data.admission_letter_url}` : ''
+  const templates = {
+    admission_letter_e: {
+      subject: '【實踐大學國際專修部】電子錄取通知書已開放下載',
+      body: `親愛的 ${name} 同學，您好：\n\n您的電子錄取通知書已開放下載，請登入入學準備系統查看並下載檔案。\n\n電子錄取通知書連結：${letterUrl || '\n（尚未提供）'}\n\n您也可以登入入學準備系統查看最新狀態：${linkLine}\n\n請妥善保存錄取通知書。後續若需辦理簽證、入境或入學相關程序，請依各階段通知與系統頁面指示完成。${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+    },
+    vn_collection: {
+      subject: '【實踐大學國際專修部】越南簽證資料收件通知',
+      body: `親愛的 ${name} 同學，您好：\n\n您的入學繳費資料已審核通過，接下來學校將安排越南現場收件，協助您後續辦理簽證相關程序。\n\n請依以下時間與地點準備並攜帶簽證辦理所需資料：\n\n收件日期：${data.vn_collection_date || '—'}\n收件時間：${data.vn_collection_time || '—'}\n收件城市：${data.vn_collection_city || '—'}\n收件地點：${data.vn_collection_place || '—'}\n\n${data.vn_collection_note || ''}\n\n請登入入學準備系統查看收件資訊，並點選確認您會到場：${linkLine}${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+    },
+    vn_supplement: {
+      subject: '【實踐大學國際專修部】簽證資料補件通知',
+      body: `親愛的 ${name} 同學，您好：\n\n您的簽證資料目前需要補件或修正，請依下列說明準備相關資料：\n\n補件說明：\n${data.supplement_note || '請依承辦人通知補齊或修正相關資料。'}\n\n請您儘快依說明完成補件，並與承辦人保持聯繫，以免影響後續簽證辦理與入學時程。\n\n入學準備系統：${linkLine}${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+    },
+    paper_letter_sent: {
+      subject: '【實踐大學國際專修部】紙本錄取通知書已寄出，請留意收件',
+      body: `親愛的 ${name} 同學，您好：\n\n您的紙本錄取通知書已寄出，請留意收件。\n\n寄出日期：${data.paper_letter_sent_at || '—'}\n掛號／追蹤號碼：${data.paper_letter_tracking_no || '—'}\n\n收到紙本錄取通知書後，請登入入學準備系統點選「已收到紙本錄取通知書」，並安排前往台灣辦事處辦理簽證。\n\n如果您在 ${data.paper_letter_deadline || '指定期限'} 前仍未收到紙本錄取通知書，請在系統中回報「尚未收到，需要協助」，或直接聯繫承辦人。\n\n入學準備系統：${linkLine}${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+    },
+    visa_date_reminder: {
+      subject: '【實踐大學國際專修部】請回報簽證辦理日期',
+      body: `親愛的 ${name} 同學，您好：\n\n請您於收到紙本錄取通知書後，儘快安排前往台灣辦事處辦理簽證。\n\n完成預約或確認辦理時間後，請登入入學準備系統回報以下資訊：\n\n1. 預計辦理簽證日期\n2. 預計取得簽證日期\n3. 其他需要學校協助或備註的事項\n\n入學準備系統：${linkLine}\n\n請務必儘早回報，以便學校掌握您的來台準備進度，避免影響後續入學安排。${contactLine}\n\n實踐大學 國際事務處 敬啟`,
+    },
+  }
+  return templates[kind] || null
+}
+
 // 依通知次別自動預選收件對象：
 //   first  → 只勾「從未寄過」的新到者（sentCount===0）；
 //   second → 只勾「已收首次(first)、仍卡關」者；
@@ -44,9 +85,10 @@ const suggestInclude = (r, tier) => {
   return (r.sentCount || 0) === 0   // first
 }
 
-export default function OnboardMailComposer({ step, initialTier = 'first', recipients, cfg, markDraft, markSent, onClose, onToast }) {
-  const stepZh = step === 0 ? '通知信' : (ENROLL_STEPS[step - 1]?.zh || `步驟${step}`)
-  const hasTemplate = !!buildOnboardMail({ step, tier: 'first', lang: 'zh', data: {} })
+export default function OnboardMailComposer({ step, mailKind = '', initialTier = 'first', recipients, cfg, markDraft, markSent, onClose, onToast }) {
+  const visaMailLabel = VISA_MAIL_LABEL[mailKind] || ''
+  const stepZh = visaMailLabel || (step === 0 ? '通知信' : (ENROLL_STEPS[step - 1]?.zh || `步驟${step}`))
+  const hasTemplate = mailKind ? !!buildVisaMail(mailKind, {}) : !!buildOnboardMail({ step, tier: 'first', lang: 'zh', data: {} })
 
   const [tier, setTier] = useState(initialTier)
 
@@ -61,17 +103,20 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         department: r.department || '', campus: r.campus || '', batch: String(r.batch ?? ''),
         nationality: r.nationality || '', confirm_token: r.confirm_token || '', email: r.email,
         gender: r.gender || '', birth_date: r.birth_date || '', center: r.center || '',
+        data: r.data || {},
         lang: l === 'zh' ? 'en' : l,   // 下拉選的是外語；台/中籍預設中英
-        sentCount: sc, sentKind: sk,
-        sentNow: false, include: suggestInclude({ sentCount: sc, sentKind: sk }, initialTier),
+        sentCount: mailKind ? (r.data?.visa_mail?.[mailKind]?.sent_count || 0) : sc,
+        sentKind: mailKind ? (r.data?.visa_mail?.[mailKind]?.last_tier || null) : sk,
+        sentNow: false, include: mailKind ? !(r.data?.visa_mail?.[mailKind]?.sent_count > 0) : suggestInclude({ sentCount: sc, sentKind: sk }, initialTier),
       }
-    }), [recipients, initialTier])
+    }), [recipients, initialTier, mailKind])
   const [rows, setRows] = useState(baseRows)
   useEffect(() => { setRows(baseRows) }, [baseRows])
   // 切換通知次別 → 依新 tier 重新預選收件對象（見 suggestInclude）；手動勾選會被重置為建議名單
   useEffect(() => {
-    setRows((rs) => rs.map((r) => ({ ...r, include: suggestInclude(r, tier) })))
-  }, [tier])
+    if (mailKind) setRows((rs) => rs.map((r) => ({ ...r, include: !(r.sentCount > 0) })))
+    else setRows((rs) => rs.map((r) => ({ ...r, include: suggestInclude(r, tier) })))
+  }, [tier, mailKind])
   const setRow = (account, p) => setRows((rs) => rs.map((r) => (r.account === account ? { ...r, ...p } : r)))
 
   const [created, setCreated] = useState({})   // { account: draftId }（僅本視窗有效）
@@ -94,11 +139,13 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
       result_link: ONBOARD_RESULT_LINK,
       deadline: deadlines[r.batch] || '',
       contact_name: c.name || '', contact_email: c.email || '', contact_phone: c.phone || '',
+      ...(r.data || {}),
     }
   }
   // 雙語組信：外語（該列下拉）在前、中文在後
   const msgFor = (r) => {
     const data = dataFor(r)
+    if (mailKind) return buildVisaMail(mailKind, data)
     const fx = buildOnboardMail({ step, tier, lang: r.lang, data })
     const zh = buildOnboardMail({ step, tier, lang: 'zh', data })
     if (!fx || !zh) return null
@@ -161,7 +208,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
     const included = new Set(selected.map((r) => r.account))
     const entries = Object.entries(created).filter(([a]) => included.has(a))   // [[account, draftId], ...]
     if (!entries.length) { onToast?.('尚未建立草稿（或草稿對應的學生都未勾選）', 'warn'); return }
-    const tierLabel = TIERS.find(([v]) => v === tier)?.[1]
+    const tierLabel = mailKind ? '批次通知' : TIERS.find(([v]) => v === tier)?.[1]
     if (!window.confirm(`確定送出這批 ${entries.length} 封「${stepZh}｜${tierLabel}」草稿嗎？\n寄件人為公務信箱（自動分批，每批 ${CHUNK} 封）。`)) return
     setBusy(true)
     let sent = 0
@@ -204,13 +251,13 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
   const statusOf = (r) => {
     if (r.sentNow) return <span style={{ color: '#15803d' }}>已寄送</span>
     if (created[r.account]) return <span style={{ color: '#b45309' }}>已建草稿</span>
-    if (r.sentCount) return <span style={{ color: '#15803d' }}>已寄送 {r.sentCount} 次{r.sentKind ? `（${TIER_SHORT[r.sentKind] || '—'}）` : ''}</span>
+    if (r.sentCount) return <span style={{ color: '#15803d' }}>已寄送 {r.sentCount} 次{!mailKind && r.sentKind ? `（${TIER_SHORT[r.sentKind] || '—'}）` : ''}</span>
     return <span style={{ color: '#ccc' }}>—</span>
   }
 
   return (
     <Modal title={`寄送入學準備通知信 — ${stepZh}`} onClose={onClose} width={1040}>
-      {/* 模板未提供（步驟②~⑤） */}
+      {/* 模板未提供 */}
       {!hasTemplate && (
         <div style={{ marginBottom: 18, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#b45309', lineHeight: 1.7 }}>
           「{stepZh}」的信件模板將於後續版本提供，目前僅能檢視名單，無法寄送。
@@ -240,16 +287,21 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
         </div>
       </div>
 
-      {/* 次別（換信首提醒段＋主旨前綴，沿用模板 tier 語意）；說明獨立一行不跟下拉擠 */}
       <div style={{ marginBottom: 18 }}>
-        <span style={s.secLabel}>通知次別</span>
+        <span style={s.secLabel}>{mailKind ? '簽證信件類型' : '通知次別'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <select style={{ ...s.sel, maxWidth: 220 }} value={tier} onChange={(e) => setTier(e.target.value)}>
-            {TIERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          {mailKind ? (
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#444' }}>{visaMailLabel}</div>
+          ) : (
+            <select style={{ ...s.sel, maxWidth: 220 }} value={tier} onChange={(e) => setTier(e.target.value)}>
+              {TIERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          )}
         </div>
         <div style={{ fontSize: 12, color: tier !== 'first' ? '#b45309' : '#999', marginTop: 6, lineHeight: 1.7 }}>
-          {tier !== 'first'
+          {mailKind
+            ? '簽證批次信依「信件類型」分開計次；已寄過此類型的學生預設不勾，避免重複寄送。'
+            : tier !== 'first'
             ? `信件開頭會加註${tier === 'second' ? '「尚未完成」提醒段' : '「最後提醒、逾期恐影響入學」段'}、主旨加上提醒前綴；僅寄給仍未完成者即可。`
             : '一般首次通知（放榜恭喜＋資料確認），信件內容維持原樣。'}
         </div>
@@ -258,8 +310,13 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
       {/* 名單 */}
       <span style={s.secLabel}>收件名單</span>
       <div style={{ fontSize: 12, color: '#666', margin: '4px 0 8px', lineHeight: 1.7 }}>
-        依「{TIERS.find(([v]) => v === tier)?.[1]}」自動預選 <b>{rows.filter((r) => suggestInclude(r, tier)).length}</b> 位；
-        已寄過本階段信的 {rows.filter((r) => (r.sentCount || 0) > 0).length} 位預設不勾（仍可手動加選）。
+        {mailKind ? (
+          <>依「{visaMailLabel}」自動預選 <b>{rows.filter((r) => !(r.sentCount > 0)).length}</b> 位；
+          已寄過此類型的 {rows.filter((r) => (r.sentCount || 0) > 0).length} 位預設不勾（仍可手動加選）。</>
+        ) : (
+          <>依「{TIERS.find(([v]) => v === tier)?.[1]}」自動預選 <b>{rows.filter((r) => suggestInclude(r, tier)).length}</b> 位；
+          已寄過本階段信的 {rows.filter((r) => (r.sentCount || 0) > 0).length} 位預設不勾（仍可手動加選）。</>
+        )}
       </div>
       <div style={{ maxHeight: '40vh', overflow: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
@@ -268,7 +325,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
               <th style={th}><input type="checkbox" checked={selected.length === rows.length && rows.length > 0}
                 onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, include: e.target.checked })))} /></th>
               <th style={th}>姓名</th><th style={th}>系所</th><th style={th}>中心</th><th style={th}>Email</th>
-              <th style={th}>語言</th><th style={th}>狀態</th><th style={th}></th>
+              {!mailKind && <th style={th}>語言</th>}<th style={th}>狀態</th><th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -279,16 +336,18 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
                 <td style={td}>{deptZhFull(r.department) || r.department || '—'}</td>
                 <td style={td}>{r.center || '—'}</td>
                 <td style={td}>{r.email}</td>
-                <td style={td}>
-                  <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.account, { lang: e.target.value })}>
-                    {LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </td>
+                {!mailKind && (
+                  <td style={td}>
+                    <select style={{ ...s.sel, padding: '3px 6px' }} value={r.lang} onChange={(e) => setRow(r.account, { lang: e.target.value })}>
+                      {LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </td>
+                )}
                 <td style={td}>{statusOf(r)}</td>
                 <td style={td}><button style={{ ...s.btn, ...s.btnSm }} disabled={!hasTemplate} onClick={() => setPreview(r)}>預覽</button></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
+            {!rows.length && <tr><td colSpan={mailKind ? 7 : 8} style={{ ...td, textAlign: 'center', color: '#aaa', padding: 24 }}>沒有可寄送的名單（需有 Email）</td></tr>}
           </tbody>
         </table>
       </div>
@@ -313,7 +372,7 @@ export default function OnboardMailComposer({ step, initialTier = 'first', recip
       </div>
       <div style={{ fontSize: 11.5, color: '#aaa', marginTop: 10, lineHeight: 1.8 }}>
         流程：先「① 建立草稿」→ 草稿會進公務信箱草稿夾，可在 Gmail 逐封檢查／微調 → 回來按「② 送出本批」一次寄出；
-        或建完草稿直接按「② 送出本批」。信件一律雙語（外語在前、中文在後），語言依國籍自動帶、可逐列改；
+        或建完草稿直接按「② 送出本批」。{mailKind ? '簽證批次信目前使用已確認的中文稿。' : '信件一律雙語（外語在前、中文在後），語言依國籍自動帶、可逐列改；'}
         建議先按逐列「預覽」確認內容。送出成功才計入「已寄送次數」，同一人可重寄。
       </div>
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, Modal, s } from '../components/UI'
-import OnboardMailComposer from '../components/OnboardMailComposer'
+import OnboardMailComposer, { VISA_MAIL_TYPES } from '../components/OnboardMailComposer'
 import { onboardAdminList, onboardAdminConfirm, onboardAdminAbandon, onboardAdminReactivate,
   onboardAdminGetSettings, onboardAdminSaveSettings, onboardAdminSaveLineQr, onboardAdminSaveContacts,
   onboardAdminImportStudents, onboardAdminNameRequests, onboardAdminNameReview,
@@ -408,6 +408,7 @@ export default function OnboardAdminApp() {
   // ── 通知信：收件名單（含已寄次數）＋ 系統內寄信視窗（OnboardMailComposer）─────────
   const [mailRecips, setMailRecips] = useState({})   // account → { email, reminder_count, ... }
   const [composer, setComposer] = useState(null)     // { step, recipients, cfg }
+  const [visaMailKind, setVisaMailKind] = useState(VISA_MAIL_TYPES[0]?.key || '')
 
   const loadMailRecips = useCallback(async (step) => {
     try {
@@ -425,7 +426,7 @@ export default function OnboardAdminApp() {
 
   // 開寄信視窗：accounts＝群發（當前篩選下卡在此步全名單）或個別（[account]）。
   // 先載入設定（承辦窗口 / 放榜連結 / 該步各梯截止日）供 composer 唯讀帶入。
-  const openComposer = async (step, accounts, recipsMap) => {
+  const openComposer = async (step, accounts, recipsMap, opts = {}) => {
     if (busy) return
     const src = recipsMap || mailRecips
     const recips = accounts.map((a) => src[a]).filter(Boolean)
@@ -438,7 +439,7 @@ export default function OnboardAdminApp() {
         if (Number(r.step) === step) deadlines[String(r.batch)] = isoToTpeDate(r.deadline).replace(/-/g, '/')
       }
       setComposer({
-        step, recipients: recips,
+        step, mailKind: opts.mailKind || '', recipients: recips,
         cfg: { contacts: res.contacts || {}, resultLink: res.result_link || {}, deadlines },
       })
     } catch (e) { showToast('載入寄信設定失敗：' + e.message, 'error') }
@@ -448,12 +449,12 @@ export default function OnboardAdminApp() {
   // composer 每批寄成功後回報：reminder_count+1 / last_reminder_*（enroll_log 記 mail_sent）
   const markMailSent = async (accounts, tier) => {
     if (composer.step === 0) return
-    await onboardAdminMailMarkSent(teacher.username, pw, { step: composer.step, tier, accounts })
+    await onboardAdminMailMarkSent(teacher.username, pw, { step: composer.step, tier, accounts, mail_kind: composer.mailKind || undefined })
   }
   // composer 每批草稿建立成功後回報：只寫 enroll_log mail_draft，不加提醒計數
   const markMailDraft = async (accounts, tier) => {
     if (composer.step === 0) return
-    await onboardAdminMailLogDraft(teacher.username, pw, { step: composer.step, tier, accounts })
+    await onboardAdminMailLogDraft(teacher.username, pw, { step: composer.step, tier, accounts, mail_kind: composer.mailKind || undefined })
   }
 
   const doReactivate = async (stu) => {
@@ -794,26 +795,38 @@ export default function OnboardAdminApp() {
   )
 
   // 通知信控制列（每個步驟分頁的名單上方）：開 OnboardMailComposer 系統內預覽＋批次寄出
-  const mailControl = (step, rows) => (
-    <Card style={{ marginBottom: 16 }}>
-      <CardHead left="✉ 通知信" />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 18px' }}>
-        <Btn variant="primary" disabled={busy || !rows.length}
-          onClick={() => openComposer(step, rows.map((x) => x.account))}>
-          ✉ 寄送通知信（{rows.length} 人）
-        </Btn>
-        {step === 1 && (
-          <Btn disabled={busy || exporting} onClick={doExportBA0203}>
-            {exporting ? '匯出中…' : '⬇ 匯出 BA0203 外生 Excel'}
+  const mailControl = (step, rows) => {
+    const selectedVisaType = VISA_MAIL_TYPES.find((x) => x.key === visaMailKind) || VISA_MAIL_TYPES[0]
+    const visaTargets = step === 3 && selectedVisaType
+      ? rows.filter((x) => !selectedVisaType.track || visaTrackOf(x) === selectedVisaType.track)
+      : rows
+    return (
+      <Card style={{ marginBottom: 16 }}>
+        <CardHead left="✉ 通知信" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 18px' }}>
+          {step === 3 && (
+            <select style={{ ...s.sel, maxWidth: 260 }} value={visaMailKind} onChange={(e) => setVisaMailKind(e.target.value)}>
+              {VISA_MAIL_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+          )}
+          <Btn variant="primary" disabled={busy || !visaTargets.length}
+            onClick={() => openComposer(step, visaTargets.map((x) => x.account), undefined, step === 3 ? { mailKind: visaMailKind } : {})}>
+            ✉ {step === 3 ? `寄送${selectedVisaType?.label || '簽證通知'}（${visaTargets.length} 人）` : `寄送通知信（${rows.length} 人）`}
           </Btn>
-        )}
-        <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
-          開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），
-          可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。
-        </span>
-      </div>
-    </Card>
-  )
+          {step === 1 && (
+            <Btn disabled={busy || exporting} onClick={doExportBA0203}>
+              {exporting ? '匯出中…' : '⬇ 匯出 BA0203 外生 Excel'}
+            </Btn>
+          )}
+          <span style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+            {step === 3
+              ? '簽證批次信會依信件類型分開追蹤寄送次數；已寄過同類型的學生預設不勾，避免重複寄送。'
+              : '開啟寄信視窗：對「目前梯次×校區篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。'}
+          </span>
+        </div>
+      </Card>
+    )
+  }
 
   // 上傳檔案格：預覽鈕（站內看圖，走 driveImageUrl 的 lh3 圖片端點，繞過 Drive「需下載才能看」的預覽卡關）＋ Drive 原檔連結
   const fileCell = (files) => (
@@ -1363,6 +1376,7 @@ export default function OnboardAdminApp() {
       {composer && (
         <OnboardMailComposer
           step={composer.step}
+          mailKind={composer.mailKind}
           recipients={composer.recipients}
           cfg={composer.cfg}
           markDraft={markMailDraft}
