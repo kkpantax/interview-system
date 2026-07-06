@@ -121,3 +121,14 @@
   必須同步刪除或關閉舊 Drive 檔案的分享才算收乾淨。
 - **怎麼應用**：重掛前先用 Drive metadata 核對新檔（檔名學號 + 內文金額）再寫 DB，避免兩人貼反；
   掛完用 `curl /api/onboard?token=` 實測回傳，舊檔刪除後再查一次 metadata 確認連結失效。
+
+## push 後沒觸發部署，先 curl 生產站看 X-Vercel-Error，別只等 webhook（2026-07-07 帳號超額停用案）
+- **為什麼**：egress 修正推上 main 後 3 分鐘都沒有新 deployment，查 GitHub deployments API 也沒新事件。
+  直到 curl 生產站才發現整站回 402 + `X-Vercel-Error: DEPLOYMENT_DISABLED`——Hobby 方案額度爆了，
+  Vercel 把服務與建置一起停掉，webhook 事件直接丟棄。根因跟要修的問題是同一件事：後台 30 秒輪詢
+  × 肥 payload 同時灌爆 Supabase egress 與 Vercel 免費額度。
+- **怎麼應用**：push 後 1~2 分鐘內沒看到新 deployment，先
+  `curl -sI https://interview-system-fawn.vercel.app/` 看狀態碼與 `X-Vercel-Error`，
+  比反覆輪詢 deployment 清單快得多。帳號恢復後被丟棄的 push **不會自動補建**，
+  要推空 commit（`git commit --allow-empty`）或 Dashboard Redeploy 重新觸發；
+  驗證新碼上線可比對線上 `assets/index-*.js` hash 與本地 `npm run build` 產物是否一致。
