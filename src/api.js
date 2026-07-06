@@ -1278,11 +1278,14 @@ export async function onboardUpload({ token, step, kind, file }) {
 
 // ── 入學準備後台（走 /api/onboard-admin，service role + superadmin 驗證）───────────
 // 每次操作都帶超管帳密（前端在後台頁以一次性密碼閘門取得後快取於記憶體重用）。
+// cv = 用戶端版本號：伺服器對舊版（cv 過低）在查任何資料前直接回 401，
+// 讓部署前就開著的舊分頁停止輪詢並提示重新整理。改輪詢/payload 行為時記得同步調升兩端。
+const ONBOARD_ADMIN_CV = 2
 async function onboardAdminPost(payload) {
   const res = await fetch('/api/onboard-admin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ cv: ONBOARD_ADMIN_CV, ...payload }),
   })
   const text = await res.text()
   let data

@@ -269,6 +269,11 @@ export default async function handler(req) {
   let body
   try { body = await req.json() } catch { return json({ ok: false, error: '無效的請求內容' }, 400) }
   const { username, password, action } = body || {}
+  // 用戶端版本門檻：舊 bundle（cv 缺漏或過低）在查任何資料前就擋下，回 401 讓舊分頁
+  // 的 load() 走 setAuthed(false) 停止輪詢並顯示提示（見 src/api.js ONBOARD_ADMIN_CV）。
+  if (!(Number(body?.cv) >= 2)) {
+    return json({ ok: false, error: '後台已更新版本，請重新整理頁面（Ctrl+F5）後再登入' }, 401)
+  }
   if (!username || !password) return json({ ok: false, error: '請輸入帳號與密碼' }, 400)
 
   // 驗證：service key 撈 teachers 比對帳密 + 角色（同 api/reset.js）
