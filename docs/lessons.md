@@ -132,3 +132,13 @@
   比反覆輪詢 deployment 清單快得多。帳號恢復後被丟棄的 push **不會自動補建**，
   要推空 commit（`git commit --allow-empty`）或 Dashboard Redeploy 重新觸發；
   驗證新碼上線可比對線上 `assets/index-*.js` hash 與本地 `npm run build` 產物是否一致。
+
+## 改了輪詢/payload 行為，舊 bundle 的長開分頁不會自己更新——用 cv 版本門檻強制過版
+- **為什麼**：egress 修正部署後，Supabase log 顯示查詢型態變新（伺服器端立即生效），但頻率
+  還是舊的 15~30 秒——部署前開著的後台分頁載的是舊 JS，30 秒 setInterval 會跑到分頁重整為止，
+  而且不知道開在誰的電腦上。解法：前端每個 /api/onboard-admin 請求帶 `cv`（src/api.js
+  ONBOARD_ADMIN_CV），伺服器在驗帳密與撈資料**之前**擋 cv 過低的請求回 401；舊版 load() 收到
+  401 會 setAuthed(false)，輪詢 effect 因 authed 為 false 而卸載——舊分頁一個輪詢週期內自動停。
+- **怎麼應用**：日後改後台輪詢節奏或清單 payload 形狀時，同步調升兩端 cv；驗證用 curl 打線上
+  端點各一次（無 cv 應得 401 過版訊息、帶 cv+錯帳密應得「帳號或密碼錯誤」）。副作用是所有
+  開著的後台分頁會被登出一次，屬預期行為，部署前先知會使用者。
