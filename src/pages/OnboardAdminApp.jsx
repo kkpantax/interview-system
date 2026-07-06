@@ -190,22 +190,33 @@ export default function OnboardAdminApp() {
 
   const loadingRef = useRef(loading)
   const busyRef = useRef(busy)
+  const lastActiveRef = useRef(Date.now())
   useEffect(() => { loadingRef.current = loading }, [loading])
   useEffect(() => { busyRef.current = busy }, [busy])
 
-  // 已驗證後每 30 秒自動刷新名單（設定／匯入分頁不刷，避免干擾表單）；
-  // 分頁隱藏／載入中／操作中時跳過，從背景切回前景立即刷新一次。
+  // 已驗證後自動刷新名單（設定／匯入分頁不刷，避免干擾表單）。
+  // 三重節流，避免無人看管的分頁 24 小時持續打 API：
+  //   ① 分頁隱藏、② 載入／操作中、③ 閒置超過 IDLE_MS（無任何滑鼠／鍵盤互動）→ 一律跳過。
+  // 有互動或從背景切回前景時記錄活動時間並立即刷新一次。
   useEffect(() => {
     if (!authed || tab === 'settings' || tab === 'import') return
+    const POLL_MS = 180000   // 每 3 分鐘輪詢一次（原為 30 秒）
+    const IDLE_MS = 600000   // 閒置 10 分鐘後停止輪詢，直到再次互動
+    const markActive = () => { lastActiveRef.current = Date.now() }
     const id = setInterval(() => {
       if (document.hidden || loadingRef.current || busyRef.current) return
+      if (Date.now() - lastActiveRef.current > IDLE_MS) return
       load()
-    }, 30000)
-    const onVisible = () => { if (!document.hidden && authed) load() }
+    }, POLL_MS)
+    const onVisible = () => { if (!document.hidden && authed) { markActive(); load() } }
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pointerdown', markActive, { passive: true })
+    window.addEventListener('keydown', markActive)
     return () => {
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pointerdown', markActive)
+      window.removeEventListener('keydown', markActive)
     }
   }, [authed, tab, load])
 

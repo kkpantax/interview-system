@@ -303,19 +303,24 @@ export default async function handler(req) {
     if (campus) sUrl += `&campus=eq.${encodeURIComponent(campus)}`
     if (!includeTest) sUrl += `&is_test=eq.false`
 
-    const [sRes, progress, files, apps] = await Promise.all([
+    const [sRes, progress, visaData, files, apps] = await Promise.all([
       fetch(sUrl, { headers: H }),
-      fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,data,submitted_at,confirmed_at&order=account.asc,step.asc`, H),
+      fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,step,state,submitted_at,confirmed_at&order=account.asc,step.asc`, H),
+      fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_progress?select=account,data&step=eq.3&order=account.asc`, H),
       fetchAllRows(`${SUPABASE_URL}/rest/v1/enroll_files?select=account,step,kind,drive_url,uploaded_at&order=uploaded_at.desc,id.desc`, H),
       fetchAllRows(`${SUPABASE_URL}/rest/v1/applications?select=account,name_english,gender,birth_date,center&order=id.asc`, H),
     ])
     if (!sRes.ok) return json({ ok: false, error: '查詢學生失敗' }, 500)
     const students = await sRes.json()
 
+    // 步驟③簽證 data 另外只撈 step=3（步驟①資料最肥、清單用不到，只有③需要 data 顯示簽證階段）
+    const visaByAcct = {}
+    for (const r of Array.isArray(visaData) ? visaData : []) visaByAcct[r.account] = r.data || {}
+
     // 依 account 分組
     const progByAcct = {}
     for (const r of Array.isArray(progress) ? progress : []) {
-      (progByAcct[r.account] ||= {})[r.step] = { state: r.state, submitted_at: r.submitted_at, confirmed_at: r.confirmed_at, ...(r.step === 3 ? { data: r.data || {} } : {}) }
+      (progByAcct[r.account] ||= {})[r.step] = { state: r.state, submitted_at: r.submitted_at, confirmed_at: r.confirmed_at, ...(r.step === 3 ? { data: visaByAcct[r.account] || {} } : {}) }
     }
     const filesByAcct = {}
     for (const r of Array.isArray(files) ? files : []) {
