@@ -56,4 +56,6 @@ jobs:
           RCLONE_CONFIG_GDRIVE_SCOPE: drive
           RCLONE_CONFIG_GDRIVE_TOKEN: ${{ secrets.RCLONE_GDRIVE_TOKEN }}
           RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID: 1JVCWB60BsqVdlZhaVetGH5U2ToXN0sbJ
-        run: rclone delete gdrive: --min-age 30d --include "db-backup-*.dump" -v || true
+        # 注意：這行不能用單行寫法——「gdrive: 」的冒號+空格會讓 YAML 解析失敗（整份 workflow 無效）
+        run: |
+          rclone delete gdrive: --min-age 30d --include "db-backup-*.dump" -v || true
