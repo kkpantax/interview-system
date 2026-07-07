@@ -142,3 +142,13 @@
 - **怎麼應用**：日後改後台輪詢節奏或清單 payload 形狀時，同步調升兩端 cv；驗證用 curl 打線上
   端點各一次（無 cv 應得 401 過版訊息、帶 cv+錯帳密應得「帳號或密碼錯誤」）。副作用是所有
   開著的後台分頁會被登出一次，屬預期行為，部署前先知會使用者。
+
+## 排程型 GitHub Actions 加入後必須手動 dispatch 跑通一次，否則壞了也不會知道
+- **為什麼**：db-backup-drive.yml 第 59 行單行 `run: rclone delete gdrive: --min-age ...`
+  的「gdrive: 」含冒號+空格，YAML 誤判為巢狀 mapping → 整份 workflow 無效。後果有二：
+  (1) 每次 push GitHub 都產生一筆失敗紀錄（看起來像「git 失效」，其實 push/部署都正常）；
+  (2) 每日 02:00 的備份從加入起一次都沒跑過——schedule-only 的 workflow 壞掉是無聲的，
+  沒有任何主動通知。
+- **怎麼應用**：run 指令含「x: 」樣式（rclone remote、URL 標籤等）一律用 `run: |` 區塊寫法；
+  新增/修改 workflow 後本地先 `python -c "import yaml; yaml.safe_load(open(...))"` 驗證，
+  merge 後立刻 workflow_dispatch 手動跑通一次（連 secret 一起驗），不要只看檔案進了 repo。
