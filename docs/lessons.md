@@ -152,3 +152,14 @@
 - **怎麼應用**：run 指令含「x: 」樣式（rclone remote、URL 標籤等）一律用 `run: |` 區塊寫法；
   新增/修改 workflow 後本地先 `python -c "import yaml; yaml.safe_load(open(...))"` 驗證，
   merge 後立刻 workflow_dispatch 手動跑通一次（連 secret 一起驗），不要只看檔案進了 repo。
+
+## rclone authorize 的 token 歸屬必須驗證，且學校 Workspace 帳號的 about 端點會 403
+- **為什麼**：設定 Drive 備份 token 時，`rclone authorize "drive"` 自動開瀏覽器會用
+  **目前登入的預設帳號**直接過，使用者連選擇畫面都沒看到——第一次拿到的是個人帳號
+  （kkpantax）的 token，對公務帳號的備份資料夾 403。共試了三次才對，正解是無痕視窗
+  只登入 shihchien_ifp。另外 g2.usc.edu.tw（學校 Workspace）政策會擋
+  `drive/v3/about`（403），不能用它驗帳號身分；改查目標資料夾本身的
+  `owners` + `capabilities.canAddChildren` 就能同時驗到「帳號對不對」與「能不能寫」。
+- **怎麼應用**：任何 OAuth token 拿到手先驗歸屬與權限再交付：查目標資源的 owner/寫入權
+  （不要用 about/userinfo，Workspace 可能擋）→ 用與正式流程相同的 env 實寫一筆再刪掉。
+  PATH 提醒：winget 裝完的指令在既有終端機找不到是正常的，開新視窗或用完整路徑。
