@@ -257,6 +257,32 @@ export async function updateMaterialsUrlByAccount(updates, onProgress) {
   return { updated, total: updates.length }
 }
 
+// 整合匯入用：依「帳號」一次補齊多個人層級欄位。
+// 只送出有值欄位，避免 Excel 空白把既有資料覆蓋掉。
+export async function updateApplicationsByAccount(updates, onProgress) {
+  let done = 0, updated = 0, updatedRows = 0
+  const allowed = ['birth_date', 'passport_number', 'materials_url', 'interview_date', 'center']
+  for (const u of updates || []) {
+    if (!u.account) { done++; onProgress?.(done, updates.length); continue }
+    const fields = {}
+    for (const key of allowed) {
+      if (u[key] != null && u[key] !== '') fields[key] = u[key]
+    }
+    if (Object.keys(fields).length) {
+      const res = await callProxy(
+        `/rest/v1/applications?account=eq.${encodeURIComponent(u.account)}`,
+        'PATCH', fields, 'return=representation',
+      )
+      if (Array.isArray(res) && res.length) {
+        updated++
+        updatedRows += res.length
+      }
+    }
+    done++; onProgress?.(done, updates.length)
+  }
+  return { updated, updatedRows, total: (updates || []).length }
+}
+
 // ── Centers（面試中心，由行政人員動態管理）─────────────────────────────────
 export async function getCenters() {
   return callProxy('/rest/v1/centers?select=*&order=sort_order.asc,name.asc', 'GET')

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
-import ImportModal from '../components/ImportModal'
+import IntegratedImportModal from '../components/IntegratedImportModal'
 import TeacherManager from '../components/TeacherManager'
 import CenterManager from '../components/CenterManager'
 import DeptQuotaManager from '../components/DeptQuotaManager'
@@ -10,14 +10,9 @@ import CampusManager from '../components/CampusManager'
 import InfoLinksManager from '../components/InfoLinksManager'
 import StudentEditModal from '../components/StudentEditModal'
 import ProgressOverview from '../components/ProgressOverview'
-import { ExportMenu } from '../components/ExportMenu'
 import DayBarChart from '../components/DayBarChart'
-import CenterMatchModal from '../components/CenterMatchModal'
-import InterviewDateModal from '../components/InterviewDateModal'
-import PassportBirthImportModal from '../components/PassportBirthImportModal'
-import MaterialsLinkImportModal from '../components/MaterialsLinkImportModal'
 import { writeXlsx } from '../components/ExportBtn'
-import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateBirthPassportByAccount, updateMaterialsUrlByAccount, saveYearlySnapshot } from '../api'
+import { getAllApplications, upsertApplications, getFinalList, setInterviewDate, getCenters, batchSetCenter, setPaperPassed, countEvaluationsForApplication, exportAllData, clearAllData, updateApplicationsByAccount, saveYearlySnapshot } from '../api'
 import { getTeacher, logoutTeacher } from '../auth'
 import { calcAge } from '../utils'
 import { STATUS, batchInfo, batchOf } from '../constants'
@@ -79,10 +74,6 @@ export default function AdminApp() {
   const [apps, setApps]           = useState([])
   const [loading, setLoading]     = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [showCenterMatch, setShowCenterMatch] = useState(false)
-  const [showDateImport, setShowDateImport] = useState(false)
-  const [showBirthImport, setShowBirthImport] = useState(false)
-  const [showLinkImport, setShowLinkImport] = useState(false)
   const [toast, setToast]         = useState(null)
   const [kw, setKw]               = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
@@ -130,21 +121,29 @@ export default function AdminApp() {
       window.location.hash = '#/login?stage=admin'
   }, [teacher])
 
-  const handleImport = async (rows, skipped, onProgress) => {
-    const { added, updated } = await upsertApplications(rows, onProgress)
-    showToast(`匯入完成：新增 ${added}、更新 ${updated}、略過 ${skipped}（無帳號）`)
-    await load()
-  }
+  const handleImport = async (payload, setProgress) => {
+    let added = 0
+    let updated = 0
+    let accountUpdated = 0
+    let accountTotal = 0
 
-  const handleBirthPassportImport = async (rows, onProgress) => {
-    const { updated, total } = await updateBirthPassportByAccount(rows, onProgress)
-    showToast(`生日／護照匯入完成：更新 ${updated} 位（共比對 ${total} 位）`)
-    await load()
-  }
+    if (payload.applications?.length) {
+      setProgress?.('正在匯入主名單志願…')
+      const res = await upsertApplications(payload.applications, (done, total) =>
+        setProgress?.(`正在匯入主名單志願… ${done}/${total}`))
+      added = res.added || 0
+      updated = res.updated || 0
+    }
 
-  const handleMaterialsLinkImport = async (rows, onProgress) => {
-    const { updated, total } = await updateMaterialsUrlByAccount(rows, onProgress)
-    showToast(`書面資料連結匯入完成：更新 ${updated} 位（共比對 ${total} 位）`)
+    if (payload.accountUpdates?.length) {
+      setProgress?.('正在同步面試日期、中心與補充資料…')
+      const res = await updateApplicationsByAccount(payload.accountUpdates, (done, total) =>
+        setProgress?.(`正在同步面試日期、中心與補充資料… ${done}/${total}`))
+      accountUpdated = res.updated || 0
+      accountTotal = res.total || 0
+    }
+
+    showToast(`整合匯入完成：主名單新增 ${added}、更新 ${updated}；補充資料更新 ${accountUpdated}/${accountTotal} 位`)
     await load()
   }
 
@@ -340,15 +339,6 @@ export default function AdminApp() {
     }
   }
 
-  const handleCenterMatchApply = async (centerName, ids, peopleCount) => {
-    if (!ids.length) { showToast('沒有可套用的人員', 'warn'); return }
-    const res = await batchSetCenter(ids, centerName)
-    const n = Array.isArray(res) ? res.length : 0
-    if (!n) { showToast('套用失敗：0 筆更新（請確認 applications 的 UPDATE RLS 政策）', 'error'); throw new Error('0 rows updated') }
-    setApps((prev) => prev.map((a) => (ids.includes(a.id) ? { ...a, center: centerName } : a)))
-    showToast(`已依中心名單標註 ${peopleCount} 位（${n} 筆志願）→ ${centerName}`)
-  }
-
   // 書審：paper_passed 預設視為通過（缺欄位 / null / true 都算通過，只有明確 false 才是未通過）
   const paperOK = (a) => a.paper_passed !== false
   const setAppPaper = async (appId, passed) => {
@@ -384,7 +374,7 @@ export default function AdminApp() {
         <>
           {loading && <span style={{ fontSize: 12, color: '#aaa' }}>載入中…</span>}
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={() => { window.location.hash = '#/intl' }}>← 國際事務處</Btn>
-          <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>＋ 上傳名單</Btn>
+          <Btn variant="primary" style={{ background: '#2a2a28', borderColor: '#444', color: '#f5f4f0' }} onClick={() => setShowImport(true)}>⬆ 整合匯入</Btn>
           <Btn style={{ background: 'none', borderColor: '#3a6', color: '#7c5' }} onClick={() => setEditGroup({ key: '__new__', account: '', rep: {}, apps: [], __new: true })}>＋ 新增考生</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={exportFinal}>⬇ 匯出最終名單</Btn>
           <Btn style={{ background: 'none', borderColor: '#444', color: '#ccc' }} onClick={load}>↻</Btn>
@@ -603,16 +593,12 @@ export default function AdminApp() {
         <CardHead left="學生總覽" right={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <span>{`${filtered.length} / ${groups.length} 人`}</span>
-            <ExportMenu
-              label="⬆ 批次匯入"
-              btnStyle={{ background: 'white', border: '1px solid #ddd', color: '#1a1a18', fontSize: 12.5, padding: '5px 11px' }}
-              items={[
-                { label: '📅 上傳第一階段面試時間表', onClick: () => setShowDateImport(true) },
-                { label: '🪪 上傳學生生日／護照號碼', onClick: () => setShowBirthImport(true) },
-                { label: '📎 上傳書面資料雲端連結', onClick: () => setShowLinkImport(true) },
-                { label: '📋 上傳中心名單', onClick: () => setShowCenterMatch(true) },
-              ]}
-            />
+            <Btn
+              onClick={() => setShowImport(true)}
+              style={{ background: 'white', border: '1px solid #ddd', color: '#1a1a18', fontSize: 12.5, padding: '5px 11px' }}
+            >
+              ⬆/⬇ 整合 Excel
+            </Btn>
           </span>
         } />
         <div style={{ overflowX: 'auto' }}>
@@ -731,42 +717,12 @@ export default function AdminApp() {
        </>
       )}
 
-      {showImport && <ImportModal onImport={handleImport} onClose={() => setShowImport(false)} />}
-      {showCenterMatch && (
-        <CenterMatchModal
+      {showImport && (
+        <IntegratedImportModal
+          groups={groups}
           centers={centers}
-          groups={groups}
-          onApply={handleCenterMatchApply}
-          onClose={() => setShowCenterMatch(false)}
-        />
-      )}
-      {showDateImport && (
-        <InterviewDateModal
-          groups={groups}
-          onApply={async (ids, date) => {
-            await setInterviewDate(ids, date)
-          }}
-          onClose={(count) => {
-            setShowDateImport(false)
-            if (count > 0) {
-              showToast(`已成功指派 ${count} 位學生的面試日期`)
-              load()
-            }
-          }}
-        />
-      )}
-      {showBirthImport && (
-        <PassportBirthImportModal
-          groups={groups}
-          onApply={handleBirthPassportImport}
-          onClose={() => setShowBirthImport(false)}
-        />
-      )}
-      {showLinkImport && (
-        <MaterialsLinkImportModal
-          groups={groups}
-          onApply={handleMaterialsLinkImport}
-          onClose={() => setShowLinkImport(false)}
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
         />
       )}
       {editGroup && (
