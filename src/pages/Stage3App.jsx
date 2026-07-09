@@ -3,8 +3,8 @@ import { PageShell } from '../components/PageShell'
 import { Btn, Card, CardHead, Pill, s } from '../components/UI'
 import { writeXlsx, writeXlsxMulti } from '../components/ExportBtn'
 import { ExportMenu } from '../components/ExportMenu'
-import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getAllApplications, getDepartmentQuotas, getDepartmentCampuses } from '../api'
-import { DECISIONS, batchInfo, batchOf, resolveCampus } from '../constants'
+import { getStage3Data, getFinalAdmissions, upsertFinalAdmission, getAllApplications, getDepartmentQuotas, getDepartmentCampuses, getBatchOverrides, setBatchOverride, clearBatchOverride } from '../api'
+import { DECISIONS, batchInfo, batchOf, resolveCampus, setBatchOverrides } from '../constants'
 import EvalDetailModal from '../components/EvalDetailModal'
 import { getTeacher, logoutTeacher } from '../auth'
 
@@ -134,6 +134,7 @@ export default function Stage3App() {
   const [apps, setApps]         = useState([])
   const [quotas, setQuotas]     = useState({})
   const [campusOv, setCampusOv] = useState({})   // department_campus 覆寫
+  const [overrides, setOverrides] = useState({})   // { account: '1'|'2' }
   const [dept, setDept]         = useState('')
   const [viewMode, setViewMode]           = useState('dept')   // 'dept' | 'center'
   const [selectedCenter, setSelectedCenter] = useState('')
@@ -157,12 +158,13 @@ export default function Stage3App() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [ev, fa, ap, qz, cc] = await Promise.all([
+      const [ev, fa, ap, qz, cc, ov] = await Promise.all([
         getStage3Data(),
         getFinalAdmissions(),
         getAllApplications().catch(() => []),
         getDepartmentQuotas().catch(() => ({})),
         getDepartmentCampuses().catch(() => ({})),
+        getBatchOverrides().catch(() => ({})),
       ])
       setRawEvals(ev || [])
       setEvals(dedupeEvals(ev))
@@ -170,12 +172,29 @@ export default function Stage3App() {
       setApps(ap || [])
       setQuotas(qz || {})
       setCampusOv(cc || {})
+      setBatchOverrides(ov || {})   // 灌進 constants，讓本頁 batchOf/batchInfo 生效
+      setOverrides(ov || {})        // 本地用來判斷是否已覆寫
     } catch (e) {
       showToast('載入失敗：' + e.message, 'error')
     } finally {
       setLoading(false)
     }
   }, [showToast])
+
+  const toggleBatchOverride = useCallback(async (account) => {
+    const acct = String(account || '')
+    if (!acct) return
+    try {
+      if (overrides[acct] === '2') {
+        await clearBatchOverride(acct)          // 已覆寫 → 還原成帳號原本梯次
+      } else {
+        await setBatchOverride(acct, '2', '轉報／重新報名改列第二梯')
+      }
+      await load()
+    } catch (e) {
+      showToast('梯次覆寫失敗：' + e.message, 'error')
+    }
+  }, [overrides, load, showToast])
 
   useEffect(() => { load() }, [load])
 
@@ -1060,7 +1079,20 @@ export default function Stage3App() {
                       )}
                     </td>
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
-                    {(() => { const bi = batchInfo(acctOf(e)); return <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td> })()}
+                    {(() => {
+                  const acct = acctOf(e); const bi = batchInfo(acct); const ov = overrides[acct]
+                  return (
+                    <td style={td}>
+                      <span
+                        onClick={() => toggleBatchOverride(acct)}
+                        title={ov ? '手動改列第二梯，點擊還原' : '點擊改列第二梯'}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <Pill color={bi.color} bg={bi.bg}>{bi.short}{ov ? '＊' : ''}</Pill>
+                      </span>
+                    </td>
+                  )
+                })()}
                     <td style={td}>{[e.applications?.nationality, e.applications?.gender].filter(Boolean).join('／') || '—'}</td>
                     <td style={td}>{passed ? <span style={{ color: '#15803d' }}>通過</span> : '—'}</td>
                     <td style={td}>
@@ -1107,7 +1139,20 @@ export default function Stage3App() {
                   <tr key={e.id}>
                     <td style={{ ...td, fontWeight: 500 }}>{e.applications?.name || '—'}</td>
                     <td style={{ ...td, color: '#888' }}>{acctOf(e) || '—'}</td>
-                    {(() => { const bi = batchInfo(acctOf(e)); return <td style={td}><Pill color={bi.color} bg={bi.bg}>{bi.short}</Pill></td> })()}
+                    {(() => {
+                  const acct = acctOf(e); const bi = batchInfo(acct); const ov = overrides[acct]
+                  return (
+                    <td style={td}>
+                      <span
+                        onClick={() => toggleBatchOverride(acct)}
+                        title={ov ? '手動改列第二梯，點擊還原' : '點擊改列第二梯'}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <Pill color={bi.color} bg={bi.bg}>{bi.short}{ov ? '＊' : ''}</Pill>
+                      </span>
+                    </td>
+                  )
+                })()}
                     <td style={td}>{e.applications?.nationality || '—'}</td>
                     <td style={td}>{e.applications?.gender || '—'}</td>
                     <td style={td}>{deptOf(e)}</td>

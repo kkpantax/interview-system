@@ -199,8 +199,16 @@ export const resolveCampus = (dept = '', overrides = {}) =>
 //   11510001 → 115 年「第一梯」、11520001 → 115 年「第二梯（加報）」。
 // 第二梯為加報者，最終與第一梯一起放榜、共用同一系所名額；此處僅作「看得出來是哪一梯」的區分，
 // 不影響任何評分、預計錄取或正/備取排序邏輯。第 4 碼非 1/2（或無帳號）回傳 0＝未分梯。
+// 梯次覆寫表（{ account: '1'|'2' }）；由 App 啟動時 / Stage3 載入時以 setBatchOverrides 灌入。
+let _batchOverrides = {}
+export const setBatchOverrides = (map) => { _batchOverrides = map || {} }
+export const getBatchOverrideMap = () => _batchOverrides
 export const batchOf = (account) => {
-  const d = String(account ?? '')[3]
+  const a = String(account ?? '')
+  const ov = _batchOverrides[a]
+  if (ov === '1' || ov === 1) return 1
+  if (ov === '2' || ov === 2) return 2
+  const d = a[3]
   return d === '1' ? 1 : d === '2' ? 2 : 0
 }
 export const BATCHES = [

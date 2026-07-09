@@ -1569,3 +1569,27 @@ export async function updateTransferStatus(id, to_status) {
   }
   return r
 }
+
+// ── 梯次覆寫（batch_overrides）：學號不動，強制歸到指定梯次 ──────────────
+export async function getBatchOverrides() {
+  const rows = await callProxy('/rest/v1/batch_overrides?select=account,batch', 'GET')
+  const map = {}
+  for (const r of (rows || [])) map[r.account] = String(r.batch)
+  return map
+}
+export async function setBatchOverride(account, batch, note) {
+  const row = {
+    account: String(account), batch: String(batch), note: note ?? null,
+    created_by: getTeacher()?.username || null, updated_at: new Date().toISOString(),
+  }
+  return callProxy(
+    '/rest/v1/batch_overrides?on_conflict=account',
+    'POST', [row], 'resolution=merge-duplicates,return=minimal',
+  )
+}
+export async function clearBatchOverride(account) {
+  return callProxy(
+    `/rest/v1/batch_overrides?account=eq.${encodeURIComponent(account)}`,
+    'DELETE', null, 'return=minimal',
+  )
+}

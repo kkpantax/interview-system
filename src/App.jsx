@@ -12,6 +12,8 @@ import ConfirmApp from './pages/ConfirmApp'
 import OnboardApp from './pages/OnboardApp'
 import OnboardAdminApp from './pages/OnboardAdminApp'
 import TeacherLogin from './pages/TeacherLogin'
+import { getBatchOverrides } from './api'
+import { setBatchOverrides } from './constants'
 
 const StatsApp = lazy(() => import('./pages/StatsApp'))
 
@@ -26,11 +28,18 @@ function parseHash() {
 
 export default function App() {
   const [route, setRoute] = useState(parseHash)
+  const [, setOvVer] = useState(0)   // 覆寫載入後 bump，強制重繪讓 batchOf 重新計算
 
   useEffect(() => {
     const onChange = () => setRoute(parseHash())
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+
+  useEffect(() => {
+    getBatchOverrides()
+      .then((m) => { setBatchOverrides(m); setOvVer((v) => v + 1) })
+      .catch(() => {})
   }, [])
 
   const { path, query } = route
