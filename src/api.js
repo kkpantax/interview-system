@@ -195,7 +195,11 @@ export async function upsertApplications(rows, onProgress) {
   // 新增：每批最多 50 筆，避免單一請求過大
   for (let i = 0; i < toInsert.length; i += IMPORT_BATCH) {
     const chunk = toInsert.slice(i, i + IMPORT_BATCH)
-    await callProxy('/rest/v1/applications', 'POST', chunk, 'return=minimal')
+    // PostgREST 批次新增要求陣列內每個物件欄位一致，否則回 "All object keys must match"。
+    // 各列只帶有值的欄位會造成 key 不一致；補齊本批聯集欄位（缺的補 null，僅影響新增列，不影響更新列）。
+    const unionKeys = [...new Set(chunk.flatMap((r) => Object.keys(r)))]
+    const normalized = chunk.map((r) => Object.fromEntries(unionKeys.map((k) => [k, r[k] ?? null])))
+    await callProxy('/rest/v1/applications', 'POST', normalized, 'return=minimal')
     tick(chunk.length)
   }
   // 更新：依 id 逐筆 PATCH。重複上傳時只修正基本資料，不覆寫 status，
