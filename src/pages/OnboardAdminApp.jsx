@@ -275,6 +275,33 @@ export default function OnboardAdminApp() {
     } finally { setExporting(false) }
   }
 
+  // 步驟名單匯出（目前用於步驟②繳費）：匯出「目前在該步驟」的學生名單，
+  // 欄位固定為 帳號／中文姓名／英文姓名／生日／性別／學系／校區。
+  // rows 直接吃畫面上已篩選（搜尋＋中心）的清單，所見即所得。
+  const exportStepList = (rows, stepZh) => {
+    if (!rows.length) { showToast('目前沒有可匯出的學生', 'warn'); return }
+    const aoa = [
+      ['帳號', '中文姓名', '英文姓名', '生日', '性別', '學系', '校區'],
+      ...rows.map((x) => [
+        x.account || '',
+        x.name || '',
+        x.name_english || '',
+        x.birth_date || '',
+        x.gender || '',
+        deptZhFull(x.department) || x.department || '',
+        x.campus || '',
+      ]),
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    ws['!cols'] = [{ wch: 11 }, { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 6 }, { wch: 22 }, { wch: 8 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, stepZh)
+    const t = new Date()
+    const ymd = `${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}`
+    XLSX.writeFile(wb, `入學準備_${stepZh}名單_${ymd}.xlsx`)
+    showToast(`已匯出 ${rows.length} 位學生`)
+  }
+
   // 檢視某生步驟①已填資料（單筆撈 step1-data）；退回補件在彈窗內。
   const openDetail = async (stu) => {
     setDetail({ account: stu.account, name: stu.name, loading: true })
@@ -1188,6 +1215,12 @@ export default function OnboardAdminApp() {
             <option value="all">全部中心</option>
             {centers.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+          {step === 2 && (
+            <Btn disabled={busy} onClick={() => exportStepList(shown, ENROLL_STEPS[1]?.zh || '繳費')}
+              title="下載目前在繳費階段的學生名單（帳號／中英文姓名／生日／性別／學系／校區）">
+              ⬇ 下載名單（{shown.length} 人）
+            </Btn>
+          )}
           {step === 3 && (
             <Btn disabled={busy} onClick={() => openBatchVn(shown.filter((x) => visaTrackOf(x) === 'vn'))}>
               🇻🇳 批次設定現場收件（{shown.filter((x) => visaTrackOf(x) === 'vn').length} 人）
