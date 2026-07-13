@@ -864,9 +864,11 @@ export default async function handler(req) {
     }
     if (accounts.length > 50) return json({ ok: false, error: '一次最多回報 50 筆' }, 400)
 
-    if (step === 3 && mailKind) {
+    // 帶 mailKind 的批次信（步驟③簽證信、步驟②信用卡繳費通知…）依「信件類型」獨立計次，
+    // 計次存在該步 enroll_progress[step].data.visa_mail[mailKind]（與 reminder_count 分開）。
+    if (mailKind) {
       const pRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.3&account=in.(${encodeURIComponent(accounts.join(','))})&select=account,data`,
+        `${SUPABASE_URL}/rest/v1/enroll_progress?step=eq.${step}&account=in.(${encodeURIComponent(accounts.join(','))})&select=account,data`,
         { headers: H },
       )
       const pRows = pRes.ok ? await pRes.json() : []
@@ -890,11 +892,11 @@ export default async function handler(req) {
           },
         }
         const up = await fetch(
-          `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(a)}&step=eq.3`,
+          `${SUPABASE_URL}/rest/v1/enroll_progress?account=eq.${encodeURIComponent(a)}&step=eq.${step}`,
           { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData }) },
         ).catch(() => null)
         if (up?.ok) updated++
-        await logRow(a, 3, 'visa_mail_sent', { mail_kind: mailKind, tier, account: a })
+        await logRow(a, step, 'visa_mail_sent', { mail_kind: mailKind, tier, account: a })
       }
       return json({ ok: true, updated })
     }
@@ -931,7 +933,7 @@ export default async function handler(req) {
       return json({ ok: false, error: '參數錯誤' }, 400)
     }
     if (accounts.length > 50) return json({ ok: false, error: '一次最多回報 50 筆' }, 400)
-    for (const a of accounts) await logRow(a, step, step === 3 && mailKind ? 'visa_mail_draft' : 'mail_draft', { step, tier, mail_kind: mailKind || null, account: a })
+    for (const a of accounts) await logRow(a, step, mailKind ? 'visa_mail_draft' : 'mail_draft', { step, tier, mail_kind: mailKind || null, account: a })
     return json({ ok: true })
   }
 

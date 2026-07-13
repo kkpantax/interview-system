@@ -91,6 +91,8 @@ const T = {
   s2FeeItemsTitle:{ zh: '收費明細', en: 'Fee Details', vi: 'Chi tiết khoản thu', id: 'Rincian Biaya' },
   s2SlipDownload: { zh: '下載繳費單', en: 'Download payment slip', vi: 'Tải phiếu nộp học phí', id: 'Unduh slip pembayaran' },
   s2SlipPending:  { zh: '繳費單準備中，請稍後再回來查看。', en: 'Your payment slip is being prepared. Please check back later.', vi: 'Phiếu nộp học phí đang được chuẩn bị. Vui lòng quay lại sau.', id: 'Slip pembayaran sedang disiapkan. Silakan periksa kembali nanti.' },
+  s2SlipCcDownload: { zh: '下載繳費單（信用卡）', en: 'Download slip (credit card)', vi: 'Tải phiếu (thẻ tín dụng)', id: 'Unduh slip (kartu kredit)' },
+  s2CcFeeNote:    { zh: '信用卡為國際信用卡繳費，需加收 2.22% 手續費，故此繳費單金額與一般繳費單不同。', en: 'Credit-card payments are processed as international credit-card transactions with a 2.22% handling fee, so the amount on this slip differs from the standard payment slip.', vi: 'Thanh toán bằng thẻ tín dụng được xử lý như giao dịch thẻ tín dụng quốc tế và chịu phí xử lý 2,22%, do đó số tiền trên phiếu này khác với phiếu nộp học phí thông thường.', id: 'Pembayaran kartu kredit diproses sebagai transaksi kartu kredit internasional dengan biaya penanganan 2,22%, sehingga jumlah pada slip ini berbeda dari slip pembayaran biasa.' },
   s2ReceiptTitle: { zh: '上傳繳費收據', en: 'Upload Payment Receipt', vi: 'Tải lên biên lai nộp tiền', id: 'Unggah Bukti Pembayaran' },
   s2ReceiptHint:  { zh: '完成匯款後，請上傳銀行匯款收據或繳費證明（JPG／PNG／PDF）。', en: 'After payment, please upload your bank transfer receipt or proof of payment (JPG/PNG/PDF).', vi: 'Sau khi chuyển khoản, vui lòng tải lên biên lai chuyển khoản ngân hàng hoặc chứng từ nộp tiền (JPG/PNG/PDF).', id: 'Setelah membayar, unggah bukti transfer bank atau bukti pembayaran (JPG/PNG/PDF).' },
   s2Submitted:    { zh: '✓ 已收到您的繳費收據，待本校審核確認。', en: '✓ Your receipt has been received and is under review.', vi: '✓ Đã nhận được biên lai của bạn, đang chờ nhà trường xác nhận.', id: '✓ Bukti Anda telah diterima dan sedang ditinjau.' },
@@ -586,8 +588,11 @@ export default function OnboardApp({ token }) {
     return ''
   })()
   const slipUrl = info.progress?.[2]?.data?.slip_url || ''
+  // 信用卡專屬繳費單（國際信用卡繳費，金額已含 2.22% 手續費）；有值才在一般繳費單旁並排顯示
+  const slipCcUrl = info.progress?.[2]?.data?.slip_cc_url || ''
   const receipts = (info.files || []).filter((f) => f.step === 2 && f.kind === 'receipt')
   const linkBtn = { display: 'inline-block', padding: '9px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, textDecoration: 'none', background: ACCENT, color: '#fff' }
+  const ccLinkBtn = { ...linkBtn, background: '#fff', color: ACCENT, border: '1px solid ' + ACCENT }
   const onUploadDone = async () => { await load() }
 
   const step2Content = (
@@ -615,9 +620,20 @@ export default function OnboardApp({ token }) {
           </div>
         )}
         {slipUrl ? (
-          <a href={slipUrl} target="_blank" rel="noreferrer" style={linkBtn}>⬇ {tr('s2SlipDownload')}</a>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <a href={slipUrl} target="_blank" rel="noreferrer" style={linkBtn}>⬇ {tr('s2SlipDownload')}</a>
+            {slipCcUrl && (
+              <a href={slipCcUrl} target="_blank" rel="noreferrer" style={ccLinkBtn}>💳 {tr('s2SlipCcDownload')}</a>
+            )}
+          </div>
         ) : (
           <div style={{ fontSize: 13, color: '#888', lineHeight: 1.7, padding: '6px 0' }}>{tr('s2SlipPending')}</div>
+        )}
+        {/* 國際信用卡繳費 2.22% 手續費說明（僅在有信用卡繳費單時顯示） */}
+        {slipUrl && slipCcUrl && (
+          <div style={{ marginTop: 10, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '9px 12px', fontSize: 12, lineHeight: 1.7, color: '#9a3412' }}>
+            {tr('s2CcFeeNote')}
+          </div>
         )}
       </div>
 

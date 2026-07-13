@@ -992,6 +992,12 @@ export default function OnboardAdminApp() {
             onClick={() => openComposer(step, visaTargets.map((x) => x.account), undefined, step === 3 ? { mailKind: visaMailKind } : {})}>
             ✉ {step === 3 ? `寄送${selectedVisaType?.label || '簽證通知'}（${visaTargets.length} 人）` : `寄送通知信（${rows.length} 人）`}
           </Btn>
+          {step === 2 && (
+            <Btn disabled={busy || !rows.length}
+              onClick={() => openComposer(2, rows.map((x) => x.account), undefined, { mailKind: 'cc_payment' })}>
+              💳 寄送信用卡繳費通知（{rows.length} 人）
+            </Btn>
+          )}
           {step === 1 && (
             <Btn disabled={busy || exporting} onClick={doExportBA0203}>
               {exporting ? '匯出中…' : '⬇ 匯出 BA0203 外生 Excel'}

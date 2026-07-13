@@ -39,7 +39,9 @@ export const VISA_MAIL_TYPES = [
   { key: 'visa_date_reminder', label: '簽證日期回報提醒', track: 'other' },
 ]
 
-const VISA_MAIL_LABEL = Object.fromEntries(VISA_MAIL_TYPES.map((x) => [x.key, x.label]))
+// cc_payment 為步驟②「信用卡繳費通知」批次信；沿用 mailKind 機制（獨立四語模板＋獨立寄送計次），
+// 但不列入 VISA_MAIL_TYPES（那是步驟③簽證信類型下拉），只在此補上標籤供視窗標題／計次顯示。
+const VISA_MAIL_LABEL = { ...Object.fromEntries(VISA_MAIL_TYPES.map((x) => [x.key, x.label])), cc_payment: '信用卡繳費通知' }
 
 // 簽證批次信（五種 × 四語）。單語組信；雙語整封由 msgFor 縫合（母語在前、中文在後），
 // 主旨格式「外語 / 中文」，同其他步驟通知信慣例。
@@ -73,6 +75,12 @@ const VISA_MAIL_SUBJECTS = {
     en: '[Shih Chien University IFP] Please Report Your Visa Application Dates',
     vi: '[Đại học Thực Tiễn - IFP] Vui lòng báo ngày làm thủ tục thị thực',
     id: '[Universitas Shih Chien - IFP] Mohon Laporkan Tanggal Pengurusan Visa Anda',
+  },
+  cc_payment: {
+    zh: '【實踐大學國際專修部】新增信用卡繳費管道通知',
+    en: '[Shih Chien University IFP] New Credit-Card Payment Option Available',
+    vi: '[Đại học Thực Tiễn - IFP] Bổ sung kênh thanh toán bằng thẻ tín dụng',
+    id: '[Universitas Shih Chien - IFP] Opsi Pembayaran Kartu Kredit Kini Tersedia',
   },
 }
 
@@ -136,6 +144,12 @@ const buildVisaMail = (kind, data, lang = 'zh') => {
       en: `After receiving your printed admission letter, please make an appointment with your local Taiwan office and apply for your visa as early as possible.\n\nOnce you have booked or confirmed your application date, please log in to the enrollment preparation system and report the following:\n\n1. Planned visa application date\n2. Expected visa pickup date\n3. Anything else you need the university's assistance with (notes)\n\nEnrollment preparation system:\n${link}\n\nPlease report these dates as early as possible so the university can keep track of your preparation progress and your enrollment schedule is not affected.`,
       vi: `Sau khi nhận được giấy báo nhập học bản giấy, vui lòng sớm đặt lịch hẹn với Văn phòng Kinh tế và Văn hóa Đài Bắc tại địa phương để làm thủ tục xin thị thực.\n\nSau khi đặt lịch hoặc xác nhận thời gian làm thủ tục, vui lòng đăng nhập hệ thống chuẩn bị nhập học và báo các thông tin sau:\n\n1. Ngày dự kiến làm thủ tục thị thực\n2. Ngày dự kiến nhận thị thực\n3. Các vấn đề khác cần nhà trường hỗ trợ (ghi chú)\n\nHệ thống chuẩn bị nhập học:\n${link}\n\nVui lòng báo sớm nhất có thể để nhà trường nắm được tiến độ chuẩn bị đến Đài Loan của bạn, tránh ảnh hưởng đến việc sắp xếp nhập học sau này.`,
       id: `Setelah menerima surat penerimaan cetak, mohon segera membuat janji dengan kantor perwakilan Taiwan setempat dan mengurus visa Anda.\n\nSetelah membuat janji atau memastikan jadwal pengurusan, silakan masuk ke sistem persiapan pendaftaran dan laporkan informasi berikut:\n\n1. Tanggal rencana pengurusan visa\n2. Tanggal perkiraan penerimaan visa\n3. Hal lain yang memerlukan bantuan universitas (catatan)\n\nSistem persiapan pendaftaran:\n${link}\n\nMohon laporkan sesegera mungkin agar universitas dapat memantau persiapan keberangkatan Anda ke Taiwan, sehingga jadwal pendaftaran tidak terpengaruh.`,
+    },
+    cc_payment: {
+      zh: `本校新增「信用卡」繳費管道，您現在可以使用國際信用卡完成入學繳費。\n\n請登入入學準備系統，於「繳費」步驟下載您的專屬「信用卡繳費單」，並依單上金額與方式完成繳費；繳費後請回到頁面上傳繳費證明。\n\n※ 提醒：信用卡為國際信用卡繳費，需加收 2.22% 手續費，故信用卡繳費單的金額會與一般繳費單不同，屬正常情形。您仍可沿用原有的繳費方式，兩種擇一完成即可。\n\n入學準備系統：\n${link}`,
+      en: `The university has added a new "credit card" payment channel, and you may now complete your enrollment payment with an international credit card.\n\nPlease log in to the enrollment preparation system, download your personal "credit-card payment slip" under the "Payment" step, and complete the payment according to the amount and method shown on it. After paying, please return to the page to upload your proof of payment.\n\n※ Note: Credit-card payments are processed as international credit-card transactions with a 2.22% handling fee, so the amount on the credit-card slip differs from the standard payment slip — this is normal. You may still use the original payment methods; simply complete payment through either channel.\n\nEnrollment preparation system:\n${link}`,
+      vi: `Nhà trường đã bổ sung kênh thanh toán mới bằng "thẻ tín dụng", bạn hiện có thể hoàn tất việc nộp học phí nhập học bằng thẻ tín dụng quốc tế.\n\nVui lòng đăng nhập hệ thống chuẩn bị nhập học, tải "phiếu nộp học phí bằng thẻ tín dụng" riêng của bạn ở bước "Nộp học phí", và hoàn thành việc nộp theo số tiền và phương thức ghi trên phiếu. Sau khi nộp, vui lòng quay lại trang để tải lên chứng từ đã nộp.\n\n※ Lưu ý: Thanh toán bằng thẻ tín dụng được xử lý như giao dịch thẻ tín dụng quốc tế và chịu phí xử lý 2,22%, do đó số tiền trên phiếu thẻ tín dụng khác với phiếu thông thường — đây là điều bình thường. Bạn vẫn có thể dùng các phương thức thanh toán ban đầu; chỉ cần hoàn tất bằng một trong hai kênh.\n\nHệ thống chuẩn bị nhập học:\n${link}`,
+      id: `Universitas telah menambahkan saluran pembayaran baru dengan "kartu kredit", dan Anda kini dapat menyelesaikan pembayaran pendaftaran menggunakan kartu kredit internasional.\n\nSilakan masuk ke sistem persiapan pendaftaran, unduh "slip pembayaran kartu kredit" pribadi Anda pada langkah "Pembayaran", dan selesaikan pembayaran sesuai jumlah dan metode yang tertera. Setelah membayar, kembalilah ke halaman untuk mengunggah bukti pembayaran.\n\n※ Catatan: Pembayaran kartu kredit diproses sebagai transaksi kartu kredit internasional dengan biaya penanganan 2,22%, sehingga jumlah pada slip kartu kredit berbeda dari slip biasa — ini normal. Anda tetap dapat menggunakan metode pembayaran semula; cukup selesaikan melalui salah satu saluran.\n\nSistem persiapan pendaftaran:\n${link}`,
     },
   }
   return {
