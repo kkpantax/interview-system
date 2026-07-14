@@ -883,6 +883,21 @@ export async function loginTeacher(username, password) {
   return data.teacher
 }
 
+// 學生自助下載錄取通知單：POST 帳號+護照到 /api/letter（service key 驗護照、
+// 私有 Storage 簽名）。回傳 { ready:true, url } 可下載；{ ready:false } 尚未開放；
+// 驗證失敗丟出錯誤（帳號或護照不正確）。
+export async function getMyLetter(account, passport) {
+  const res = await fetch('/api/letter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, passport }),
+  })
+  let data = {}
+  try { data = await res.json() } catch { /* 非 JSON 回應 */ }
+  if (!res.ok) throw new Error(data.error || '查詢失敗')
+  return data   // { ok, ready, url? }
+}
+
 // ── Stage 3（第三階段 · 最終錄取）──────────────────────────────────────────
 // 所有二階評分 + 對應 application（只有已過一階者才會有評分）
 export async function getStage3Data() {

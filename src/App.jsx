@@ -12,6 +12,7 @@ import ConfirmApp from './pages/ConfirmApp'
 import OnboardApp from './pages/OnboardApp'
 import OnboardAdminApp from './pages/OnboardAdminApp'
 import TeacherLogin from './pages/TeacherLogin'
+import LetterApp from './pages/LetterApp'
 import { getBatchOverrides } from './api'
 import { setBatchOverrides } from './constants'
 
@@ -54,6 +55,7 @@ export default function App() {
   if (path === '/stage4') return <Stage4App />
   if (path === '/transfers') return <TransferApp />
   if (path === '/confirm') return <ConfirmApp token={query.t || ''} />
+  if (path === '/letter')  return <LetterApp lang={query.lang || ''} />
   if (path === '/onboard') return <OnboardApp token={query.t || ''} />
   if (path === '/onboard-admin') return <OnboardAdminApp />
   if (path === '/stats')  return (

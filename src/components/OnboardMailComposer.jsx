@@ -41,7 +41,7 @@ export const VISA_MAIL_TYPES = [
 
 // cc_payment 為步驟②「信用卡繳費通知」批次信；沿用 mailKind 機制（獨立四語模板＋獨立寄送計次），
 // 但不列入 VISA_MAIL_TYPES（那是步驟③簽證信類型下拉），只在此補上標籤供視窗標題／計次顯示。
-const VISA_MAIL_LABEL = { ...Object.fromEntries(VISA_MAIL_TYPES.map((x) => [x.key, x.label])), cc_payment: '信用卡繳費通知' }
+const VISA_MAIL_LABEL = { ...Object.fromEntries(VISA_MAIL_TYPES.map((x) => [x.key, x.label])), cc_payment: '信用卡繳費通知', letter_download: '錄取通知單下載通知' }
 
 // 簽證批次信（五種 × 四語）。單語組信；雙語整封由 msgFor 縫合（母語在前、中文在後），
 // 主旨格式「外語 / 中文」，同其他步驟通知信慣例。
@@ -76,6 +76,12 @@ const VISA_MAIL_SUBJECTS = {
     vi: '[Đại học Thực Tiễn - IFP] Vui lòng báo ngày làm thủ tục thị thực',
     id: '[Universitas Shih Chien - IFP] Mohon Laporkan Tanggal Pengurusan Visa Anda',
   },
+  letter_download: {
+    zh: '【實踐大學國際專修部】錄取通知單已開放下載',
+    en: '[Shih Chien University IFP] Your Admission Letter Is Ready to Download',
+    vi: '[Đại học Thực Tiễn - IFP] Thư báo trúng tuyển đã sẵn sàng để tải xuống',
+    id: '[Universitas Shih Chien - IFP] Surat Penerimaan Anda Siap Diunduh',
+  },
   cc_payment: {
     zh: '【實踐大學國際專修部】新增信用卡繳費管道通知',
     en: '[Shih Chien University IFP] New Credit-Card Payment Option Available',
@@ -105,6 +111,8 @@ const buildVisaMail = (kind, data, lang = 'zh') => {
     vi: 'Phòng Sự vụ Quốc tế, Đại học Thực Tiễn', id: 'Kantor Urusan Internasional, Universitas Shih Chien',
   }[L]
   const link = data.link || ''
+  const acc = data.account || ''
+  const letterLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/#/letter?lang=${L}`
   const letterUrl = data.admission_letter_url || ''
   const na = { zh: '—', en: 'TBA', vi: '(sẽ thông báo sau)', id: '(akan diumumkan)' }[L]
   const noteBlock = data.vn_collection_note ? `\n\n${data.vn_collection_note}` : ''
@@ -144,6 +152,12 @@ const buildVisaMail = (kind, data, lang = 'zh') => {
       en: `After receiving your printed admission letter, please make an appointment with your local Taiwan office and apply for your visa as early as possible.\n\nOnce you have booked or confirmed your application date, please log in to the enrollment preparation system and report the following:\n\n1. Planned visa application date\n2. Expected visa pickup date\n3. Anything else you need the university's assistance with (notes)\n\nEnrollment preparation system:\n${link}\n\nPlease report these dates as early as possible so the university can keep track of your preparation progress and your enrollment schedule is not affected.`,
       vi: `Sau khi nhận được giấy báo nhập học bản giấy, vui lòng sớm đặt lịch hẹn với Văn phòng Kinh tế và Văn hóa Đài Bắc tại địa phương để làm thủ tục xin thị thực.\n\nSau khi đặt lịch hoặc xác nhận thời gian làm thủ tục, vui lòng đăng nhập hệ thống chuẩn bị nhập học và báo các thông tin sau:\n\n1. Ngày dự kiến làm thủ tục thị thực\n2. Ngày dự kiến nhận thị thực\n3. Các vấn đề khác cần nhà trường hỗ trợ (ghi chú)\n\nHệ thống chuẩn bị nhập học:\n${link}\n\nVui lòng báo sớm nhất có thể để nhà trường nắm được tiến độ chuẩn bị đến Đài Loan của bạn, tránh ảnh hưởng đến việc sắp xếp nhập học sau này.`,
       id: `Setelah menerima surat penerimaan cetak, mohon segera membuat janji dengan kantor perwakilan Taiwan setempat dan mengurus visa Anda.\n\nSetelah membuat janji atau memastikan jadwal pengurusan, silakan masuk ke sistem persiapan pendaftaran dan laporkan informasi berikut:\n\n1. Tanggal rencana pengurusan visa\n2. Tanggal perkiraan penerimaan visa\n3. Hal lain yang memerlukan bantuan universitas (catatan)\n\nSistem persiapan pendaftaran:\n${link}\n\nMohon laporkan sesegera mungkin agar universitas dapat memantau persiapan keberangkatan Anda ke Taiwan, sehingga jadwal pendaftaran tidak terpengaruh.`,
+    },
+    letter_download: {
+      zh: `您的電子錄取通知單已可下載。請至下列網頁，輸入您的「帳號」與「護照號碼」下載您的錄取通知單：\n${letterLink}\n\n帳號：${acc}\n\n通知單供繳費及簽證使用，請妥善保存。`,
+      en: `Your electronic admission letter is now available. Please visit the page below and enter your Account and Passport number to download it:\n${letterLink}\n\nAccount: ${acc}\n\nPlease keep the letter safe; it is used for tuition payment and visa application.`,
+      vi: `Thư báo trúng tuyển bản điện tử của bạn đã có thể tải xuống. Vui lòng truy cập trang dưới đây, nhập "Tài khoản" và "Số hộ chiếu" để tải:\n${letterLink}\n\nTài khoản: ${acc}\n\nVui lòng lưu giữ cẩn thận; thư báo dùng cho việc đóng học phí và xin thị thực.`,
+      id: `Surat penerimaan elektronik Anda kini dapat diunduh. Silakan buka halaman di bawah ini, masukkan "Akun" dan "Nomor Paspor" untuk mengunduh:\n${letterLink}\n\nAkun: ${acc}\n\nMohon simpan dengan baik; surat ini digunakan untuk pembayaran biaya kuliah dan pengajuan visa.`,
     },
     cc_payment: {
       zh: `本校新增「信用卡」繳費管道，您現在可以使用國際信用卡完成入學繳費。\n\n請登入入學準備系統，於「繳費」步驟下載您的專屬「信用卡繳費單」，並依單上金額與方式完成繳費；繳費後請回到頁面上傳繳費證明。\n\n※ 提醒：信用卡為國際信用卡繳費，需加收 2.22% 手續費，故信用卡繳費單的金額會與一般繳費單不同，屬正常情形。您仍可沿用原有的繳費方式，兩種擇一完成即可。\n\n入學準備系統：\n${link}`,
@@ -218,6 +232,7 @@ export default function OnboardMailComposer({ step, mailKind = '', initialTier =
     const camp = r.campus || '台北'
     const c = contacts[camp] || contacts['台北'] || {}
     return {
+      account: r.account || '',
       name: r.name || '', name_english: r.name_en || '',
       // 傳原始系所/校區，由 buildOnboardMail 依語言解析（zh 全名、外語 DEPT_I18N 定稿）
       department: r.department || '', campus: r.campus || '',
