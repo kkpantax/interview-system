@@ -511,6 +511,9 @@ export default function OnboardAdminApp() {
   const [mailRecips, setMailRecips] = useState({})   // account → { email, reminder_count, ... }
   const [composer, setComposer] = useState(null)     // { step, recipients, cfg }
   const [visaMailKind, setVisaMailKind] = useState(VISA_MAIL_TYPES[0]?.key || '')
+  // 主通知信是否只寄「待處理」（排除已送出待承辦確認者）；預設開，避免催到已交件的人。
+  // 只作用於各步的主通知信按鈕；步驟②的信用卡／錄取通知單兩顆屬資訊廣播，維持全體卡關名單。
+  const [mailOpenOnly, setMailOpenOnly] = useState(true)
 
   const loadMailRecips = useCallback(async (step) => {
     try {
@@ -976,9 +979,14 @@ export default function OnboardAdminApp() {
   // 通知信控制列（每個步驟分頁的名單上方）：開 OnboardMailComposer 系統內預覽＋批次寄出
   const mailControl = (step, rows) => {
     const selectedVisaType = VISA_MAIL_TYPES.find((x) => x.key === visaMailKind) || VISA_MAIL_TYPES[0]
+    // rows＝卡在此步（open＋submitted）。主通知信的母體再依勾選過濾成只剩 open；
+    // submittedN 僅供 checkbox 標籤顯示（＝已送出、等承辦確認的人數）。
+    const openRows = rows.filter((x) => stepStateOf(x, step) === 'open')
+    const submittedN = rows.length - openRows.length
+    const baseRows = mailOpenOnly ? openRows : rows
     const visaTargets = step === 3 && selectedVisaType
-      ? rows.filter((x) => !selectedVisaType.track || visaTrackOf(x) === selectedVisaType.track)
-      : rows
+      ? baseRows.filter((x) => !selectedVisaType.track || visaTrackOf(x) === selectedVisaType.track)
+      : baseRows
     return (
       <Card style={{ marginBottom: 16 }}>
         <CardHead left="✉ 通知信" />
@@ -990,8 +998,13 @@ export default function OnboardAdminApp() {
           )}
           <Btn variant="primary" disabled={busy || !visaTargets.length}
             onClick={() => openComposer(step, visaTargets.map((x) => x.account), undefined, step === 3 ? { mailKind: visaMailKind } : {})}>
-            ✉ {step === 3 ? `寄送${selectedVisaType?.label || '簽證通知'}（${visaTargets.length} 人）` : `寄送通知信（${rows.length} 人）`}
+            ✉ {step === 3 ? `寄送${selectedVisaType?.label || '簽證通知'}（${visaTargets.length} 人）` : `寄送通知信（${baseRows.length} 人）`}
           </Btn>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#666', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            title="只寄給尚未送出的『待處理』學生；已送出、等承辦確認的『待確認』不再催信。步驟②的信用卡繳費／錄取通知單通知不受此設定影響。">
+            <input type="checkbox" checked={mailOpenOnly} onChange={(e) => setMailOpenOnly(e.target.checked)} />
+            只寄「待處理」{submittedN ? `（排除待確認 ${submittedN} 人）` : ''}
+          </label>
           {step === 2 && (
             <Btn disabled={busy || !rows.length}
               onClick={() => openComposer(2, rows.map((x) => x.account), undefined, { mailKind: 'cc_payment' })}>
@@ -1013,6 +1026,7 @@ export default function OnboardAdminApp() {
             {step === 3
               ? '簽證批次信依信件類型分開追蹤寄送次數；已寄過同類型的學生預設不勾，避免重複寄送。名單會吃上方「中心」下拉篩選（搜尋框只影響顯示）。'
               : '開啟寄信視窗：對「目前梯次×校區×中心篩選下、卡在此步」的名單逐人組雙語信（外語在前、中文在後），可逐列預覽、改語言、選次別（首次／二次／最後）後「① 建立草稿 → ② 送出本批」（公務信箱）。搜尋框只影響顯示。'}
+            {step === 2 && <><br />💳 信用卡繳費通知／✉ 錄取通知單下載通知屬資訊廣播，一律寄給全部卡關名單（含待確認），不受「只寄待處理」勾選影響。</>}
           </span>
         </div>
       </Card>
