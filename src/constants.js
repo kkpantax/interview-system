@@ -339,7 +339,6 @@ export const ONBOARD_MAIL_S1 = {
     zh: {
       greeting: '親愛的 {{name}} 同學，您好：',
       congrats: '恭喜您錄取實踐大學國際專修部（1+4）{{dept_seg}}。{{result_seg}}',
-      listNote: '若您收到本信，但目前尚未在放榜名單上看到自己的名字，請不用擔心：因作業程序的關係，您的榜單將於後續批次公告，預計於 7 月 24 日公布。',
       letter: '首先向您說明錄取通知單事宜：目前紙本錄取通知單仍在準備中、尚未寄發，敬請耐心等候；電子檔完成後將提供下載。紙本通知單將依您接下來在系統中填寫的地址寄出，因此請務必確認接下來填寫的個人資料與地址正確無誤，以免影響收件。',
       confirmDeadline: '為儘速為您寄出紙本入學通知，請於 {{deadline}} 前完成本次「資料確認」。請點選以下專屬連結登入，核對並確認您的個人資料：\n{{link}}',
       confirmAsap: '為儘速為您寄出紙本入學通知，請儘速完成本次「資料確認」。請點選以下專屬連結登入，核對並確認您的個人資料：\n{{link}}',
@@ -349,7 +348,6 @@ export const ONBOARD_MAIL_S1 = {
     en: {
       greeting: 'Dear {{name_english}},',
       congrats: 'Congratulations on your admission to the International Foundation Program (1+4) at Shih Chien University{{dept_seg}}.{{result_seg}}',
-      listNote: 'If you have received this email but do not yet see your name on the admission list, please do not worry: due to administrative procedures, your result will be announced in a later batch, expected on July 24.',
       letter: 'First, regarding your admission letter: the printed admission letter is still being prepared and has not yet been sent — thank you for your patience. An electronic copy will be provided for download once ready. The printed letter will be mailed to the address you enter in the system in the next step, so please make sure the personal information and address you provide are correct to avoid any delivery problems.',
       confirmDeadline: 'To help us send your printed admission notice as soon as possible, please complete this "Data Confirmation" step before {{deadline}}. Please log in via your personal link below to review and confirm your information:\n{{link}}',
       confirmAsap: 'To help us send your printed admission notice as soon as possible, please complete this "Data Confirmation" step at your earliest convenience. Please log in via your personal link below to review and confirm your information:\n{{link}}',
@@ -359,7 +357,6 @@ export const ONBOARD_MAIL_S1 = {
     vi: {
       greeting: '{{name_english}} thân mến,',
       congrats: 'Chúc mừng bạn đã trúng tuyển Chương trình Dự bị Quốc tế (1+4) của Đại học Thực Tiễn{{dept_seg}}.{{result_seg}}',
-      listNote: 'Nếu bạn nhận được email này nhưng hiện chưa thấy tên mình trong danh sách trúng tuyển, xin đừng lo lắng: do quy trình xử lý, kết quả của bạn sẽ được công bố trong đợt sau, dự kiến vào ngày 24 tháng 7.',
       letter: 'Trước tiên, về giấy báo trúng tuyển: giấy báo bản giấy hiện vẫn đang được chuẩn bị và chưa được gửi đi, mong bạn kiên nhẫn chờ đợi. Bản điện tử sẽ được cung cấp để tải xuống khi hoàn tất. Giấy báo bản giấy sẽ được gửi theo địa chỉ bạn điền trong hệ thống ở bước tiếp theo, vì vậy vui lòng đảm bảo thông tin cá nhân và địa chỉ bạn nhập là chính xác để tránh ảnh hưởng đến việc nhận thư.',
       confirmDeadline: 'Để nhà trường gửi giấy báo nhập học bản giấy sớm nhất, vui lòng hoàn thành bước "Xác nhận thông tin" này trước ngày {{deadline}}. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập, kiểm tra và xác nhận thông tin của bạn:\n{{link}}',
       confirmAsap: 'Để nhà trường gửi giấy báo nhập học bản giấy sớm nhất, vui lòng hoàn thành bước "Xác nhận thông tin" này trong thời gian sớm nhất. Vui lòng nhấp vào đường dẫn riêng bên dưới để đăng nhập, kiểm tra và xác nhận thông tin của bạn:\n{{link}}',
@@ -369,7 +366,6 @@ export const ONBOARD_MAIL_S1 = {
     id: {
       greeting: 'Yth. {{name_english}},',
       congrats: 'Selamat, Anda diterima di International Foundation Program (1+4) Universitas Shih Chien{{dept_seg}}.{{result_seg}}',
-      listNote: 'Jika Anda menerima email ini tetapi nama Anda belum muncul dalam daftar kelulusan, jangan khawatir: karena prosedur administrasi, hasil Anda akan diumumkan pada gelombang berikutnya, diperkirakan pada 24 Juli.',
       letter: 'Pertama, mengenai surat kelulusan: surat kelulusan cetak masih dalam proses persiapan dan belum dikirim, mohon kesabarannya. Salinan elektronik akan tersedia untuk diunduh setelah siap. Surat cetak akan dikirim ke alamat yang Anda isi dalam sistem pada langkah berikutnya, jadi pastikan data pribadi dan alamat yang Anda masukkan sudah benar agar tidak mengganggu penerimaan surat.',
       confirmDeadline: 'Agar kami dapat mengirimkan surat pemberitahuan cetak secepatnya, mohon selesaikan langkah "Konfirmasi Data" ini sebelum {{deadline}}. Silakan masuk melalui tautan pribadi Anda di bawah ini untuk memeriksa dan mengonfirmasi data Anda:\n{{link}}',
       confirmAsap: 'Agar kami dapat mengirimkan surat pemberitahuan cetak secepatnya, mohon segera selesaikan langkah "Konfirmasi Data" ini. Silakan masuk melalui tautan pribadi Anda di bawah ini untuk memeriksa dan mengonfirmasi data Anda:\n{{link}}',
@@ -527,7 +523,7 @@ export function buildOnboardMail({ step = 1, tier = 'first', lang = 'zh', data =
   const intro = t.tierIntro[tier]?.[L]
   if (intro) parts.push(intro)
   if (stepN === 1) {
-    parts.push(p.greeting, p.congrats, p.listNote, p.letter)
+    parts.push(p.greeting, p.congrats, p.letter)
     parts.push(hasDeadline ? p.confirmDeadline : p.confirmAsap)
     if (hasContact) parts.push(p.contact)
   } else if (stepN === 0) {
